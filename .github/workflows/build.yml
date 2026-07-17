@@ -15,18 +15,18 @@ jobs:
         with:
           submodules: recursive
 
+      # Install ARM GCC 15.2.rel1 toolchain
       - name: Install ARM GCC Toolchain
-        uses: carlosperate/arm-none-eabi-gcc-action@v1
-        with:
-          release: '15.2.rel1'
+        run: |
+          wget -q https://developer.arm.com/-/media/Files/downloads/gnu/15.2.rel1/binrel/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi.tar.xz
+          tar -xf arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi.tar.xz
+          echo "$PWD/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi/bin" >> $GITHUB_PATH
 
       - name: Install Python dependencies
-        run: |
-          pip install pyyaml jinja2
+        run: pip install pyyaml jinja2
 
       - name: Generate project from YAML
-        run: |
-          python generator/generate.py -i examples/blinky_g0/hardware.yaml -o output/blinky_g0
+        run: python generator/generate.py -i examples/blinky_g0/hardware.yaml -o output/blinky_g0
 
       - name: Build firmware
         run: |
