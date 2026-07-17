@@ -1,0 +1,22 @@
+mcu:
+  part: STM32G0B1RET6
+  core_clock_mhz: 64
+  hse_freq: 8000000
+pins:
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: falling
+sleep:
+  mode: STOP1
+app_tasks:
+  - name: button_led_task
+    priority: 2
+    stack_size: 128

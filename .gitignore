@@ -1,0 +1,24 @@
+# Python virtual environment
+venv/
+
+# Generated output
+output/
+
+# Compiled files
+*.o
+*.bin
+*.hex
+*.elf
+*.map
+*.out
+
+# IDE / editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

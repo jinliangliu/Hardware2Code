@@ -33,4 +33,62 @@ STM32 + FreeRTOS 工程 (TDD分层, 低功耗管理)
 - **多 IDE 支持**：同时输出 GCC Makefile、IAR (.eww)、Keil (.uvprojx) 工程。
 - **保护用户代码**：通过 `/* USER CODE BEGIN */` 标记，重新生成时可保留手工修改。
 
-TBD...
+
+## 当前功能
+- **YAML 硬件描述**：定义 MCU、引脚（GPIO/EXTI）、低功耗模式、应用任务
+- **代码生成**：Python + Jinja2 生成完整的 C 工程（HAL、FreeRTOS、启动文件、链接脚本）
+- **多工具链支持**：GCC Makefile，支持 ST-Link 和 DAP-Link 烧录
+- **低功耗管理**：Idle Hook 自动进入 `__WFI()`
+- **实际验证**：已在 STM32G0B1RET6 开发板上通过按键中断 + LED 翻转测试
+
+## 快速开始
+1. 克隆仓库（包含子模块）：
+   ```bash
+   git clone --recurse-submodules https://github.com/jinliangliu/Hardware2Code.git
+   cd Hardware2Code
+   ```
+2. 安装 Python 依赖：
+   ```bash
+   pip install -r requirements.txt # pyyaml, jinja2
+   ```
+3. 生成工程：
+   ```bash
+   python generator/generate.py -i examples/blinky_g0/hardware.yaml -o output/blinky_g0
+   cd output/blinky_g0
+   make
+   ``` 
+4. 编译并烧录：
+   ```bash
+   make flash           # ST-Link 烧录
+   make flash-daplink   # DAP-Link 烧录
+   ```
+
+
+# 目录结构
+```bash
+├── examples  #示例目录
+│   ├── blinky_g0
+│   │   ├── hardware.yaml
+├── output  #工程输出目录
+│   ├── blinky_g0
+│   │   ├── Makefile
+│   │   ├── inc
+│   │   ├── src
+├── static      #裁剪后的 HAL/CMSIS/FreeRTOS（子模块）
+│   ├── stm32g0
+│   │   ├── CMSIS
+│   │   ├── HAL
+│   │   ├── FreeRTOS-Kernel
+├── templates   #模板目录
+│   ├── project
+│   ├── config
+│   ├── linker
+│   ├── src
+├── generator  #代码生成器
+│   ├── generate.py
+│   ├── requirements.txt
+├── docs
+│── README.md
+│── LICENSE
+```
+
