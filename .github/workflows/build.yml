@@ -18,7 +18,7 @@ jobs:
       - name: Install ARM GCC Toolchain
         uses: carlosperate/arm-none-eabi-gcc-action@v1
         with:
-          release: '13.3.rel1'
+          release: '15.2.rel1'
 
       - name: Install Python dependencies
         run: |
