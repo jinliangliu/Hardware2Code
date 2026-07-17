@@ -1,0 +1,23 @@
+{#
+    macros.j2 - Reusable macros for Hardware2Code templates
+    Purpose: Centralize pin-to-interrupt mapping and other common logic
+    Macros:
+      - exti_irq_name(pin_id)  : returns NVIC IRQn name (e.g. EXTI4_15_IRQn)
+      - exti_handler_name(pin_id) : returns handler function name (e.g. EXTI4_15_IRQHandler)
+   #}
+
+{% macro exti_irq_name(pin_id) -%}
+  {%- set num = pin_id[2:] | int -%}
+  {%- if num <= 1 %}EXTI0_1_IRQn
+  {%- elif num <= 3 %}EXTI2_3_IRQn
+  {%- else %}EXTI4_15_IRQn
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro exti_handler_name(pin_id) -%}
+  {%- set num = pin_id[2:] | int -%}
+  {%- if num <= 1 %}EXTI0_1_IRQHandler
+  {%- elif num <= 3 %}EXTI2_3_IRQHandler
+  {%- else %}EXTI4_15_IRQHandler
+  {%- endif -%}
+{%- endmacro %}

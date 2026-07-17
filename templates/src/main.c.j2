@@ -1,3 +1,14 @@
+{#
+    main.c.j2 - Main application source template
+    Generates: src/main.c
+    Requires context variables:
+      - mcu.part, mcu.core_clock_mhz (optional), mcu.hse_freq (optional)
+      - pins (list of pin objects with id, label, function, etc.)
+      - app_tasks (list of task objects with name, priority, stack_size)
+      - project_name (optional)
+    Creates: LED GPIO pin macros, system clock configuration, FreeRTOS tasks, LED toggle logic
+#}
+
 #include "stm32g0xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"

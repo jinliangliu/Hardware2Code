@@ -1,29 +1,28 @@
+{#
+  stm32g0xx_it.c.j2 - Interrupt handlers template
+  Generates: src/stm32g0xx_it.c
+  Requires context variables: pins (with exti and optional notify_task)
+  Uses macros: exti_handler_name from macros.j2
+  Automatically groups pins by EXTI line and generates handler with task notification if notify_task is set.
+#}
+
+{% import 'macros.j2' as macros %}
 #include "stm32g0xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
-/* External task handle for button notification */
-{% for pin in pins %}
-{% if pin.exti and pin.exti.enable and pin.label == 'BUTTON' %}
-extern TaskHandle_t button_led_task_handle;
-{% endif %}
+/* External task handles for notifications */
+{% for pin in pins if pin.exti and pin.exti.enable and pin.notify_task %}
+extern TaskHandle_t {{ pin.notify_task }}_handle;
 {% endfor %}
 
 void NMI_Handler(void) { while(1); }
 void HardFault_Handler(void) { while(1); }
 
 /* EXTI interrupt handlers (auto-generated) */
-{% macro exti_handler_name(pin_id) -%}
-  {%- set num = pin_id[2:] | int -%}
-  {%- if num <= 1 %}EXTI0_1_IRQHandler
-  {%- elif num <= 3 %}EXTI2_3_IRQHandler
-  {%- else %}EXTI4_15_IRQHandler
-  {%- endif -%}
-{%- endmacro %}
-
 {% set handlers = {} %}
 {% for pin in pins if pin.exti and pin.exti.enable %}
-  {% set handler = exti_handler_name(pin.id) %}
+  {% set handler = macros.exti_handler_name(pin.id) %}
   {% if handler not in handlers %}{% set _ = handlers.update({handler: []}) %}{% endif %}
   {% set _ = handlers[handler].append(pin) %}
 {% endfor %}
@@ -33,11 +32,11 @@ void {{ handler }}(void)
 {
     {% for pin in pin_list %}
     HAL_GPIO_EXTI_IRQHandler( GPIO_PIN_{{ pin.id[2:] }} );
-    {% if pin.label == 'BUTTON' %}
+    {% if pin.notify_task %}
     if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
     {
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-        xTaskNotifyFromISR( button_led_task_handle, 0, eSetBits, &xHigherPriorityTaskWoken );
+        xTaskNotifyFromISR( {{ pin.notify_task }}_handle, 0, eSetBits, &xHigherPriorityTaskWoken );
         portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
     }
     {% endif %}

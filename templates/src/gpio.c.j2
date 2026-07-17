@@ -1,3 +1,12 @@
+{#
+    gpio.c.j2 - GPIO initialization template
+    Generates: src/gpio.c
+    Requires context variables: pins
+    Uses macros: exti_irq_name from macros.j2
+    For each pin: enables GPIO clock, configures mode/pull, and enables NVIC if EXTI is set.
+#}
+
+{% import 'macros.j2' as macros %}
 #include "stm32g0xx_hal.h"
 
 void MX_GPIO_Init(void)
@@ -18,15 +27,8 @@ void MX_GPIO_Init(void)
 {% endif %}
     HAL_GPIO_Init(GPIO{{ pin.id[1] }}, &GPIO_InitStruct);
 
-    /* Enable NVIC if EXTI is configured */
     {% if pin.exti and pin.exti.enable %}
-    HAL_NVIC_EnableIRQ(
-        {%- set pin_num = pin.id[2:] | int -%}
-        {%- if pin_num <= 1 %}EXTI0_1_IRQn
-        {%- elif pin_num <= 3 %}EXTI2_3_IRQn
-        {%- else %}EXTI4_15_IRQn
-        {%- endif -%}
-    );
+    HAL_NVIC_EnableIRQ({{ macros.exti_irq_name(pin.id) }});
     {% endif %}
 {% endfor %}
 }

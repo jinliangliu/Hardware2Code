@@ -1,6 +1,12 @@
 # Python virtual environment
 venv/
 
+# Python Cache
+__pycache__/
+*.pyc
+*.venv
+anaconda3/
+
 # Generated output
 output/
 
@@ -11,9 +17,14 @@ output/
 *.elf
 *.map
 *.out
+build/
+Debug/
+Release/
 
 # IDE / editor files
 .vscode/
+.vscode/.DS_Store
+.vscode/*.log
 .idea/
 *.swp
 *.swo

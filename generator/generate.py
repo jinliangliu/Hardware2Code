@@ -6,14 +6,23 @@ Hardware2Code Generator
 
 import argparse
 import os
-import shutil
+import sys
 from pathlib import Path
 
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
+# 导入校验模块（注意：需确保 generator/validator.py 存在）
+try:
+    from validator import validate_hardware
+except ImportError:
+    print("Warning: validator.py not found, skipping hardware validation.")
+    def validate_hardware(hw):
+        return []
+
 
 def load_yaml(file_path: str) -> dict:
+    """加载硬件描述 YAML 文件"""
     with open(file_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
@@ -21,9 +30,9 @@ def load_yaml(file_path: str) -> dict:
 def build_context(hw: dict, project_name: str) -> dict:
     """
     将 YAML 中的硬件描述处理成模板渲染所需的完整上下文。
-    这里只做简单映射，复杂逻辑（如引脚分组、中断计算）可后续扩展。
+    添加必要的默认值、计算值，并合并静态路径信息。
     """
-    # 提取 mcu 信息，确保 core_clock_mhz 为数值
+    # 提取 mcu 信息，确保必要的字段存在并提供默认值
     mcu = hw.get("mcu", {})
     mcu["core_clock_mhz"] = int(mcu.get("core_clock_mhz", 64))
     mcu["hse_freq"] = int(mcu.get("hse_freq", 8000000))
@@ -32,10 +41,16 @@ def build_context(hw: dict, project_name: str) -> dict:
     sleep = hw.get("sleep", {})
     app_tasks = hw.get("app_tasks", [])
 
-    # 简单检查：若按钮配置了 EXTI，自动标记
+    # 为每个引脚补充默认的 exti 字典（避免模板中判空）
     for pin in pins:
         if pin.get("exti") is None:
             pin["exti"] = {}
+        # 确保 notify_task 字段存在（即使为空）
+        if "notify_task" not in pin:
+            pin["notify_task"] = ""
+
+    # 静态库绝对路径（用于 Makefile 中 HARDWARE2CODE_STATIC 变量）
+    static_dir_absolute = os.path.abspath("static/stm32g0").replace("\\", "/")
 
     return {
         "project_name": project_name,
@@ -43,8 +58,9 @@ def build_context(hw: dict, project_name: str) -> dict:
         "pins": pins,
         "sleep": sleep,
         "app_tasks": app_tasks,
-        "heap_size": hw.get("heap_size", "0x800"),
+        "heap_size": hw.get("heap_size", "0x200"),
         "stack_size": hw.get("stack_size", "0x400"),
+        "static_dir_absolute": static_dir_absolute,
     }
 
 
@@ -75,18 +91,23 @@ def render_templates(env: Environment, context: dict, output_dir: str):
         print(f"Generated: {out_path}")
 
 
-def copy_static_files(output_dir: str, static_dir: str = "static/stm32g0"):
-    """
-    如果需要把静态库复制进生成的工程（非引用模式），在此实现。
-    当前 Makefile 采用相对路径引用 static/，故无需复制。
-    """
-    # 本示例不复制，只保留接口供将来使用
-    pass
-
-
 def generate(hardware_yaml: str, output_dir: str):
     # 加载硬件描述
-    hw = load_yaml(hardware_yaml)
+    try:
+        hw = load_yaml(hardware_yaml)
+    except Exception as e:
+        print(f"Error loading YAML file: {e}")
+        sys.exit(1)
+
+    # 校验硬件描述
+    errors = validate_hardware(hw)
+    if errors:
+        print("Errors in hardware YAML:")
+        for err in errors:
+            print(f"  - {err}")
+        print("Please fix the errors and try again.")
+        sys.exit(1)
+
     project_name = os.path.basename(output_dir) or "hw2code"
 
     # 构建上下文
@@ -100,10 +121,11 @@ def generate(hardware_yaml: str, output_dir: str):
     )
 
     # 渲染所有模板
-    render_templates(env, context, output_dir)
-
-    # 可选：复制静态文件
-    copy_static_files(output_dir)
+    try:
+        render_templates(env, context, output_dir)
+    except Exception as e:
+        print(f"Error during template rendering: {e}")
+        sys.exit(1)
 
     print(f"\nProject '{project_name}' generated successfully in '{output_dir}'")
 
