@@ -1,13 +1,17 @@
+{% import 'macros.j2' as macros %}
 {#
-    gpio.c.j2 - GPIO initialization template
-    Generates: src/gpio.c
-    Requires context variables: pins
-    Uses macros: exti_irq_name from macros.j2
-    For each pin: enables GPIO clock, configures mode/pull, and enables NVIC if EXTI is set.
+ gpio.c.j2 - GPIO initialization template
+ Generates: src/gpio.c
+ Requires context variables: pins
+ Uses macros: exti_irq_name from macros.j2
+ For each pin: enables GPIO clock, configures mode/pull/speed/AF, and enables NVIC if EXTI is set.
 #}
 
-{% import 'macros.j2' as macros %}
+#ifdef TEST
+#include "mock_hal.h"
+#else
 #include "stm32g0xx_hal.h"
+#endif
 
 void MX_GPIO_Init(void)
 {
@@ -17,6 +21,7 @@ void MX_GPIO_Init(void)
     /* {{ pin.label }} ({{ pin.id }}) */
     __HAL_RCC_GPIO{{ pin.id[1] }}_CLK_ENABLE();
     GPIO_InitStruct.Pin = GPIO_PIN_{{ pin.id[2:] }};
+
 {% if pin.function == 'GPIO_Output' %}
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -24,9 +29,17 @@ void MX_GPIO_Init(void)
 {% elif pin.function == 'GPIO_Input' %}
     GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
     GPIO_InitStruct.Pull = {% if pin.pull == 'up' %}GPIO_PULLUP{% else %}GPIO_NOPULL{% endif %};
+{% elif 'I2C' in pin.function %}
+    /* I2C SCL/SDA pins: open-drain, pull-up, high speed, and AF */
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    GPIO_InitStruct.Alternate = {{ pin.af }};
 {% endif %}
+
     HAL_GPIO_Init(GPIO{{ pin.id[1] }}, &GPIO_InitStruct);
 
+    /* Enable NVIC if EXTI is configured */
     {% if pin.exti and pin.exti.enable %}
     HAL_NVIC_EnableIRQ({{ macros.exti_irq_name(pin.id) }});
     {% endif %}

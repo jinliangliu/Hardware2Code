@@ -1,0 +1,52 @@
+#include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
+
+#include "../src/gpio.c"
+
+void setUp(void) {
+    mock_HAL_GPIO_Init_reset();
+}
+
+void tearDown(void) {}
+
+void test_MX_GPIO_Init_should_call_HAL_for_all_pins(void) {
+    MX_GPIO_Init();
+    TEST_ASSERT_EQUAL_UINT32({{ pins | length }}, mock_HAL_GPIO_Init_get_count());
+}
+
+{% for pin in pins %}
+void test_{{ pin.id }}_configuration(void) {
+    MX_GPIO_Init();
+    /* 获取该引脚对应索引的配置（按YAML顺序） */
+    uint32_t idx = {{ loop.index0 }};
+    uint32_t expected_pin = GPIO_PIN_{{ pin.id[2:] }};
+    uint32_t actual_pin = mock_HAL_GPIO_Init_get_pin(idx);
+    TEST_ASSERT_EQUAL_HEX32(expected_pin, actual_pin);
+
+{% if pin.function == 'GPIO_Output' %}
+    TEST_ASSERT_EQUAL_UINT32(GPIO_MODE_OUTPUT_PP, mock_HAL_GPIO_Init_get_mode(idx));
+{% elif pin.function == 'GPIO_Input' %}
+    TEST_ASSERT_EQUAL_UINT32(GPIO_MODE_IT_FALLING, mock_HAL_GPIO_Init_get_mode(idx));
+    {% if pin.exti and pin.exti.enable %}
+    /* 验证对应 NVIC 中断线已使能 */
+    TEST_ASSERT_TRUE(mock_HAL_NVIC_EnableIRQ_called_with(
+        {%- set pin_num = pin.id[2:] | int -%}
+        {%- if pin_num <= 1 %}EXTI0_1_IRQn
+        {%- elif pin_num <= 3 %}EXTI2_3_IRQn
+        {%- else %}EXTI4_15_IRQn
+        {%- endif -%}
+    ));
+    {% endif %}
+{% endif %}
+}
+{% endfor %}
+
+int main(void) {
+    UNITY_BEGIN();
+    RUN_TEST(test_MX_GPIO_Init_should_call_HAL_for_all_pins);
+    {% for pin in pins %}
+    RUN_TEST(test_{{ pin.id }}_configuration);
+    {% endfor %}
+    return UNITY_END();
+}

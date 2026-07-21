@@ -1,0 +1,21 @@
+model: "MPU6050"
+type: "I2C_Sensor"
+interface: "I2C"
+driver_template: "drivers/drv_i2c_mpu6050.c.j2"
+header_template: "drivers/drv_i2c_mpu6050.h.j2"
+init_sequence:
+  - write_register: [0x6B, 0x00]   # PWR_MGMT_1: wake up
+registers:
+  PWR_MGMT_1: 0x6B
+  GYRO_CONFIG: 0x1B
+  ACCEL_CONFIG: 0x1C
+  SMPLRT_DIV: 0x19
+  ACCEL_XOUT_H: 0x3B
+capabilities:
+  - accelerometer_read
+  - gyroscope_read
+wakeup_capable: false
+default_params:
+  accel_fs: 2
+  gyro_fs: 250
+  sample_rate_div: 0

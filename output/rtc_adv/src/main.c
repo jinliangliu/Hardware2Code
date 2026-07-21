@@ -5,9 +5,7 @@
 #include "stm32g0xx_hal_tim.h"
 
 /* Include driver headers for each peripheral */
-{% for drv in drivers %}
-#include "drv_{{ drv.name }}.h"
-{% endfor %}
+#include "drv_rtc.h"
 
 /* Include event manager header (always present) */
 #include "event_mgr.h"
@@ -16,27 +14,18 @@
 void MX_GPIO_Init(void);
 
 /* ------- Auto-generated pin definitions ------- */
-{% for pin in pins %}
-{% if pin.label == 'LED' %}
-#define LED_GPIO_Port  GPIO{{ pin.id[1] }}
-#define LED_GPIO_Pin   GPIO_PIN_{{ pin.id[2:] }}
-{% endif %}
-{% endfor %}
+#define LED_GPIO_Port  GPIOC
+#define LED_GPIO_Pin   GPIO_PIN_0
 
 /* ------- I2C Handles (if I2C peripherals are used) ------- */
-{% for p in peripherals if 'I2C' in p.model.interface %}
-I2C_HandleTypeDef hi2c{{ p.bus[-1] }};
-{% endfor %}
 
 /* ------- Task handles ------- */
-{% for task in app_tasks %}
-TaskHandle_t {{ task.name }}_handle = NULL;
-{% endfor %}
+TaskHandle_t rtc_demo_task_handle = NULL;
+TaskHandle_t led_task_handle = NULL;
 
 /* ------- Task prototypes ------- */
-{% for task in app_tasks %}
-void {{ task.name }}(void *pvParameters);
-{% endfor %}
+void rtc_demo_task(void *pvParameters);
+void led_task(void *pvParameters);
 
 /* ------- System clock configuration (HSI 16MHz default) ------- */
 void SystemClock_Config(void)
@@ -62,20 +51,6 @@ void SystemClock_Config(void)
 }
 
 /* ------- I2C initialization (if peripherals with I2C are present) ------- */
-{% for p in peripherals if 'I2C' in p.model.interface %}
-static void MX_I2C{{ p.bus[-1] }}_Init(void)
-{
-    hi2c{{ p.bus[-1] }}.Instance = {{ p.bus }};
-    hi2c{{ p.bus[-1] }}.Init.Timing = 0x2000090E;  // 100kHz standard mode (adjust if needed)
-    hi2c{{ p.bus[-1] }}.Init.OwnAddress1 = 0;
-    hi2c{{ p.bus[-1] }}.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-    hi2c{{ p.bus[-1] }}.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-    hi2c{{ p.bus[-1] }}.Init.OwnAddress2 = 0;
-    hi2c{{ p.bus[-1] }}.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-    hi2c{{ p.bus[-1] }}.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-    if (HAL_I2C_Init(&hi2c{{ p.bus[-1] }}) != HAL_OK) while(1);
-}
-{% endfor %}
 
 /* ------- Main ------- */
 int main(void)
@@ -100,23 +75,15 @@ int main(void)
     EventMgr_Init();
     
     /* Initialize I2C and internal peripherals */
-    {% for p in peripherals %}
-    {% if 'I2C' in p.model.interface %}
-    MX_I2C{{ p.bus[-1] }}_Init();
-    {{ p.name }}_init(&hi2c{{ p.bus[-1] }});
-    {% elif p.type == 'Internal_RTC' %}
     RTC_Init();
-    {% endif %}
-    {% endfor %}
 
     RTC_Start();
 
     
 
     /* Create application tasks (user-defined) */
-    {% for task in app_tasks %}
-    xTaskCreate( {{ task.name }}, "{{ task.name }}", {{ task.stack_size | default(128) }}, NULL, {{ task.priority }}, &{{ task.name }}_handle );
-    {% endfor %}
+    xTaskCreate( rtc_demo_task, "rtc_demo_task", 512, NULL, 3, &rtc_demo_task_handle );
+    xTaskCreate( led_task, "led_task", 128, NULL, 2, &led_task_handle );
 
     /* Create the central event manager task (highest priority) */
     xTaskCreate(EventMgr_Task, "event_mgr", 512, NULL, configMAX_PRIORITIES - 1, NULL);
@@ -126,30 +93,18 @@ int main(void)
 }
 
 /* ------- Task implementations ------- */
-{% for task in app_tasks %}
-void {{ task.name }}(void *pvParameters)
+void rtc_demo_task(void *pvParameters)
 {
-    {% if task.name == 'led_task' %}
+    /* Default empty task */
+    while(1) {
+        vTaskDelay(1000);
+    }
+}
+void led_task(void *pvParameters)
+{
     uint32_t ulNotifiedValue;
     while(1) {
         xTaskNotifyWait( 0x00, 0xFFFFFFFF, &ulNotifiedValue, portMAX_DELAY );
         HAL_GPIO_TogglePin( LED_GPIO_Port, LED_GPIO_Pin );
     }
-    {% elif task.name == 'mpu6050_alert_task' %}
-    {{ peripherals[0].name }}_data_t sensor_data;
-    while(1) {
-        {{ peripherals[0].name }}_read(&sensor_data);
-        if (sensor_data.accel_x > 1.0f || sensor_data.accel_x < -1.0f) {
-            event_t evt = { .id = EVENT_MPU6050_ALERT, .param = 0 };
-            xQueueSend(event_queue, &evt, 0);
-        }
-        vTaskDelay(pdMS_TO_TICKS({{ peripherals[0].extra.update_interval_ms | default(1000) }}));
-    }
-    {% else %}
-    /* Default empty task */
-    while(1) {
-        vTaskDelay(1000);
-    }
-    {% endif %}
 }
-{% endfor %}

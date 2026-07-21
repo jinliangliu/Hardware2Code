@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
 """
 Hardware2Code Generator
-读取硬件 YAML，生成 STM32G0 + FreeRTOS 工程。
+读取硬件 YAML，生成 STM32G0 + FreeRTOS 工程，包含单元测试。
 """
 
 import argparse
 import os
 import sys
-from pathlib import Path
+import shutil
 
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
-# 导入校验模块（注意：需确保 generator/validator.py 存在）
-try:
-    from validator import validate_hardware
-except ImportError:
-    print("Warning: validator.py not found, skipping hardware validation.")
-    def validate_hardware(hw):
-        return []
+# 导入本地模块
+from context_builder import build_context
+from validator import validate_hardware
 
 
 def load_yaml(file_path: str) -> dict:
@@ -27,52 +23,16 @@ def load_yaml(file_path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def build_context(hw: dict, project_name: str) -> dict:
-    """
-    将 YAML 中的硬件描述处理成模板渲染所需的完整上下文。
-    添加必要的默认值、计算值，并合并静态路径信息。
-    """
-    # 提取 mcu 信息，确保必要的字段存在并提供默认值
-    mcu = hw.get("mcu", {})
-    mcu["core_clock_mhz"] = int(mcu.get("core_clock_mhz", 64))
-    mcu["hse_freq"] = int(mcu.get("hse_freq", 8000000))
-
-    pins = hw.get("pins", [])
-    sleep = hw.get("sleep", {})
-    app_tasks = hw.get("app_tasks", [])
-
-    # 为每个引脚补充默认的 exti 字典（避免模板中判空）
-    for pin in pins:
-        if pin.get("exti") is None:
-            pin["exti"] = {}
-        # 确保 notify_task 字段存在（即使为空）
-        if "notify_task" not in pin:
-            pin["notify_task"] = ""
-
-    # 静态库绝对路径（用于 Makefile 中 HARDWARE2CODE_STATIC 变量）
-    static_dir_absolute = os.path.abspath("static/stm32g0").replace("\\", "/")
-
-    return {
-        "project_name": project_name,
-        "mcu": mcu,
-        "pins": pins,
-        "sleep": sleep,
-        "app_tasks": app_tasks,
-        "heap_size": hw.get("heap_size", "0x200"),
-        "stack_size": hw.get("stack_size", "0x400"),
-        "static_dir_absolute": static_dir_absolute,
-    }
-
-
 def render_templates(env: Environment, context: dict, output_dir: str):
-    """渲染所有模板并写入输出目录"""
+    """渲染所有模板并写入输出目录，包括测试框架"""
     # 创建必要的子目录
-    os.makedirs(os.path.join(output_dir, "src"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "src", "drivers"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "config"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "linker"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "test", "unity"), exist_ok=True)
 
-    # 模板文件列表 (相对于 templates/ 目录)
-    templates = {
+    # ---------- 标准模板列表 ----------
+    standard_templates = {
         "src/main.c.j2": os.path.join(output_dir, "src", "main.c"),
         "src/gpio.c.j2": os.path.join(output_dir, "src", "gpio.c"),
         "src/sleep.c.j2": os.path.join(output_dir, "src", "sleep.c"),
@@ -83,12 +43,98 @@ def render_templates(env: Environment, context: dict, output_dir: str):
         "project/Makefile.j2": os.path.join(output_dir, "Makefile"),
     }
 
-    for template_name, out_path in templates.items():
+    for template_name, out_path in standard_templates.items():
         template = env.get_template(template_name)
         rendered = template.render(context)
         with open(out_path, "w", encoding="utf-8", newline="\n") as f:
             f.write(rendered)
         print(f"Generated: {out_path}")
+
+    # ---------- 事件管理器模板 ----------
+    event_mgr_templates = {
+        "src/event_mgr.h.j2": os.path.join(output_dir, "src", "event_mgr.h"),
+        "src/event_mgr.c.j2": os.path.join(output_dir, "src", "event_mgr.c"),
+    }
+    for tmpl_name, out_path in event_mgr_templates.items():
+        template = env.get_template(tmpl_name)
+        rendered = template.render(context)
+        with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(rendered)
+        print(f"Generated: {out_path}")
+
+    # ---------- 外设驱动模板 ----------
+    drivers = context.get("drivers", [])
+    for drv in drivers:
+        if drv.get("header_template"):
+            template = env.get_template(drv["header_template"])
+            rendered = template.render(peripheral=drv["peripheral"], model=drv["model"])
+            out_path = os.path.join(output_dir, "src", "drivers", f"drv_{drv['name']}.h")
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write(rendered)
+            print(f"Generated: {out_path}")
+
+        if drv.get("template"):
+            template = env.get_template(drv["template"])
+            rendered = template.render(peripheral=drv["peripheral"], model=drv["model"])
+            out_path = os.path.join(output_dir, "src", "drivers", f"drv_{drv['name']}.c")
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write(rendered)
+            print(f"Generated: {out_path}")
+
+    # ---------- 测试框架 ----------
+    test_dir = os.path.join(output_dir, "test")
+    os.makedirs(test_dir, exist_ok=True)
+
+    # 复制 Unity 源文件到 test/unity/
+    unity_src = os.path.join("static", "unity")
+    if os.path.exists(unity_src):
+        shutil.copytree(unity_src, os.path.join(test_dir, "unity"), dirs_exist_ok=True)
+        print("Copied Unity framework to test/unity/")
+    else:
+        print("Warning: static/unity not found. Tests will not compile without Unity.")
+
+    # Mock HAL 模板
+    mock_templates = {
+        "test/mock_hal.h.j2": os.path.join(test_dir, "mock_hal.h"),
+        "test/mock_hal.c.j2": os.path.join(test_dir, "mock_hal.c"),
+    }
+    for tmpl_name, out_path in mock_templates.items():
+        template = env.get_template(tmpl_name)
+        rendered = template.render(context)
+        with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(rendered)
+        print(f"Generated: {out_path}")
+
+    # 测试用例模板（根据外设动态生成）
+    test_templates = {
+        "test/test_gpio.c.j2": os.path.join(test_dir, "test_gpio.c"),
+    }
+
+    # 如果存在 RTC，添加 RTC 测试
+    if context.get("has_rtc"):
+        test_templates["test/test_rtc.c.j2"] = os.path.join(test_dir, "test_rtc.c")
+        test_templates["test/test_event_mgr.c.j2"] = os.path.join(test_dir, "test_event_mgr.c")
+
+    # 如果存在 MPU6050，添加其测试
+    for p in context.get("peripherals", []):
+        if p.get("type") == "I2C_Sensor_MPU6050":
+            test_templates["test/test_mpu6050.c.j2"] = os.path.join(test_dir, "test_mpu6050.c")
+            break  # 只加一次
+
+    for tmpl_name, out_path in test_templates.items():
+        template = env.get_template(tmpl_name)
+        rendered = template.render(context)
+        with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(rendered)
+        print(f"Generated: {out_path}")
+
+    # 复制 run_tests.py 脚本到 test/
+    run_tests_script = os.path.join("generator", "run_tests.py")
+    if os.path.exists(run_tests_script):
+        shutil.copy(run_tests_script, os.path.join(test_dir, "run_tests.py"))
+        print("Copied run_tests.py to test/")
+    else:
+        print("Warning: run_tests.py not found in generator/. Tests will not be executable via make test.")
 
 
 def generate(hardware_yaml: str, output_dir: str):

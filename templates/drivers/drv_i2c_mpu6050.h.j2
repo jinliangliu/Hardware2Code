@@ -1,0 +1,19 @@
+{#
+    drv_i2c_mpu6050.h.j2 - MPU6050 driver header template
+    Generates: src/drivers/drv_{{ peripheral.name }}.h
+    Requires: peripheral (name, address), model (registers)
+   #}
+   #ifndef __DRV_{{ peripheral.name | upper }}_H
+   #define __DRV_{{ peripheral.name | upper }}_H
+   
+   #include "stm32g0xx_hal.h"
+   
+   typedef struct {
+       float accel_x, accel_y, accel_z;
+       float gyro_x, gyro_y, gyro_z;
+   } {{ peripheral.name }}_data_t;
+   
+   void {{ peripheral.name }}_init(I2C_HandleTypeDef *hi2c);
+   void {{ peripheral.name }}_read({{ peripheral.name }}_data_t *data);
+   
+   #endif

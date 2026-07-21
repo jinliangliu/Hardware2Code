@@ -1,0 +1,32 @@
+mcu:
+  part: STM32G0B1RET6
+  core_clock_mhz: 64
+pins:
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: falling
+    notify_task: "led_task"
+peripherals:
+  - name: "rtc"
+    type: "Internal_RTC"
+    interface: "internal"
+    extra:
+      wakeup_freq_hz: 10
+      compensation_interval_min: 10
+sleep:
+  mode: STOP1
+app_tasks:
+  - name: rtc_demo_task
+    priority: 3
+    stack_size: 512
+  - name: led_task
+    priority: 2
+    stack_size: 128

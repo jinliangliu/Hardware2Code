@@ -1,15 +1,9 @@
-{#
-    FreeRTOSConfig.h.j2 - FreeRTOS configuration template
-    Generates: config/FreeRTOSConfig.h
-    Requires context variables: mcu.core_clock_mhz, sleep.mode (optional)
-    Hardcoded settings: Cortex-M0+ MPU disabled, tickless idle off, minimal heap size.
-#}
 
 #ifndef FREERTOS_CONFIG_H
 #define FREERTOS_CONFIG_H
 
 /* MCU specific */
-#define configCPU_CLOCK_HZ                      ( {{ mcu.core_clock_mhz * 1000000 }} )
+#define configCPU_CLOCK_HZ                      ( 64000000 )
 #define configTICK_RATE_HZ                      ( 1000 )
 #define configMAX_PRIORITIES                    ( 8 )
 #define configMINIMAL_STACK_SIZE                ( 128 )
@@ -36,7 +30,7 @@
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /* Hook functions */
-#define configUSE_IDLE_HOOK                     0
+#define configUSE_IDLE_HOOK                     1
 #define configUSE_TICK_HOOK                     0
 #define configUSE_MALLOC_FAILED_HOOK            0
 #define configUSE_DAEMON_TASK_STARTUP_HOOK      0
@@ -53,10 +47,8 @@
 /* MPU support (required by Cortex-M0+ port) */
 #define configENABLE_MPU                        0
 
-/* Low power - Tickless idle with RTC wake-up */
-#define configUSE_TICKLESS_IDLE                 1
-#define portSUPPRESS_TICKS_AND_SLEEP( xExpectedIdleTime )  vPortSuppressTicksAndSleep( xExpectedIdleTime )
-void vPortSuppressTicksAndSleep( uint32_t xExpectedIdleTime );
+/* Low power - use Idle Hook instead of Tickless for MVP */
+#define configUSE_TICKLESS_IDLE                 0
 
 /* Interrupt nesting */
 #ifdef __NVIC_PRIO_BITS

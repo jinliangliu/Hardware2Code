@@ -1,15 +1,9 @@
-{#
-    FreeRTOSConfig.h.j2 - FreeRTOS configuration template
-    Generates: config/FreeRTOSConfig.h
-    Requires context variables: mcu.core_clock_mhz, sleep.mode (optional)
-    Hardcoded settings: Cortex-M0+ MPU disabled, tickless idle off, minimal heap size.
-#}
 
 #ifndef FREERTOS_CONFIG_H
 #define FREERTOS_CONFIG_H
 
 /* MCU specific */
-#define configCPU_CLOCK_HZ                      ( {{ mcu.core_clock_mhz * 1000000 }} )
+#define configCPU_CLOCK_HZ                      ( 64000000 )
 #define configTICK_RATE_HZ                      ( 1000 )
 #define configMAX_PRIORITIES                    ( 8 )
 #define configMINIMAL_STACK_SIZE                ( 128 )

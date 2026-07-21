@@ -1,0 +1,19 @@
+model: "STM32G0_RTC"
+type: "Internal_RTC"
+interface: "internal"
+driver_template: "drivers/drv_rtc.c.j2"
+header_template: "drivers/drv_rtc.h.j2"
+init_sequence:
+  - enable_lse: true
+  - wakeup_freq: 10          # Hz -> 100ms ticks
+  - alarm_enable: false      # hardware alarm A/B (not used)
+  - compensation_interval_min: 10   # drift calibration every 10 min
+capabilities:
+  - calendar
+  - wakeup_timer
+  - software_timer_manager
+default_params:
+  clock_source: "LSE"        # 32.768kHz
+  format: "BIN"
+  wakeup_freq_hz: 10
+  compensation_ppm: 0
