@@ -14,25 +14,10 @@ extern QueueHandle_t event_queue;   // 实际定义在 event_mgr.c
 
 typedef enum {
     EVENT_NONE = 0,
-{% if has_rtc %}
-    EVENT_RTC_TICK,
-{% endif %}
     EVENT_MINUTE_TICK,
     EVENT_HOUR_TICK,
     EVENT_BUTTON_PRESS,
     EVENT_RTC_ALARM,
-{% for p in peripherals %}
-{% if p.type == 'I2C_Sensor_MPU6050' %}
-    EVENT_MPU6050_ALERT,
-{% endif %}
-{% endfor %}
-{% for state in business_flow.states %}
-{% for trans in state.transitions %}
-{% if 'TIMER_EXPIRED' in trans.event %}
-    EVENT_{{ trans.event | replace(' ', '_') }},
-{% endif %}
-{% endfor %}
-{% endfor %}
     EVENT_MAX
 } event_id_t;
 

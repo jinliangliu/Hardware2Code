@@ -2,6 +2,13 @@
 #include "mock_hal.h"
 #include <string.h>
 
+/* Provide event_queue needed by drv_rtc.c callbacks */
+QueueHandle_t event_queue = NULL;
+
+/* Include the RTC driver source, providing RTC_TimerCreate etc. */
+#include "../src/drivers/drv_rtc.c"
+
+/* Include statemachine source under test */
 #include "../src/statemachine.c"
 
 static int led_notify_count = 0;
@@ -19,7 +26,7 @@ void tearDown(void) {}
 void test_initial_state_is_IDLE(void) {
     event_t dummy = { .id = EVENT_NONE };
     statemachine_process(&dummy);
-    TEST_PASS(); /* 不崩溃即可 */
+    TEST_PASS();
 }
 
 void test_IDLE_plus_BUTTON_PRESS_transitions_to_ACTIVE_and_toggles_led(void) {

@@ -1,5 +1,24 @@
 # 示例工程
 
+# 示例工程索引
+
+| 工程名 | 功能 | 主要外设 |
+|--------|------|----------|
+| `blinky_g0` | 按键控制 LED 翻转 | GPIO 输入/输出 |
+| `mpu6050` | 加速度传感器报警 | I2C (MPU6050), GPIO |
+| `rtc_adv` | RTC 日历、定时器、低功耗、状态机 | 内部 RTC, GPIO |
+| `spi_flash` | SPI Flash 读写 | SPI (W25Q32), GPIO |
+| `pwm` | PWM 输出控制 | 内部定时器 PWM, GPIO |
+
+**通用硬件连接：**
+- LED：PC0（低电平有效）
+- 按键：PC13（上拉，下降沿触发）
+
+各工程的详细 YAML 文件位于 `examples/<工程名>/hardware.yaml`。
+生成命令均为：
+
+python generator/generate.py -i examples/<工程名>/hardware.yaml -o output/<工程名>
+
 ## 1. blinky_g0
 - **功能**：LED 翻转，按键中断。
 - **硬件连接**：LED → PC0，按键 → PC13。

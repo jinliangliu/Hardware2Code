@@ -278,8 +278,6 @@ void HAL_SuspendTick(void);
 void HAL_ResumeTick(void);
 void vTaskStepTick(uint32_t ticks);
 
-
-
 void HAL_InitTick(uint32_t TickPriority);
 void HAL_TIM_Base_Start_IT(TIM_HandleTypeDef *htim);
 

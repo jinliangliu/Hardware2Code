@@ -1,0 +1,9 @@
+model: "PWM_Timer"
+type: "Internal_PWM"
+interface: "internal"
+driver_template: "drivers/drv_pwm.c.j2"
+header_template: "drivers/drv_pwm.h.j2"
+timer: "TIM2"
+channel: 1
+default_freq: 1000
+default_duty: 50

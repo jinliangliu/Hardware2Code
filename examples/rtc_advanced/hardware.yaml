@@ -39,7 +39,10 @@ business_flow:
           target: "ACTIVE"
           actions:
             - "toggle_led"
+            - "start_timer delay_timer 5000"
     - name: "ACTIVE"
       transitions:
-        - event: "RTC_TICK"
+        - event: "TIMER_EXPIRED_delay_timer"
           target: "IDLE"
+          actions:
+            - "toggle_led"

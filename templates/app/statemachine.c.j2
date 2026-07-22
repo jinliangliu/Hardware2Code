@@ -1,8 +1,10 @@
 #ifdef TEST
 #include "mock_hal.h"
+#include "drv_rtc.h"          /* 为了 rtc_timer_handle_t 等类型 */
 #else
 #include "FreeRTOS.h"
 #include "task.h"
+#include "drv_rtc.h"
 #endif
 
 #include "statemachine.h"
@@ -13,6 +15,31 @@
 
 static uint32_t current_state;
 
+/* 定时器句柄 */
+{% for state in business_flow.states %}
+{% for trans in state.transitions %}
+{% for action in trans.actions %}
+{% if 'start_timer' in action %}
+static rtc_timer_handle_t {{ action.split(' ')[1] }}_handle = NULL;
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% endfor %}
+
+/* 定时器回调 */
+{% for state in business_flow.states %}
+{% for trans in state.transitions %}
+{% for action in trans.actions %}
+{% if 'start_timer' in action %}
+static void {{ action.split(' ')[1] }}_cb(void *arg) {
+    event_t evt = { .id = EVENT_TIMER_EXPIRED_{{ action.split(' ')[1] }}, .param = 0 };
+    statemachine_process(&evt);
+}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% endfor %}
+
 void statemachine_init(void) {
     current_state = STATE_{{ business_flow.initial_state }};
 }
@@ -22,16 +49,25 @@ void statemachine_process(event_t *evt) {
 {% for state in business_flow.states %}
         case STATE_{{ state.name }}:
 {% for trans in state.transitions %}
-            if (evt->id == EVENT_{{ trans.event }}) {
+            if (evt->id == EVENT_{{ trans.event | replace(' ', '_') }}) {
 {% for action in trans.actions %}
 {% if action == 'toggle_led' %}
 #ifndef TEST
                 led_task_notify();
 #else
-                /* 测试环境：调用本地桩函数 */
                 extern void led_task_notify(void);
                 led_task_notify();
 #endif
+{% elif 'start_timer' in action %}
+                {
+                    uint32_t period = {{ action.split(' ')[2] }};
+                    rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                                                           {{ action.split(' ')[1] }}_cb, NULL);
+                    {{ action.split(' ')[1] }}_handle = h;
+                    RTC_TimerStart(h);
+                }
+{% elif 'stop_timer' in action %}
+                RTC_TimerStop({{ action.split(' ')[1] }}_handle);
 {% endif %}
 {% endfor %}
                 current_state = STATE_{{ trans.target }};

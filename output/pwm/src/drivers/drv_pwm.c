@@ -1,0 +1,23 @@
+#include "drv_pwm.h"
+
+static TIM_HandleTypeDef htim;
+static uint32_t pwm_channel;
+
+void PWM_Init(void) {
+    __HAL_RCC_TIM2_CLK_ENABLE();
+    htim.Instance = TIM2;
+    htim.Init.Prescaler = 15999; // 1MHz
+    htim.Init.Period = 999;      // 1kHz
+    htim.Init.CounterMode = TIM_COUNTERMODE_UP;
+    HAL_TIM_PWM_Init(&htim);
+
+    TIM_OC_InitTypeDef sConfigOC = {0};
+    sConfigOC.OCMode = TIM_OCMODE_PWM1;
+    sConfigOC.Pulse = 500;       // 50% duty
+    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+    HAL_TIM_PWM_ConfigChannel(&htim, &sConfigOC, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&htim, TIM_CHANNEL_1);
+}
+void PWM_SetDuty(uint32_t duty) {
+    __HAL_TIM_SET_COMPARE(&htim, TIM_CHANNEL_1, duty);
+}

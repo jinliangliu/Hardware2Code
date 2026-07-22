@@ -19,6 +19,7 @@ typedef enum {
     EVENT_HOUR_TICK,
     EVENT_BUTTON_PRESS,
     EVENT_RTC_ALARM,
+    EVENT_TIMER_EXPIRED_delay_timer,
     EVENT_MAX
 } event_id_t;
 

@@ -122,30 +122,34 @@ int main(void)
 
     /* Initialize the event manager */
     EventMgr_Init();
+
+{% if has_business_flow %}
+    statemachine_init();
+{% endif %}
     
     /* Initialize I2C and internal peripherals */
-    {% for p in peripherals %}
-    {% if 'I2C' in p.model.interface %}
+{% for p in peripherals %}
+{% if 'I2C' in p.model.interface %}
     MX_I2C{{ p.bus[-1] }}_Init();
-    {{ p.name }}_init(&hi2c{{ p.bus[-1] }});
-    {% elif 'SPI' in p.model.interface %}
+{{ p.name }}_init(&hi2c{{ p.bus[-1] }});
+{% elif 'SPI' in p.model.interface %}
     MX_SPI{{ p.bus[-1] }}_Init();
-    {{ p.name }}_init(&hspi{{ p.bus[-1] }});
-    {% elif p.type == 'Internal_RTC' %}
+{{ p.name }}_init(&hspi{{ p.bus[-1] }});
+{% elif p.type == 'Internal_RTC' %}
     RTC_Init();
-    {% endif %}
-    {% endfor %}
+{% endif %}
+{% endfor %}
 
-    {% if has_rtc %}
+{% if has_rtc %}
     RTC_Start();
-    {% endif %}
+{% endif %}
 
     
 
     /* Create application tasks (user-defined) */
-    {% for task in app_tasks %}
+{% for task in app_tasks %}
     xTaskCreate( {{ task.name }}, "{{ task.name }}", {{ task.stack_size | default(128) }}, NULL, {{ task.priority }}, &{{ task.name }}_handle );
-    {% endfor %}
+{% endfor %}
 
     /* Create the central event manager task (highest priority) */
     xTaskCreate(EventMgr_Task, "event_mgr", 512, NULL, configMAX_PRIORITIES - 1, NULL);

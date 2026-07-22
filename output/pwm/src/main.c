@@ -5,7 +5,7 @@
 #include "stm32g0xx_hal_tim.h"
 
 /* Include driver headers for each peripheral */
-#include "drv_rtc.h"
+#include "drv_pwm.h"
 
 /* Include event manager header (always present) */
 #include "event_mgr.h"
@@ -22,12 +22,12 @@ void MX_GPIO_Init(void);
 /* ------- SPI Handles (if SPI peripherals are used) ------- */
 
 /* ------- Task handles ------- */
-TaskHandle_t rtc_demo_task_handle = NULL;
 TaskHandle_t led_task_handle = NULL;
+TaskHandle_t pwm_task_handle = NULL;
 
 /* ------- Task prototypes ------- */
-void rtc_demo_task(void *pvParameters);
 void led_task(void *pvParameters);
+void pwm_task(void *pvParameters);
 
 /* ------- System clock configuration (HSI 16MHz default) ------- */
 void SystemClock_Config(void)
@@ -78,18 +78,15 @@ int main(void)
     /* Initialize the event manager */
     EventMgr_Init();
 
-    statemachine_init();
     
     /* Initialize I2C and internal peripherals */
-    RTC_Init();
 
-    RTC_Start();
 
     
 
     /* Create application tasks (user-defined) */
-    xTaskCreate( rtc_demo_task, "rtc_demo_task", 512, NULL, 3, &rtc_demo_task_handle );
     xTaskCreate( led_task, "led_task", 128, NULL, 2, &led_task_handle );
+    xTaskCreate( pwm_task, "pwm_task", 256, NULL, 3, &pwm_task_handle );
 
     /* Create the central event manager task (highest priority) */
     xTaskCreate(EventMgr_Task, "event_mgr", 512, NULL, configMAX_PRIORITIES - 1, NULL);
@@ -99,19 +96,19 @@ int main(void)
 }
 
 /* ------- Task implementations ------- */
-void rtc_demo_task(void *pvParameters)
-{
-    /* Default empty task */
-    while(1) {
-        vTaskDelay(1000);
-    }
-}
 void led_task(void *pvParameters)
 {
     uint32_t ulNotifiedValue;
     while(1) {
         xTaskNotifyWait( 0x00, 0xFFFFFFFF, &ulNotifiedValue, portMAX_DELAY );
         HAL_GPIO_TogglePin( LED_GPIO_Port, LED_GPIO_Pin );
+    }
+}
+void pwm_task(void *pvParameters)
+{
+    /* Default empty task */
+    while(1) {
+        vTaskDelay(1000);
     }
 }
 
