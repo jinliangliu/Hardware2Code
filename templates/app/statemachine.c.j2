@@ -84,35 +84,100 @@ static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_
 {% endfor %}
 {% endif %}
 
-/* ========== 定时器句柄与回调（覆盖所有动作源：转换、on_entry、on_exit、after） ========== */
+/* ========== 动作实现宏 ========== */
+{% macro action_impl(action, region_name='') -%}
+{% if action == 'toggle_led' %}
+#ifndef TEST
+    led_task_notify();
+#else
+    extern void led_task_notify(void);
+    led_task_notify();
+#endif
+{% elif 'start_timer' in action %}
+    {
+        uint32_t period = {{ action.split(' ')[2] }};
+        rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                                               {{ action.split(' ')[1] }}_cb, NULL);
+        {{ action.split(' ')[1] }}_handle = h;
+        RTC_TimerStart(h);
+    }
+{% elif 'stop_timer' in action %}
+    RTC_TimerStop({{ action.split(' ')[1] }}_handle);
+{% elif action.startswith('set ') %}
+    {
+{% set parts = action.split(' ') %}
+{% if parts[2] == 'inc' %}
+        {{ region_name }}{{ parts[1] }}++;
+{% elif parts[2] == 'dec' %}
+        {{ region_name }}{{ parts[1] }}--;
+{% else %}
+        {{ region_name }}{{ parts[1] }} = {{ parts[2] }};
+{% endif %}
+    }
+{% elif action.startswith('calc ') %}
+    {
+        {{ action.split(' ',1)[1] }};
+    }
+{% elif action.startswith('publish_async ') %}
+    {
+        event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | replace(' ', '_') }}, .param = 0 };
+        xQueueSend(event_queue, &evt_pub, 0);
+    }
+{% elif action.startswith('publish ') %}
+    {
+        event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | replace(' ', '_') }}, .param = 0 };
+        statemachine_process(&evt_pub);
+    }
+{% elif action.startswith('when ') %}
+    {
+        {% set parts = action.split('=>', 1) %}
+        {% if parts|length == 2 %}
+        if ({{ parts[0].replace('when ', '') }}) {
+            {{ action_impl(parts[1].strip(), region_name) }}
+        }
+        {% endif %}
+    }
+{% endif %}
+{%- endmacro %}
+
+/* ========== 动作列表处理宏 ========== */
+{% macro process_actions(actions) %}
+{% for action in actions %}
+    {{ action_impl(action, '') }}
+{% endfor %}
+{% endmacro %}
+
+{% macro process_actions_for_region(region_name, actions) %}
+{% for action in actions %}
+    {{ action_impl(action, region_name + '_') }}
+{% endfor %}
+{% endmacro %}
+
+/* ========== 定时器收集宏（排除 defer 生成的定时器） ========== */
 {% set all_actions = [] %}
 {% macro collect_timers(states, region_name='') %}
 {% for state in states %}
-    {# 转换动作 #}
     {% for trans in state.transitions %}
         {% for action in trans.actions %}
-            {% if 'start_timer' in action %}
+            {% if 'start_timer' in action and not action.split(' ')[1].startswith('defer_') %}
                 {% set _ = all_actions.append(action) %}
             {% endif %}
         {% endfor %}
     {% endfor %}
-    {# on_entry / on_exit 中的 start_timer #}
     {% for action in state.get('on_entry', []) %}
-        {% if 'start_timer' in action %}
+        {% if 'start_timer' in action and not action.split(' ')[1].startswith('defer_') %}
             {% set _ = all_actions.append(action) %}
         {% endif %}
     {% endfor %}
     {% for action in state.get('on_exit', []) %}
-        {% if 'start_timer' in action %}
+        {% if 'start_timer' in action and not action.split(' ')[1].startswith('defer_') %}
             {% set _ = all_actions.append(action) %}
         {% endif %}
     {% endfor %}
-    {# after 生成的定时器 #}
     {% if state.after %}
         {% set timer_name = region_name + state.name + '_timeout' %}
         {% set _ = all_actions.append('start_timer ' + timer_name + ' ' + state.after|string) %}
     {% endif %}
-    {# 嵌套状态 #}
     {% if state.states %}
         {{ collect_timers(state.states, region_name) }}
     {% endif %}
@@ -127,6 +192,7 @@ static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_
 {{ collect_timers(business_flow.states) }}
 {% endif %}
 
+/* ========== 用户定时器 + 状态超时定时器的句柄与回调 ========== */
 {% for action in all_actions %}
 static rtc_timer_handle_t {{ action.split(' ')[1] }}_handle = NULL;
 static void {{ action.split(' ')[1] }}_cb(void *arg) {
@@ -135,85 +201,13 @@ static void {{ action.split(' ')[1] }}_cb(void *arg) {
 }
 {% endfor %}
 
-/* ========== 动作处理宏（单区域） ========== */
-{% macro process_actions(actions) %}
-{% for action in actions %}
-{% if action == 'toggle_led' %}
-#ifndef TEST
-    led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
-{% elif 'start_timer' in action %}
-    {
-        uint32_t period = {{ action.split(' ')[2] }};
-        rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
-                                               {{ action.split(' ')[1] }}_cb, NULL);
-        {{ action.split(' ')[1] }}_handle = h;
-        RTC_TimerStart(h);
-    }
-{% elif 'stop_timer' in action %}
-    RTC_TimerStop({{ action.split(' ')[1] }}_handle);
-{% elif 'set' in action %}
-    {
-{% set parts = action.split(' ') %}
-{% if parts[2] == 'inc' %}
-        {{ parts[1] }}++;
-{% elif parts[2] == 'dec' %}
-        {{ parts[1] }}--;
-{% else %}
-        {{ parts[1] }} = {{ parts[2] }};
-{% endif %}
-    }
-{% elif action.startswith('publish ') %}
-    {
-        event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | replace(' ', '_') }}, .param = 0 };
-        statemachine_process(&evt_pub);
-    }
-{% endif %}
+/* ========== 延迟动作定时器回调（单独生成句柄和回调） ========== */
+{% for d in defer_actions %}
+static rtc_timer_handle_t {{ d.timer_name }}_handle = NULL;
+static void {{ d.timer_name }}_cb(void *arg) {
+    {{ action_impl(d.sub_action, '') }}
+}
 {% endfor %}
-{% endmacro %}
-
-/* ========== 动作处理宏（并行区域，自动添加区域前缀） ========== */
-{% macro process_actions_for_region(region_name, actions) %}
-{% for action in actions %}
-{% if action == 'toggle_led' %}
-#ifndef TEST
-    led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
-{% elif 'start_timer' in action %}
-    {
-        uint32_t period = {{ action.split(' ')[2] }};
-        rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
-                                               {{ action.split(' ')[1] }}_cb, NULL);
-        {{ action.split(' ')[1] }}_handle = h;
-        RTC_TimerStart(h);
-    }
-{% elif 'stop_timer' in action %}
-    RTC_TimerStop({{ action.split(' ')[1] }}_handle);
-{% elif 'set' in action %}
-    {
-{% set parts = action.split(' ') %}
-{% if parts[2] == 'inc' %}
-        {{ region_name }}_{{ parts[1] }}++;
-{% elif parts[2] == 'dec' %}
-        {{ region_name }}_{{ parts[1] }}--;
-{% else %}
-        {{ region_name }}_{{ parts[1] }} = {{ parts[2] }};
-{% endif %}
-    }
-{% elif action.startswith('publish ') %}
-    {
-        event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | replace(' ', '_') }}, .param = 0 };
-        statemachine_process(&evt_pub);
-    }
-{% endif %}
-{% endfor %}
-{% endmacro %}
 
 /* ========== 初始化 ========== */
 void statemachine_init(void) {

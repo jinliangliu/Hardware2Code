@@ -33,6 +33,11 @@ I2C_HandleTypeDef hi2c{{ p.bus[-1] }};
 SPI_HandleTypeDef hspi{{ p.bus[-1] }};
 {% endfor %}
 
+/* ------- UART Handles (if UART peripherals are used) ------- */
+{% for p in peripherals if p.type == 'UART_Serial' %}
+UART_HandleTypeDef huart_{{ p.name }};
+{% endfor %}
+
 /* ------- Task handles ------- */
 {% for task in app_tasks %}
 TaskHandle_t {{ task.name }}_handle = NULL;
@@ -139,7 +144,21 @@ int main(void)
     RTC_Init();
 {% endif %}
 {% endfor %}
-
+{% for p in peripherals if p.type == 'UART_Serial' %}
+static void MX_{{ p.instance }}_UART_Init(void) {
+    /* 引脚已由 MX_GPIO_Init 配置 */
+    __HAL_RCC_{{ p.instance }}_CLK_ENABLE();
+    huart_{{ p.name }}.Instance = {{ p.instance }};
+    huart_{{ p.name }}.Init.BaudRate = {{ p.extra.baudrate | default(115200) }};
+    huart_{{ p.name }}.Init.WordLength = UART_WORDLENGTH_8B;
+    huart_{{ p.name }}.Init.StopBits = UART_STOPBITS_1;
+    huart_{{ p.name }}.Init.Parity = UART_PARITY_NONE;
+    huart_{{ p.name }}.Init.Mode = UART_MODE_TX_RX;
+    huart_{{ p.name }}.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    huart_{{ p.name }}.Init.OverSampling = UART_OVERSAMPLING_16;
+    if (HAL_UART_Init(&huart_{{ p.name }}) != HAL_OK) while(1);
+}
+{% endfor %}
 {% if has_rtc %}
     RTC_Start();
 {% endif %}

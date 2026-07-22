@@ -167,6 +167,41 @@ void HAL_TIM_PWM_Start(TIM_HandleTypeDef *htim, uint32_t Channel) {
 }
 bool mock_HAL_TIM_PWM_Init_called(void) { return pwm_init_called; }
 
+/* ========== ADC mock ========== */
+static bool adc_init_called = false;
+
+void HAL_ADC_Init(ADC_HandleTypeDef *hadc) {
+    (void)hadc;
+    adc_init_called = true;
+}
+void HAL_ADC_ConfigChannel(ADC_HandleTypeDef *hadc, ADC_ChannelConfTypeDef *sConfig) {
+    (void)hadc; (void)sConfig;
+}
+void HAL_ADC_Start(ADC_HandleTypeDef *hadc) { (void)hadc; }
+void HAL_ADC_PollForConversion(ADC_HandleTypeDef *hadc, uint32_t Timeout) {
+    (void)hadc; (void)Timeout;
+}
+uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef *hadc) {
+    (void)hadc;
+    return 0;
+}
+bool mock_HAL_ADC_Init_called(void) { return adc_init_called; }
+
+/* ========== UART mock ========== */
+static bool uart_init_called = false;
+
+void HAL_UART_Init(UART_HandleTypeDef *huart) {
+    (void)huart;
+    uart_init_called = true;
+}
+void HAL_UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout) {
+    (void)huart; (void)pData; (void)Size; (void)Timeout;
+}
+void HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout) {
+    (void)huart; (void)pData; (void)Size; (void)Timeout;
+}
+bool mock_HAL_UART_Init_called(void) { return uart_init_called; }
+
 /* ========== FreeRTOS stubs ========== */
 QueueHandle_t xQueueCreate(uint32_t length, uint32_t itemSize) {
     (void)length; (void)itemSize;

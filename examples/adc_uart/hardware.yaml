@@ -1,0 +1,41 @@
+mcu:
+  part: STM32G0B1RET6
+pins:
+  - id: PA0
+    function: ADC_IN1
+    label: "ANALOG_IN"
+  - id: PA2
+    function: USART2_TX
+    label: "UART2_TX"
+    af: 1
+  - id: PA3
+    function: USART2_RX
+    label: "UART2_RX"
+    af: 1
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: falling
+    notify_task: "led_task"
+peripherals:
+  - name: "adc"
+    type: "Internal_ADC"
+    interface: "internal"
+  - name: "uart_debug"
+    type: "UART_Serial"
+    instance: "USART2"
+    extra:
+      baudrate: 115200
+      tx_pin: "PA2"
+      rx_pin: "PA3"
+app_tasks:
+  - name: led_task
+    priority: 2
+    stack_size: 128

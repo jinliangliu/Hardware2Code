@@ -48,9 +48,10 @@ business_flow:
       transitions:
         - event: "BUTTON_PRESS"
           target: "ACTIVE"
-          guard: "press_count < 3"   # 条件转换
+          guard: "press_count < 3"
           actions:
-            - "set press_count inc"  # 变量递增
+            - "defer 3000 => toggle_led"
+            - "set press_count inc"
         - event: "BUTTON_PRESS"
           target: "RESET"
           # 无 guard，当前一个转换不匹配时触发

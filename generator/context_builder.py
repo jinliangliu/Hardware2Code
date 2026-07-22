@@ -60,6 +60,8 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
     has_pwm = False
     has_spi = False
     has_spi_flash = False
+    has_adc = False
+    has_uart = False
 
     for p in peripherals:
         model = load_model(p['type'])
@@ -87,6 +89,10 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
                 has_spi_flash = True
         if model.get('type') == 'Internal_PWM':
             has_pwm = True
+        if model.get('type') == 'Internal_ADC':
+            has_adc = True
+        if model.get('type') == 'UART_Serial':
+            has_uart = True
 
     # 根据检测结果添加对应的 HAL 源文件
     if has_i2c:
@@ -105,9 +111,10 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         if 'stm32g0xx_hal_tim.c' not in hal_sources:
             hal_sources.append('stm32g0xx_hal_tim.c')
             hal_sources.append('stm32g0xx_hal_tim_ex.c')
-
-    # HIL 模式需要 UART
-    if hil_mode:
+    if has_adc:
+        if 'stm32g0xx_hal_adc.c' not in hal_sources:
+            hal_sources.append('stm32g0xx_hal_adc.c')
+    if has_uart or hil_mode:
         if 'stm32g0xx_hal_uart.c' not in hal_sources:
             hal_sources.append('stm32g0xx_hal_uart.c')
 
@@ -136,71 +143,93 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
             hil_tests.append({
                 'name': 'test_RTC_Init',
                 'body': r"""
-            RTC_HandleTypeDef hrtc;
-            __HAL_RCC_RTC_ENABLE();
-            HAL_PWR_EnableBkUpAccess();
+    RTC_HandleTypeDef hrtc;
+    __HAL_RCC_RTC_ENABLE();
+    HAL_PWR_EnableBkUpAccess();
 
-            /* 配置 LSE 和 LSI，优先使用 LSE，若失败则回退至 LSI */
-            RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-            RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE | RCC_OSCILLATORTYPE_LSI;
-            RCC_OscInitStruct.LSEState = RCC_LSE_ON;
-            RCC_OscInitStruct.LSIState = RCC_LSI_ON;
-            RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE | RCC_OSCILLATORTYPE_LSI;
+    RCC_OscInitStruct.LSEState = RCC_LSE_ON;
+    RCC_OscInitStruct.LSIState = RCC_LSI_ON;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+        RCC_OscInitStruct.LSEState = RCC_LSE_OFF;
+        HAL_RCC_OscConfig(&RCC_OscInitStruct);
+    }
 
-            if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-                /* 如果 LSE 立即返回错误（例如无外部晶振），强制回退至 LSI */
-                RCC_OscInitStruct.LSEState = RCC_LSE_OFF;
-                HAL_RCC_OscConfig(&RCC_OscInitStruct);
-            }
+    RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+    PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+    PeriphClkInit.RTCClockSelection = (RCC_OscInitStruct.LSEState == RCC_LSE_ON) ?
+                                       RCC_RTCCLKSOURCE_LSE : RCC_RTCCLKSOURCE_LSI;
+    HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit);
 
-            /* 等待所选时钟源就绪 */
-            if (RCC_OscInitStruct.LSEState == RCC_LSE_ON) {
-                uint32_t tickstart = HAL_GetTick();
-                while ((RCC->BDCR & RCC_BDCR_LSERDY) == 0U) {
-                    if ((HAL_GetTick() - tickstart) > 500U) {
-                        RCC_OscInitStruct.LSEState = RCC_LSE_OFF;
-                        HAL_RCC_OscConfig(&RCC_OscInitStruct);
-                        break;
-                    }
-                }
-            } else {
-                uint32_t tickstart = HAL_GetTick();
-                while ((RCC->CSR & RCC_CSR_LSIRDY) == 0U) {
-                    if ((HAL_GetTick() - tickstart) > 500U) break;
-                }
-            }
+    __HAL_RCC_RTC_ENABLE();
 
-            RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
-            PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;
-            PeriphClkInit.RTCClockSelection = (RCC_OscInitStruct.LSEState == RCC_LSE_ON) ?
-                                            RCC_RTCCLKSOURCE_LSE : RCC_RTCCLKSOURCE_LSI;
-            if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
-                PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
-                HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit);
-            }
-
-            __HAL_RCC_RTC_ENABLE();
-            HAL_Delay(1);   /* 确保时钟稳定 */
-
-            hrtc.Instance = RTC;
-            hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
-            hrtc.Init.AsynchPrediv = 127;
-            hrtc.Init.SynchPrediv = 255;
-            hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
-            if (HAL_RTC_Init(&hrtc) != HAL_OK) {
-                TEST_FAIL("HAL_RTC_Init failed");
-            } else {
-                TEST_PASS();
-            }
-        """
-                    })
-        # 可继续添加其他外设的 HIL 测试用例...
-
+    hrtc.Instance = RTC;
+    hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+    hrtc.Init.AsynchPrediv = 127;
+    hrtc.Init.SynchPrediv = 255;
+    hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+    if (HAL_RTC_Init(&hrtc) != HAL_OK) {
+        TEST_FAIL("HAL_RTC_Init failed");
+    } else {
+        TEST_PASS();
+    }
+"""
+            })
+        # 可继续添加其他外设的 HIL 测试
     if not hil_tests:
         hil_tests.append({
             'name': 'test_dummy',
             'body': 'TEST_PASS();'
         })
+
+    # ---------- Defer 动作处理 ----------
+    defer_actions = []
+    defer_counter = 0
+
+    def process_defer(action_list, defer_counter):
+        new_actions = []
+        for act in action_list:
+            if act.startswith('defer '):
+                parts = act.split('=>', 1)
+                if len(parts) == 2:
+                    time_part = parts[0].strip().split()
+                    if len(time_part) >= 2:
+                        time_ms = time_part[1]
+                        sub_action = parts[1].strip()
+                        timer_name = f"defer_{defer_counter}"
+                        new_actions.append(f"start_timer {timer_name} {time_ms}")
+                        defer_actions.append({
+                            'timer_name': timer_name,
+                            'sub_action': sub_action
+                        })
+                        defer_counter += 1
+                        continue
+            new_actions.append(act)
+        return new_actions, defer_counter
+
+    def traverse_states(states, defer_counter):
+        for state in states:
+            for trans in state.get('transitions', []):
+                new_acts, defer_counter = process_defer(trans.get('actions', []), defer_counter)
+                trans['actions'] = new_acts
+            if 'on_entry' in state:
+                new_acts, defer_counter = process_defer(state['on_entry'], defer_counter)
+                state['on_entry'] = new_acts
+            if 'on_exit' in state:
+                new_acts, defer_counter = process_defer(state['on_exit'], defer_counter)
+                state['on_exit'] = new_acts
+            if 'states' in state:
+                defer_counter = traverse_states(state['states'], defer_counter)
+        return defer_counter
+
+    if business_flow:
+        if business_flow.get('states'):
+            traverse_states(business_flow['states'], 0)
+        if business_flow.get('regions'):
+            for region in business_flow['regions']:
+                traverse_states(region['states'], 0)
 
     # ---------- 静态库绝对路径 ----------
     static_dir_absolute = os.path.abspath("static/stm32g0").replace("\\", "/")
@@ -221,6 +250,8 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         "has_spi": has_spi,
         "has_spi_flash": has_spi_flash,
         "has_mpu6050": has_mpu6050,
+        "has_adc": has_adc,
+        "has_uart": has_uart,
         "has_led": has_led,
         "has_led_task": has_led_task,
         "has_business_flow": has_business_flow,
@@ -232,6 +263,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         "stack_size": hw.get("stack_size", "0x400"),
         "static_dir_absolute": static_dir_absolute,
         "has_event_mgr": True,
+        "defer_actions": defer_actions,   # 新增
     }
 
     return context

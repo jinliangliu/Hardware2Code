@@ -1,0 +1,9 @@
+model: "STM32G0_ADC"
+type: "Internal_ADC"
+interface: "internal"
+driver_template: "drivers/drv_adc.c.j2"
+header_template: "drivers/drv_adc.h.j2"
+capabilities:
+  - analog_read
+default_params:
+  resolution: "12bit"

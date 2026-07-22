@@ -12,7 +12,6 @@ import shutil
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
-# 导入本地模块
 from context_builder import build_context
 from validator import validate_hardware
 
@@ -25,20 +24,18 @@ def load_yaml(file_path: str) -> dict:
 
 def render_hil_project(env: Environment, context: dict, output_dir: str):
     """渲染 HIL 测试固件工程"""
-    # 创建必要的子目录
     os.makedirs(os.path.join(output_dir, "src", "drivers"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "config"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "linker"), exist_ok=True)
 
-    # 复制 Unity 源文件到输出目录
+    # 复制 Unity 源文件
     unity_src = os.path.join("static", "unity")
-    unity_dst = os.path.join(output_dir, "unity")
     if os.path.exists(unity_src):
-        shutil.copytree(unity_src, unity_dst, dirs_exist_ok=True)
-        print("Copied Unity framework to unity/")
+        shutil.copytree(unity_src, os.path.join(output_dir, "unity"), dirs_exist_ok=True)
+        print("Copied Unity to unity/")
     else:
         print("Warning: static/unity not found. HIL tests will not compile.")
-        
+
     # 生成 HIL 主固件
     hil_main = env.get_template("test/hil_test.c.j2")
     rendered = hil_main.render(context)
@@ -46,7 +43,7 @@ def render_hil_project(env: Environment, context: dict, output_dir: str):
         f.write(rendered)
     print("Generated HIL main.c")
 
-    # 生成必要的 HAL 配置、链接脚本、Makefile
+    # 生成必要的标准文件
     standard = {
         "config/stm32g0xx_hal_conf.h.j2": os.path.join(output_dir, "config", "stm32g0xx_hal_conf.h"),
         "linker/STM32G0B1RETx_FLASH.ld.j2": os.path.join(output_dir, "linker", "STM32G0B1RETx_FLASH.ld"),
@@ -59,7 +56,7 @@ def render_hil_project(env: Environment, context: dict, output_dir: str):
             f.write(rendered)
         print(f"Generated: {out}")
 
-    # 复制 hil_runner.py 到输出目录
+    # 复制 hil_runner.py
     hil_runner_src = os.path.join("generator", "hil_runner.py")
     if os.path.exists(hil_runner_src):
         shutil.copy(hil_runner_src, os.path.join(output_dir, "hil_runner.py"))
@@ -72,13 +69,12 @@ def render_hil_project(env: Environment, context: dict, output_dir: str):
 
 def render_templates(env: Environment, context: dict, output_dir: str):
     """渲染所有模板并写入输出目录，包括测试框架"""
-    # 创建必要的子目录
     os.makedirs(os.path.join(output_dir, "src", "drivers"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "config"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "linker"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "test", "unity"), exist_ok=True)
 
-    # ---------- 标准模板列表 ----------
+    # ---------- 标准模板 ----------
     standard_templates = {
         "src/main.c.j2": os.path.join(output_dir, "src", "main.c"),
         "src/gpio.c.j2": os.path.join(output_dir, "src", "gpio.c"),
@@ -97,7 +93,7 @@ def render_templates(env: Environment, context: dict, output_dir: str):
             f.write(rendered)
         print(f"Generated: {out_path}")
 
-    # ---------- 事件管理器模板 ----------
+    # ---------- 事件管理器 ----------
     event_mgr_templates = {
         "src/event_mgr.h.j2": os.path.join(output_dir, "src", "event_mgr.h"),
         "src/event_mgr.c.j2": os.path.join(output_dir, "src", "event_mgr.c"),
@@ -109,7 +105,7 @@ def render_templates(env: Environment, context: dict, output_dir: str):
             f.write(rendered)
         print(f"Generated: {out_path}")
 
-    # ---------- 外设驱动模板 ----------
+    # ---------- 外设驱动 ----------
     drivers = context.get("drivers", [])
     for drv in drivers:
         if drv.get("header_template"):
@@ -128,7 +124,7 @@ def render_templates(env: Environment, context: dict, output_dir: str):
                 f.write(rendered)
             print(f"Generated: {out_path}")
 
-    # ---------- 业务状态机模板 ----------
+    # ---------- 业务状态机 ----------
     if context.get("has_business_flow"):
         state_machine_templates = {
             "app/statemachine.h.j2": os.path.join(output_dir, "src", "statemachine.h"),
@@ -145,7 +141,7 @@ def render_templates(env: Environment, context: dict, output_dir: str):
     test_dir = os.path.join(output_dir, "test")
     os.makedirs(test_dir, exist_ok=True)
 
-    # 复制 Unity 源文件到 test/unity/
+    # 复制 Unity
     unity_src = os.path.join("static", "unity")
     if os.path.exists(unity_src):
         shutil.copytree(unity_src, os.path.join(test_dir, "unity"), dirs_exist_ok=True)
@@ -153,7 +149,7 @@ def render_templates(env: Environment, context: dict, output_dir: str):
     else:
         print("Warning: static/unity not found. Tests will not compile without Unity.")
 
-    # Mock HAL 模板
+    # Mock HAL
     mock_templates = {
         "test/mock_hal.h.j2": os.path.join(test_dir, "mock_hal.h"),
         "test/mock_hal.c.j2": os.path.join(test_dir, "mock_hal.c"),
@@ -186,7 +182,13 @@ def render_templates(env: Environment, context: dict, output_dir: str):
     if context.get("has_pwm"):
         test_templates["test/test_pwm.c.j2"] = os.path.join(test_dir, "test_pwm.c")
 
-    # 状态机测试（根据区域模式选择）
+    if context.get("has_adc"):
+        test_templates["test/test_adc.c.j2"] = os.path.join(test_dir, "test_adc.c")
+
+    if context.get("has_uart"):
+        test_templates["test/test_uart.c.j2"] = os.path.join(test_dir, "test_uart.c")
+
+    # 状态机测试
     if context.get("has_business_flow"):
         if context.get("business_flow", {}).get("regions") is not None:
             test_templates["test/test_parallel.c.j2"] = os.path.join(test_dir, "test_parallel.c")
@@ -200,7 +202,7 @@ def render_templates(env: Environment, context: dict, output_dir: str):
             f.write(rendered)
         print(f"Generated: {out_path}")
 
-    # 复制 run_tests.py 脚本到 test/
+    # 复制 run_tests.py
     run_tests_script = os.path.join("generator", "run_tests.py")
     if os.path.exists(run_tests_script):
         shutil.copy(run_tests_script, os.path.join(test_dir, "run_tests.py"))
@@ -210,14 +212,12 @@ def render_templates(env: Environment, context: dict, output_dir: str):
 
 
 def generate(hardware_yaml: str, output_dir: str, hil_mode: bool = False):
-    # 加载硬件描述
     try:
         hw = load_yaml(hardware_yaml)
     except Exception as e:
         print(f"Error loading YAML file: {e}")
         sys.exit(1)
 
-    # 校验硬件描述
     errors = validate_hardware(hw)
     if errors:
         print("Errors in hardware YAML:")
@@ -227,18 +227,14 @@ def generate(hardware_yaml: str, output_dir: str, hil_mode: bool = False):
         sys.exit(1)
 
     project_name = os.path.basename(output_dir) or "hw2code"
-
-    # 构建上下文
     context = build_context(hw, project_name, hil_mode)
 
-    # 初始化 Jinja2 环境，模板目录为 templates/，显式指定 UTF-8 编码
     env = Environment(
         loader=FileSystemLoader("templates", encoding='utf-8'),
         trim_blocks=True,
         lstrip_blocks=True,
     )
 
-    # 根据模式选择渲染逻辑
     try:
         if hil_mode:
             render_hil_project(env, context, output_dir)

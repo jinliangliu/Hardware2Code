@@ -1,0 +1,17 @@
+model: "UART_Serial"
+type: "UART_Serial"
+interface: "internal"
+driver_template: "drivers/drv_uart.c.j2"
+header_template: "drivers/drv_uart.h.j2"
+capabilities:
+  - serial_tx
+  - serial_rx
+default_params:
+  baudrate: 115200
+  word_length: "8bit"
+  stop_bits: "1"
+  parity: "none"
+extra_fields:
+  instance: "USART2"    # 默认实例
+  tx_pin: "PA2"
+  rx_pin: "PA3"
