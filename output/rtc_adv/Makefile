@@ -130,7 +130,7 @@ debug: CFLAGS_EXTRA += -DDEBUG
 debug: all
 
 # Release 构建（默认）
-.PHONY: all flash flash-daplink clean test debug
+.PHONY: all flash flash-daplink clean test debug coverage
 
 all: $(BUILD_DIR)/$(PROJECT_NAME).elf $(BUILD_DIR)/$(PROJECT_NAME).bin $(BUILD_DIR)/$(PROJECT_NAME).hex
 
@@ -193,3 +193,6 @@ clean:
 
 test:
 	python test/run_tests.py
+
+coverage:
+	python test/run_tests.py --coverage

@@ -1,0 +1,51 @@
+        -:    0:Source:test_gpio.c
+        -:    0:Graph:test_gpio-test_gpio.gcno
+        -:    0:Data:test_gpio-test_gpio.gcda
+        -:    0:Runs:1
+        -:    1:#include "unity.h"
+        -:    2:#include "mock_hal.h"
+        -:    3:#include <string.h>
+        -:    4:
+        -:    5:#include "../src/gpio.c"
+        -:    6:
+        3:    7:void setUp(void) {
+        3:    8:    mock_HAL_GPIO_Init_reset();
+        3:    9:}
+        -:   10:
+        3:   11:void tearDown(void) {}
+        -:   12:
+        1:   13:void test_MX_GPIO_Init_should_call_HAL_for_all_pins(void) {
+        1:   14:    MX_GPIO_Init();
+        1:   15:    TEST_ASSERT_EQUAL_UINT32(2, mock_HAL_GPIO_Init_get_count());
+        1:   16:}
+        -:   17:
+        1:   18:void test_PC0_configuration(void) {
+        1:   19:    MX_GPIO_Init();
+        -:   20:    /* 获取该引脚对应索引的配置（按YAML顺序） */
+        1:   21:    uint32_t idx = 0;
+        1:   22:    uint32_t expected_pin = GPIO_PIN_0;
+        1:   23:    uint32_t actual_pin = mock_HAL_GPIO_Init_get_pin(idx);
+        1:   24:    TEST_ASSERT_EQUAL_HEX32(expected_pin, actual_pin);
+        -:   25:
+        1:   26:    TEST_ASSERT_EQUAL_UINT32(GPIO_MODE_OUTPUT_PP, mock_HAL_GPIO_Init_get_mode(idx));
+        1:   27:}
+        1:   28:void test_PC13_configuration(void) {
+        1:   29:    MX_GPIO_Init();
+        -:   30:    /* 获取该引脚对应索引的配置（按YAML顺序） */
+        1:   31:    uint32_t idx = 1;
+        1:   32:    uint32_t expected_pin = GPIO_PIN_13;
+        1:   33:    uint32_t actual_pin = mock_HAL_GPIO_Init_get_pin(idx);
+        1:   34:    TEST_ASSERT_EQUAL_HEX32(expected_pin, actual_pin);
+        -:   35:
+        1:   36:    TEST_ASSERT_EQUAL_UINT32(GPIO_MODE_IT_FALLING, mock_HAL_GPIO_Init_get_mode(idx));
+        -:   37:    /* 验证对应 NVIC 中断线已使能 */
+       1*:   38:    TEST_ASSERT_TRUE(mock_HAL_NVIC_EnableIRQ_called_with(EXTI4_15_IRQn));
+        1:   39:}
+        -:   40:
+        1:   41:int main(void) {
+        1:   42:    UNITY_BEGIN();
+        1:   43:    RUN_TEST(test_MX_GPIO_Init_should_call_HAL_for_all_pins);
+        1:   44:    RUN_TEST(test_PC0_configuration);
+        1:   45:    RUN_TEST(test_PC13_configuration);
+        1:   46:    return UNITY_END();
+        -:   47:}

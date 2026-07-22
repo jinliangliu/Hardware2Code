@@ -1,0 +1,240 @@
+        -:    0:Source:../src/statemachine.c
+        -:    0:Graph:test_statemachine-test_statemachine.gcno
+        -:    0:Data:test_statemachine-test_statemachine.gcda
+        -:    0:Runs:1
+        -:    1:#ifdef TEST
+        -:    2:#include "mock_hal.h"
+        -:    3:#include "drv_rtc.h"
+        -:    4:#else
+        -:    5:#include "FreeRTOS.h"
+        -:    6:#include "task.h"
+        -:    7:#include "drv_rtc.h"
+        -:    8:#endif
+        -:    9:
+        -:   10:#include "statemachine.h"
+        -:   11:
+        -:   12:/* ========== 全局变量 ========== */
+        -:   13:static uint32_t press_count = 0;
+        -:   14:
+        -:   15:/* ========== 区域级变量 ========== */
+        -:   16:
+        -:   17:/* ========== 状态枚举 ========== */
+        -:   18:#define STATE_IDLE 0
+        -:   19:#define STATE_ACTIVE 1
+        -:   20:#define STATE_RESET 2
+        -:   21:#define STATE_TIMEOUT 3
+        -:   22:
+        -:   23:/* ========== 当前状态变量 ========== */
+        -:   24:static uint32_t current_state;
+        -:   25:
+        -:   26:/* ========== 历史状态变量 ========== */
+        -:   27:
+        -:   28:/* ========== 定时器句柄与回调（覆盖所有动作源：转换、on_entry、on_exit、after） ========== */
+        -:   29:
+        -:   30:
+        -:   31:
+        -:   32:static rtc_timer_handle_t IDLE_timeout_handle = NULL;
+    #####:   33:static void IDLE_timeout_cb(void *arg) {
+    #####:   34:    event_t evt = { .id = EVENT_TIMER_EXPIRED_IDLE_timeout, .param = 0 };
+    #####:   35:    statemachine_process(&evt);
+    #####:   36:}
+        -:   37:static rtc_timer_handle_t exit_timer_handle = NULL;
+    #####:   38:static void exit_timer_cb(void *arg) {
+    #####:   39:    event_t evt = { .id = EVENT_TIMER_EXPIRED_exit_timer, .param = 0 };
+    #####:   40:    statemachine_process(&evt);
+    #####:   41:}
+        -:   42:
+        -:   43:/* ========== 动作处理宏（单区域） ========== */
+        -:   44:
+        -:   45:/* ========== 动作处理宏（并行区域，自动添加区域前缀） ========== */
+        -:   46:
+        -:   47:/* ========== 初始化 ========== */
+        4:   48:void statemachine_init(void) {
+        4:   49:    current_state = STATE_IDLE;
+        4:   50:    press_count = 0;
+        -:   51:    /* 执行初始状态的进入动作并启动时间序列 */
+        -:   52:    #ifndef TEST
+        -:   53:    led_task_notify();
+        -:   54:#else
+        -:   55:    extern void led_task_notify(void);
+        4:   56:    led_task_notify();
+        -:   57:#endif
+        -:   58:
+        -:   59:    {
+        4:   60:        uint32_t period = 5000;
+        4:   61:        rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+        -:   62:                                               IDLE_timeout_cb, NULL);
+        4:   63:        IDLE_timeout_handle = h;
+        4:   64:        RTC_TimerStart(h);
+        -:   65:    }
+        4:   66:}
+        -:   67:
+        -:   68:/* ========== 事件处理 ========== */
+       11:   69:void statemachine_process(event_t *evt) {
+        -:   70:    /* 单区域状态机（传统模式） */
+       11:   71:    switch (current_state) {
+        6:   72:    case STATE_IDLE:
+        6:   73:        if (
+        6:   74:            (press_count < 3) &&
+        5:   75:            (evt->id == EVENT_BUTTON_PRESS)
+        5:   76:        ) {
+        -:   77:            #ifndef TEST
+        -:   78:    led_task_notify();
+        -:   79:#else
+        -:   80:    extern void led_task_notify(void);
+        5:   81:    led_task_notify();
+        -:   82:#endif
+        -:   83:
+        -:   84:            /* 停止当前状态的时间序列定时器 */
+        5:   85:            RTC_TimerStop(IDLE_timeout_handle);
+        -:   86:                {
+        5:   87:        press_count++;
+        -:   88:    }
+        -:   89:
+        5:   90:            current_state = STATE_ACTIVE;
+        -:   91:            /* 执行目标状态的进入动作并启动时间序列 */
+        -:   92:                {
+        5:   93:        uint32_t period = 3000;
+        5:   94:        rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+        -:   95:                                               exit_timer_cb, NULL);
+        5:   96:        exit_timer_handle = h;
+        5:   97:        RTC_TimerStart(h);
+        -:   98:    }
+        -:   99:
+        -:  100:        }
+        1:  101:        else if (
+        1:  102:            (evt->id == EVENT_BUTTON_PRESS)
+        -:  103:        ) {
+        -:  104:            #ifndef TEST
+        -:  105:    led_task_notify();
+        -:  106:#else
+        -:  107:    extern void led_task_notify(void);
+        1:  108:    led_task_notify();
+        -:  109:#endif
+        -:  110:
+        -:  111:            /* 停止当前状态的时间序列定时器 */
+        1:  112:            RTC_TimerStop(IDLE_timeout_handle);
+        -:  113:                {
+        1:  114:        press_count = 0;
+        -:  115:    }
+        -:  116:
+        1:  117:            current_state = STATE_RESET;
+        -:  118:            /* 执行目标状态的进入动作并启动时间序列 */
+        -:  119:        }
+    #####:  120:        else if (
+    #####:  121:            (evt->id == EVENT_TIMER_EXPIRED_IDLE_timeout)
+        -:  122:        ) {
+        -:  123:            #ifndef TEST
+        -:  124:    led_task_notify();
+        -:  125:#else
+        -:  126:    extern void led_task_notify(void);
+    #####:  127:    led_task_notify();
+        -:  128:#endif
+        -:  129:
+        -:  130:            /* 停止当前状态的时间序列定时器 */
+    #####:  131:            RTC_TimerStop(IDLE_timeout_handle);
+        -:  132:            
+    #####:  133:            current_state = STATE_TIMEOUT;
+        -:  134:            /* 执行目标状态的进入动作并启动时间序列 */
+        -:  135:        }
+        6:  136:        break;
+        4:  137:    case STATE_ACTIVE:
+        4:  138:        if (
+        4:  139:            (evt->id == EVENT_RTC_TICK)
+        -:  140:        ) {
+        4:  141:                RTC_TimerStop(exit_timer_handle);
+        -:  142:
+        -:  143:            /* 停止当前状态的时间序列定时器 */
+        -:  144:            
+        4:  145:            current_state = STATE_IDLE;
+        -:  146:            /* 执行目标状态的进入动作并启动时间序列 */
+        -:  147:            #ifndef TEST
+        -:  148:    led_task_notify();
+        -:  149:#else
+        -:  150:    extern void led_task_notify(void);
+        4:  151:    led_task_notify();
+        -:  152:#endif
+        -:  153:
+        -:  154:            {
+        4:  155:                uint32_t period = 5000;
+        4:  156:                rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+        -:  157:                                                       IDLE_timeout_cb, NULL);
+        4:  158:                IDLE_timeout_handle = h;
+        4:  159:                RTC_TimerStart(h);
+        -:  160:            }
+        -:  161:        }
+    #####:  162:        else if (
+    #####:  163:            (evt->id == EVENT_TIMER_EXPIRED_exit_timer)
+        -:  164:        ) {
+    #####:  165:                RTC_TimerStop(exit_timer_handle);
+        -:  166:
+        -:  167:            /* 停止当前状态的时间序列定时器 */
+        -:  168:            
+    #####:  169:            current_state = STATE_IDLE;
+        -:  170:            /* 执行目标状态的进入动作并启动时间序列 */
+        -:  171:            #ifndef TEST
+        -:  172:    led_task_notify();
+        -:  173:#else
+        -:  174:    extern void led_task_notify(void);
+    #####:  175:    led_task_notify();
+        -:  176:#endif
+        -:  177:
+        -:  178:            {
+    #####:  179:                uint32_t period = 5000;
+    #####:  180:                rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+        -:  181:                                                       IDLE_timeout_cb, NULL);
+    #####:  182:                IDLE_timeout_handle = h;
+    #####:  183:                RTC_TimerStart(h);
+        -:  184:            }
+        -:  185:        }
+        4:  186:        break;
+        1:  187:    case STATE_RESET:
+        1:  188:        if (
+        1:  189:            (evt->id == EVENT_RTC_TICK)
+        -:  190:        ) {
+        -:  191:            /* 停止当前状态的时间序列定时器 */
+        -:  192:            
+        1:  193:            current_state = STATE_IDLE;
+        -:  194:            /* 执行目标状态的进入动作并启动时间序列 */
+        -:  195:            #ifndef TEST
+        -:  196:    led_task_notify();
+        -:  197:#else
+        -:  198:    extern void led_task_notify(void);
+        1:  199:    led_task_notify();
+        -:  200:#endif
+        -:  201:
+        -:  202:            {
+        1:  203:                uint32_t period = 5000;
+        1:  204:                rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+        -:  205:                                                       IDLE_timeout_cb, NULL);
+        1:  206:                IDLE_timeout_handle = h;
+        1:  207:                RTC_TimerStart(h);
+        -:  208:            }
+        -:  209:        }
+        1:  210:        break;
+    #####:  211:    case STATE_TIMEOUT:
+    #####:  212:        if (
+    #####:  213:            (evt->id == EVENT_RTC_TICK)
+        -:  214:        ) {
+        -:  215:            /* 停止当前状态的时间序列定时器 */
+        -:  216:            
+    #####:  217:            current_state = STATE_IDLE;
+        -:  218:            /* 执行目标状态的进入动作并启动时间序列 */
+        -:  219:            #ifndef TEST
+        -:  220:    led_task_notify();
+        -:  221:#else
+        -:  222:    extern void led_task_notify(void);
+    #####:  223:    led_task_notify();
+        -:  224:#endif
+        -:  225:
+        -:  226:            {
+    #####:  227:                uint32_t period = 5000;
+    #####:  228:                rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+        -:  229:                                                       IDLE_timeout_cb, NULL);
+    #####:  230:                IDLE_timeout_handle = h;
+    #####:  231:                RTC_TimerStart(h);
+        -:  232:            }
+        -:  233:        }
+    #####:  234:        break;
+        -:  235:    }
+       11:  236:}

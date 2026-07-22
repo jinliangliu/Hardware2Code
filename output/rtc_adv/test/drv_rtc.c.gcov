@@ -1,0 +1,152 @@
+        -:    0:Source:../src/drivers/drv_rtc.c
+        -:    0:Graph:test_rtc_timers-test_rtc_timers.gcno
+        -:    0:Data:test_rtc_timers-test_rtc_timers.gcda
+        -:    0:Runs:1
+        -:    1:#ifdef TEST
+        -:    2:#include "mock_hal.h"
+        -:    3:#else
+        -:    4:#include "stm32g0xx_hal.h"
+        -:    5:#include "FreeRTOS.h"
+        -:    6:#include "task.h"
+        -:    7:#include "queue.h"
+        -:    8:#endif
+        -:    9:
+        -:   10:#include "drv_rtc.h"
+        -:   11:#include "event_mgr.h"
+        -:   12:
+        -:   13:static RTC_HandleTypeDef hrtc;
+        -:   14:
+        -:   15:/* ========== 软件定时器（公共部分，测试和硬件均可用） ========== */
+        -:   16:typedef struct rtc_timer {
+        -:   17:    uint32_t            period_ms;
+        -:   18:    uint32_t            remaining_ms;
+        -:   19:    uint8_t             mode;
+        -:   20:    rtc_timer_cb_t      callback;
+        -:   21:    void                *arg;
+        -:   22:    struct rtc_timer    *next;
+        -:   23:} rtc_timer_t;
+        -:   24:
+        -:   25:static rtc_timer_t *timer_head = NULL;
+        -:   26:static QueueHandle_t timer_queue = NULL;
+        -:   27:extern QueueHandle_t event_queue;
+        -:   28:
+    #####:   29:static void minute_timer_cb(void *arg) {
+    #####:   30:    event_t evt = { .id = EVENT_MINUTE_TICK, .param = 0 };
+    #####:   31:    xQueueSend(event_queue, &evt, 0);
+    #####:   32:}
+    #####:   33:static void hour_timer_cb(void *arg) {
+    #####:   34:    event_t evt = { .id = EVENT_HOUR_TICK, .param = 0 };
+    #####:   35:    xQueueSend(event_queue, &evt, 0);
+    #####:   36:}
+        -:   37:
+        3:   38:rtc_timer_handle_t RTC_TimerCreate(uint32_t period_ms, uint8_t mode,
+        -:   39:                                   rtc_timer_cb_t callback, void *arg)
+        -:   40:{
+        3:   41:    rtc_timer_t *t = pvPortMalloc(sizeof(rtc_timer_t));
+       3*:   42:    if (!t) return NULL;
+        3:   43:    t->period_ms = period_ms;
+        3:   44:    t->remaining_ms = period_ms;
+        3:   45:    t->mode = mode;
+        3:   46:    t->callback = callback;
+        3:   47:    t->arg = arg;
+        3:   48:    t->next = NULL;
+        -:   49:
+        3:   50:    taskENTER_CRITICAL();
+        3:   51:    if (!timer_head) {
+        2:   52:        timer_head = t;
+        -:   53:    } else {
+        1:   54:        rtc_timer_t *p = timer_head;
+       1*:   55:        while (p->next) p = p->next;
+        1:   56:        p->next = t;
+        -:   57:    }
+        3:   58:    taskEXIT_CRITICAL();
+        3:   59:    return (rtc_timer_handle_t)t;
+        -:   60:}
+        -:   61:
+        1:   62:void RTC_TimerStart(rtc_timer_handle_t handle) {
+        1:   63:    rtc_timer_t *t = (rtc_timer_t *)handle;
+        1:   64:    taskENTER_CRITICAL();
+        1:   65:    t->remaining_ms = t->period_ms;
+        1:   66:    taskEXIT_CRITICAL();
+        1:   67:}
+        -:   68:
+        1:   69:void RTC_TimerStop(rtc_timer_handle_t handle) {
+        1:   70:    rtc_timer_t *t = (rtc_timer_handle_t)handle;
+        1:   71:    taskENTER_CRITICAL();
+        1:   72:    t->remaining_ms = 0;
+        1:   73:    taskEXIT_CRITICAL();
+        1:   74:}
+        -:   75:
+        3:   76:void RTC_TimerDelete(rtc_timer_handle_t handle) {
+        3:   77:    rtc_timer_t *t = (rtc_timer_handle_t)handle;
+        3:   78:    taskENTER_CRITICAL();
+        3:   79:    if (timer_head == t) {
+        2:   80:        timer_head = t->next;
+        -:   81:    } else {
+        1:   82:        rtc_timer_t *p = timer_head;
+       1*:   83:        while (p && p->next != t) p = p->next;
+        1:   84:        if (p) p->next = t->next;
+        -:   85:    }
+        3:   86:    taskEXIT_CRITICAL();
+        3:   87:    vPortFree(t);
+        3:   88:}
+        -:   89:
+       15:   90:void RTC_ProcessTimers(void) {
+       15:   91:    rtc_timer_t *t = timer_head;
+       30:   92:    while (t) {
+       15:   93:        if (t->remaining_ms > 0) {
+       15:   94:            if (t->remaining_ms <= 100) {
+       15:   95:                t->remaining_ms = 0;
+       15:   96:                if (t->callback) t->callback(t->arg);
+       15:   97:                if (t->mode == RTC_TIMER_MODE_PERIODIC)
+       15:   98:                    t->remaining_ms = t->period_ms;
+        -:   99:            } else {
+    #####:  100:                t->remaining_ms -= 100;
+        -:  101:            }
+        -:  102:        }
+       15:  103:        t = t->next;
+        -:  104:    }
+       15:  105:}
+        -:  106:
+        -:  107:/* ========== 硬件初始化（TEST 环境下提供空桩） ========== */
+        -:  108:#ifndef TEST
+        -:  109:void RTC_Init(void) {
+        -:  110:    /* 硬件实现，保持不变 */
+        -:  111:    __disable_irq();
+        -:  112:    RCC->APBENR1 |= RCC_APBENR1_PWREN;
+        -:  113:    PWR->CR1 |= PWR_CR1_DBP;
+        -:  114:    RCC->CSR |= RCC_CSR_LSION;
+        -:  115:    while ((RCC->CSR & RCC_CSR_LSIRDY) == 0);
+        -:  116:    RCC->BDCR = (0x02UL << RCC_BDCR_RTCSEL_Pos) | RCC_BDCR_RTCEN;
+        -:  117:    while (!(RCC->BDCR & RCC_BDCR_RTCEN));
+        -:  118:    /* ... 其余初始化步骤 ... */
+        -:  119:    hrtc.Instance = RTC;
+        -:  120:}
+        -:  121:
+        -:  122:void RTC_Start(void) {
+        -:  123:    SET_BIT(RTC->CR, RTC_CR_WUTIE);
+        -:  124:    HAL_NVIC_SetPriority(RTC_TAMP_IRQn, 5, 0);
+        -:  125:    HAL_NVIC_EnableIRQ(RTC_TAMP_IRQn);
+        -:  126:    timer_queue = xQueueCreate(10, sizeof(rtc_timer_cb_t));
+        -:  127:    rtc_timer_handle_t t_min = RTC_TimerCreate(60000, RTC_TIMER_MODE_PERIODIC, minute_timer_cb, NULL);
+        -:  128:    rtc_timer_handle_t t_hour = RTC_TimerCreate(3600000, RTC_TIMER_MODE_PERIODIC, hour_timer_cb, NULL);
+        -:  129:    RTC_TimerStart(t_min);
+        -:  130:    RTC_TimerStart(t_hour);
+        -:  131:}
+        -:  132:
+        -:  133:void RTC_TAMP_IRQHandler(void) { /* ... */ }
+        -:  134:void RTC_SetWakeUpCounter(uint32_t wake_up_counter) { /* ... */ }
+        -:  135:void RTC_GetTime(rtc_time_t *time) { /* ... */ }
+        -:  136:void RTC_SetTime(rtc_time_t *time) { /* ... */ }
+        -:  137:void RTC_AdjustDrift(int16_t ppm) { /* ... */ }
+        -:  138:
+        -:  139:#else
+        -:  140:/* TEST 空桩 */
+        2:  141:void RTC_Init(void) { hrtc.Instance = RTC; HAL_RTC_Init(&hrtc); }
+    #####:  142:void RTC_Start(void) {}
+    #####:  143:void RTC_TAMP_IRQHandler(void) {}
+    #####:  144:void RTC_SetWakeUpCounter(uint32_t wake_up_counter) { (void)wake_up_counter; }
+    #####:  145:void RTC_GetTime(rtc_time_t *time) { memset(time, 0, sizeof(*time)); }
+    #####:  146:void RTC_SetTime(rtc_time_t *time) {}
+    #####:  147:void RTC_AdjustDrift(int16_t ppm) {}
+        -:  148:#endif

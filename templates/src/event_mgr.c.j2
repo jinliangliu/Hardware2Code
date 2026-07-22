@@ -73,11 +73,13 @@ void EventMgr_Task(void *pvParameters)
                     break;
 {% endif %}
 {% endfor %}
-{% if has_rtc %}
                 case EVENT_RTC_TICK:
+{% if has_rtc %}
                     RTC_ProcessTimers();
-                    break;
+{% else %}
+                    /* 无 RTC 硬件时，事件直接忽略（或由状态机处理） */
 {% endif %}
+                    break;
                 default:
                     break;
             }

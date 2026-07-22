@@ -1,0 +1,49 @@
+        -:    0:Source:../src/event_mgr.c
+        -:    0:Graph:test_event_mgr-test_event_mgr.gcno
+        -:    0:Data:test_event_mgr-test_event_mgr.gcda
+        -:    0:Runs:1
+        -:    1:
+        -:    2:#ifdef TEST
+        -:    3:#include "mock_hal.h"
+        -:    4:#else
+        -:    5:#include "FreeRTOS.h"
+        -:    6:#include "task.h"
+        -:    7:#include "queue.h"
+        -:    8:#endif
+        -:    9:
+        -:   10:#include "event_mgr.h"
+        -:   11:
+        -:   12:#ifndef TEST
+        -:   13:#include "statemachine.h"
+        -:   14:#endif
+        -:   15:
+        -:   16:#include "drv_rtc.h"
+        -:   17:
+        -:   18:extern TaskHandle_t led_task_handle;
+        -:   19:
+        -:   20:/* event_queue 在真实环境和测试环境中都由此定义 */
+        -:   21:QueueHandle_t event_queue = NULL;
+        -:   22:
+        -:   23:/* 内部处理器（无业务流时使用） */
+        -:   24:
+        3:   25:void EventMgr_Init(void)
+        -:   26:{
+        -:   27:    /* 测试模式和真实模式都创建队列（mock 的 xQueueCreate 会返回非空） */
+        3:   28:    event_queue = xQueueCreate(100, sizeof(event_t));
+        3:   29:}
+        -:   30:
+    #####:   31:void EventMgr_Task(void *pvParameters)
+        -:   32:{
+        -:   33:    event_t evt;
+        -:   34:    while(1) {
+    #####:   35:        if( xQueueReceive(event_queue, &evt, portMAX_DELAY) == pdTRUE ) {
+        -:   36:#ifndef TEST
+        -:   37:            statemachine_process(&evt);
+        -:   38:#else
+        -:   39:            /* 测试模式：仅标记事件已处理 */
+        -:   40:            (void)evt;
+        -:   41:#endif
+        -:   42:        }
+        -:   43:    }
+        -:   44:}
+        -:   45:

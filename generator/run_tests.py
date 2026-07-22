@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 """
-Hardware2Code Unit Test Runner
+Hardware2Code Unit Test Runner (with optional coverage support)
 Compiles and runs all test executables using native gcc.
+Usage: python run_tests.py [--coverage]
 """
 import subprocess
 import sys
 import os
 import glob
+import argparse
 from pathlib import Path
 
-# ---- Use absolute path to native GCC (no spaces) ----
-# 根据操作系统选择 GCC 命令
+# ---- 根据操作系统选择 GCC 命令 ----
 if sys.platform.startswith("win"):
-    GCC = "C:/mingw64/bin/gcc"      # Windows 绝对路径
+    GCC = "C:/mingw64/bin/gcc"
 else:
-    GCC = "gcc"                     # Linux 环境下默认 gcc
+    GCC = "gcc"
+
 CFLAGS = ["-Wall", "-Wextra", "-DTEST"]
+LDFLAGS = []
 INCLUDES = ["-I.", "-I../src", "-I../src/drivers", "-Iunity", "-I../config"]
 UNITY_SRC = "unity/unity.c"
 MOCK_SRC = "mock_hal.c"
+
 
 def find_tests():
     """Return a list of test names (without .c extension) for all test_*.c files."""
@@ -28,10 +32,14 @@ def find_tests():
         tests.append(name)
     return sorted(tests)
 
-def compile_test(name):
+
+def compile_test(name, coverage=False):
     src = name + ".c"
-    exe = name + ".exe"
-    cmd = [GCC] + CFLAGS + INCLUDES + [UNITY_SRC, MOCK_SRC, src, "-o", exe]
+    exe = name + ".exe" if sys.platform.startswith("win") else name
+    cmd = [GCC] + CFLAGS + INCLUDES + LDFLAGS + [UNITY_SRC, MOCK_SRC, src, "-o", exe]
+    if coverage:
+        # 在编译和链接中启用 coverage
+        cmd = [GCC, "--coverage"] + CFLAGS + INCLUDES + LDFLAGS + [UNITY_SRC, MOCK_SRC, src, "-o", exe]
     print(f"Compiling {name}...")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -40,8 +48,9 @@ def compile_test(name):
         return False
     return True
 
+
 def run_test(name):
-    exe = name + ".exe"
+    exe = name + ".exe" if sys.platform.startswith("win") else name
     print(f"Running {name}...")
     result = subprocess.run(["." + os.sep + exe], capture_output=True, text=True)
     print(result.stdout)
@@ -51,19 +60,53 @@ def run_test(name):
     print(f"{name} PASSED")
     return True
 
+
+def generate_coverage_report():
+    print("\nGenerating coverage report...")
+    gcda_files = glob.glob("*.gcda")
+    if not gcda_files:
+        print("No coverage data found.")
+        return
+
+    if sys.platform.startswith("win"):
+        gcov_path = "C:/mingw64/bin/gcov"
+    else:
+        gcov_path = "gcov"
+
+    # 对所有 .gcno 文件运行 gcov，它会自动匹配 .gcda 并生成 .gcov
+    for gcno in glob.glob("*.gcno"):
+        cmd = [gcov_path, gcno]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Warning: gcov failed for {gcno}: {result.stderr}")
+
+    print("Coverage reports generated. See *.gcov files in this directory.")
+
+
 def main():
-    # 切换到 test/ 目录，确保找到测试文件
+    parser = argparse.ArgumentParser(description="Run unit tests")
+    parser.add_argument("--coverage", action="store_true", help="Generate coverage report")
+    args = parser.parse_args()
+
+    # change to the directory where this script resides (test/)
     os.chdir(Path(__file__).parent)
+
     tests = find_tests()
     if not tests:
         print("No test_*.c files found.")
         sys.exit(1)
+
     for test in tests:
-        if not compile_test(test):
+        if not compile_test(test, coverage=args.coverage):
             sys.exit(1)
         if not run_test(test):
             sys.exit(1)
+
+    if args.coverage:
+        generate_coverage_report()
+
     print("All tests passed.")
+
 
 if __name__ == "__main__":
     main()

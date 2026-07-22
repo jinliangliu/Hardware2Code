@@ -1,0 +1,51 @@
+        -:    0:Source:test_rtc_timers.c
+        -:    0:Graph:test_rtc_timers-test_rtc_timers.gcno
+        -:    0:Data:test_rtc_timers-test_rtc_timers.gcda
+        -:    0:Runs:1
+        -:    1:#include "unity.h"
+        -:    2:#include "mock_hal.h"
+        -:    3:#include <string.h>
+        -:    4:
+        -:    5:QueueHandle_t event_queue = NULL; /* 与 test_rtc 相同 */
+        -:    6:#include "../src/drivers/drv_rtc.c"
+        -:    7:
+        -:    8:static int callback_count = 0;
+       15:    9:void test_timer_cb(void *arg) {
+       15:   10:    callback_count++;
+       15:   11:}
+        -:   12:
+        2:   13:void setUp(void) {
+        2:   14:    callback_count = 0;
+        -:   15:    /* 初始化 RTC（使用 mock） */
+        2:   16:    RTC_Init();
+        2:   17:}
+        -:   18:
+        2:   19:void tearDown(void) {}
+        -:   20:
+        1:   21:void test_CreateMultipleTimers(void) {
+        1:   22:    rtc_timer_handle_t t1 = RTC_TimerCreate(1000, RTC_TIMER_MODE_ONE_SHOT, NULL, NULL);
+        1:   23:    rtc_timer_handle_t t2 = RTC_TimerCreate(2000, RTC_TIMER_MODE_PERIODIC, test_timer_cb, NULL);
+       1*:   24:    TEST_ASSERT_NOT_NULL(t1);
+       1*:   25:    TEST_ASSERT_NOT_NULL(t2);
+        1:   26:    RTC_TimerDelete(t2);
+        1:   27:    RTC_TimerDelete(t1);
+        1:   28:}
+        -:   29:
+        1:   30:void test_PeriodicTimerTriggersMultipleTimes(void) {
+        1:   31:    rtc_timer_handle_t t = RTC_TimerCreate(100, RTC_TIMER_MODE_PERIODIC, test_timer_cb, NULL);
+        1:   32:    RTC_TimerStart(t);
+        -:   33:    /* 模拟多次 RTC tick 处理（直接调用 RTC_ProcessTimers 多次） */
+       16:   34:    for (int i = 0; i < 15; i++) { /* 15 * 100ms = 1500ms，应触发 ~10 次 */
+       15:   35:        RTC_ProcessTimers();
+        -:   36:    }
+        1:   37:    RTC_TimerStop(t);
+        1:   38:    TEST_ASSERT_GREATER_THAN(5, callback_count); /* 至少触发 5 次 */
+        1:   39:    RTC_TimerDelete(t);
+        1:   40:}
+        -:   41:
+        1:   42:int main(void) {
+        1:   43:    UNITY_BEGIN();
+        1:   44:    RUN_TEST(test_CreateMultipleTimers);
+        1:   45:    RUN_TEST(test_PeriodicTimerTriggersMultipleTimes);
+        1:   46:    return UNITY_END();
+        -:   47:}   

@@ -18,7 +18,7 @@ def load_model(model_type):
         return {}
 
 
-def build_context(hw: dict, project_name: str) -> dict:
+def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
     """
     将 YAML 中的硬件描述处理成模板渲染所需的完整上下文。
     """
@@ -30,7 +30,6 @@ def build_context(hw: dict, project_name: str) -> dict:
     pins = hw.get("pins", [])
     sleep = hw.get("sleep", {})
     app_tasks = hw.get("app_tasks", [])
-    business_flow = hw.get('business_flow', {})
 
     # ---------- 引脚字段补充默认值 ----------
     for pin in pins:
@@ -57,16 +56,10 @@ def build_context(hw: dict, project_name: str) -> dict:
 
     has_i2c = False
     has_rtc = False
-    has_mpu6050 = False  # 用于测试框架判断
+    has_mpu6050 = False
     has_pwm = False
     has_spi = False
-    has_W25Q32 = False
-    
-    # ---------- LED 处理 ----------
-    # 检测是否定义了 LED
-    has_led = any(pin.get('label') == 'LED' for pin in pins)
-    # 检测是否创建了 led_task
-    has_led_task = any(t.get('name') == 'led_task' for t in app_tasks)
+    has_spi_flash = False
 
     for p in peripherals:
         model = load_model(p['type'])
@@ -91,7 +84,9 @@ def build_context(hw: dict, project_name: str) -> dict:
         if 'SPI' in iface:
             has_spi = True
             if p['type'] == 'SPI_Flash_W25Q32':
-                has_W25Q32 = True
+                has_spi_flash = True
+        if model.get('type') == 'Internal_PWM':
+            has_pwm = True
 
     # 根据检测结果添加对应的 HAL 源文件
     if has_i2c:
@@ -99,8 +94,8 @@ def build_context(hw: dict, project_name: str) -> dict:
             hal_sources.append('stm32g0xx_hal_i2c.c')
     if has_rtc:
         for rtc_file in ['stm32g0xx_hal_rtc.c', 'stm32g0xx_hal_rtc_ex.c',
-                        'stm32g0xx_hal_timebase_tim.c',
-                        'stm32g0xx_hal_tim.c', 'stm32g0xx_hal_tim_ex.c']:
+                          'stm32g0xx_hal_timebase_tim.c',
+                          'stm32g0xx_hal_tim.c', 'stm32g0xx_hal_tim_ex.c']:
             if rtc_file not in hal_sources:
                 hal_sources.append(rtc_file)
     if has_spi:
@@ -110,7 +105,103 @@ def build_context(hw: dict, project_name: str) -> dict:
         if 'stm32g0xx_hal_tim.c' not in hal_sources:
             hal_sources.append('stm32g0xx_hal_tim.c')
             hal_sources.append('stm32g0xx_hal_tim_ex.c')
-    
+
+    # HIL 模式需要 UART
+    if hil_mode:
+        if 'stm32g0xx_hal_uart.c' not in hal_sources:
+            hal_sources.append('stm32g0xx_hal_uart.c')
+
+    # ---------- 业务逻辑 DSL ----------
+    business_flow = hw.get('business_flow', {})
+    has_business_flow = bool(business_flow)
+
+    # 检测是否有 LED 引脚和 led_task
+    has_led = any(pin.get('label') == 'LED' for pin in pins)
+    has_led_task = any(t.get('name') == 'led_task' for t in app_tasks)
+
+    # ---------- HIL 配置 ----------
+    hil_config = hw.get('hil', {})
+    if not hil_config:
+        hil_config = {
+            'baudrate': 115200,
+            'uart': 'UART2',
+            'tx_pin': 'PA2',
+            'rx_pin': 'PA3'
+        }
+
+    # 生成 HIL 测试用例列表
+    hil_tests = []
+    for p in peripherals:
+        if p['type'] == 'Internal_RTC':
+            hil_tests.append({
+                'name': 'test_RTC_Init',
+                'body': r"""
+            RTC_HandleTypeDef hrtc;
+            __HAL_RCC_RTC_ENABLE();
+            HAL_PWR_EnableBkUpAccess();
+
+            /* 配置 LSE 和 LSI，优先使用 LSE，若失败则回退至 LSI */
+            RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+            RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE | RCC_OSCILLATORTYPE_LSI;
+            RCC_OscInitStruct.LSEState = RCC_LSE_ON;
+            RCC_OscInitStruct.LSIState = RCC_LSI_ON;
+            RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+
+            if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+                /* 如果 LSE 立即返回错误（例如无外部晶振），强制回退至 LSI */
+                RCC_OscInitStruct.LSEState = RCC_LSE_OFF;
+                HAL_RCC_OscConfig(&RCC_OscInitStruct);
+            }
+
+            /* 等待所选时钟源就绪 */
+            if (RCC_OscInitStruct.LSEState == RCC_LSE_ON) {
+                uint32_t tickstart = HAL_GetTick();
+                while ((RCC->BDCR & RCC_BDCR_LSERDY) == 0U) {
+                    if ((HAL_GetTick() - tickstart) > 500U) {
+                        RCC_OscInitStruct.LSEState = RCC_LSE_OFF;
+                        HAL_RCC_OscConfig(&RCC_OscInitStruct);
+                        break;
+                    }
+                }
+            } else {
+                uint32_t tickstart = HAL_GetTick();
+                while ((RCC->CSR & RCC_CSR_LSIRDY) == 0U) {
+                    if ((HAL_GetTick() - tickstart) > 500U) break;
+                }
+            }
+
+            RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+            PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+            PeriphClkInit.RTCClockSelection = (RCC_OscInitStruct.LSEState == RCC_LSE_ON) ?
+                                            RCC_RTCCLKSOURCE_LSE : RCC_RTCCLKSOURCE_LSI;
+            if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
+                PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+                HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit);
+            }
+
+            __HAL_RCC_RTC_ENABLE();
+            HAL_Delay(1);   /* 确保时钟稳定 */
+
+            hrtc.Instance = RTC;
+            hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+            hrtc.Init.AsynchPrediv = 127;
+            hrtc.Init.SynchPrediv = 255;
+            hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+            if (HAL_RTC_Init(&hrtc) != HAL_OK) {
+                TEST_FAIL("HAL_RTC_Init failed");
+            } else {
+                TEST_PASS();
+            }
+        """
+                    })
+        # 可继续添加其他外设的 HIL 测试用例...
+
+    if not hil_tests:
+        hil_tests.append({
+            'name': 'test_dummy',
+            'body': 'TEST_PASS();'
+        })
+
     # ---------- 静态库绝对路径 ----------
     static_dir_absolute = os.path.abspath("static/stm32g0").replace("\\", "/")
 
@@ -128,16 +219,19 @@ def build_context(hw: dict, project_name: str) -> dict:
         "has_rtc": has_rtc,
         "has_pwm": has_pwm,
         "has_spi": has_spi,
+        "has_spi_flash": has_spi_flash,
         "has_mpu6050": has_mpu6050,
-        "has_W25Q32": has_W25Q32,
         "has_led": has_led,
         "has_led_task": has_led_task,
+        "has_business_flow": has_business_flow,
+        "business_flow": business_flow,
+        "hil": hil_config,
+        "hil_tests": hil_tests,
+        "hil_mode": hil_mode,
         "heap_size": hw.get("heap_size", "0x200"),
         "stack_size": hw.get("stack_size", "0x400"),
         "static_dir_absolute": static_dir_absolute,
-        "has_event_mgr": True,        # 始终启用事件管理器
-        "has_business_flow": bool(business_flow),
-        "business_flow": business_flow
+        "has_event_mgr": True,
     }
 
     return context

@@ -1,0 +1,211 @@
+        -:    0:Source:mock_hal.c
+        -:    0:Graph:test_statemachine-mock_hal.gcno
+        -:    0:Data:test_statemachine-mock_hal.gcda
+        -:    0:Runs:1
+        -:    1:#include "mock_hal.h"
+        -:    2:#include "unity.h"
+        -:    3:#include <string.h>
+        -:    4:#include <stdlib.h>
+        -:    5:
+        -:    6:/* External variables */
+        -:    7:TaskHandle_t led_task_handle = NULL;
+        -:    8:
+        -:    9:/* ========== GPIO mock (history based) ========== */
+        -:   10:static GPIO_InitTypeDef gpio_history[MAX_GPIO_PINS];
+        -:   11:static uint32_t gpio_call_count = 0;
+        -:   12:
+    #####:   13:void mock_HAL_GPIO_Init_reset(void) {
+    #####:   14:    gpio_call_count = 0;
+    #####:   15:    memset(gpio_history, 0, sizeof(gpio_history));
+    #####:   16:}
+        -:   17:
+    #####:   18:bool mock_HAL_GPIO_Init_called(void) {
+    #####:   19:    return gpio_call_count > 0;
+        -:   20:}
+        -:   21:
+    #####:   22:uint32_t mock_HAL_GPIO_Init_get_count(void) {
+    #####:   23:    return gpio_call_count;
+        -:   24:}
+        -:   25:
+    #####:   26:uint32_t mock_HAL_GPIO_Init_get_pin(uint32_t index) {
+    #####:   27:    return index < gpio_call_count ? gpio_history[index].Pin : 0;
+        -:   28:}
+        -:   29:
+    #####:   30:uint32_t mock_HAL_GPIO_Init_get_mode(uint32_t index) {
+    #####:   31:    return index < gpio_call_count ? gpio_history[index].Mode : 0;
+        -:   32:}
+        -:   33:
+    #####:   34:static void record_gpio_init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *init) {
+        -:   35:    (void)GPIOx;
+    #####:   36:    if (gpio_call_count < MAX_GPIO_PINS) {
+    #####:   37:        memcpy(&gpio_history[gpio_call_count], init, sizeof(GPIO_InitTypeDef));
+    #####:   38:        gpio_call_count++;
+        -:   39:    }
+    #####:   40:}
+        -:   41:
+    #####:   42:void HAL_GPIO_Init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *init) {
+    #####:   43:    record_gpio_init(GPIOx, init);
+    #####:   44:}
+        -:   45:
+        -:   46:/* ========== NVIC mock ========== */
+        -:   47:static IRQn_Type last_irq = -1;
+        -:   48:static bool nvic_called = false;
+        -:   49:
+    #####:   50:void mock_HAL_NVIC_EnableIRQ_reset(void) {
+    #####:   51:    last_irq = -1;
+    #####:   52:    nvic_called = false;
+    #####:   53:}
+        -:   54:
+    #####:   55:bool mock_HAL_NVIC_EnableIRQ_called_with(IRQn_Type IRQn) {
+    #####:   56:    return nvic_called && (last_irq == IRQn);
+        -:   57:}
+        -:   58:
+    #####:   59:static void record_nvic(IRQn_Type IRQn) {
+    #####:   60:    last_irq = IRQn;
+    #####:   61:    nvic_called = true;
+    #####:   62:}
+        -:   63:
+    #####:   64:void HAL_NVIC_EnableIRQ(IRQn_Type IRQn) {
+    #####:   65:    record_nvic(IRQn);
+    #####:   66:}
+        -:   67:
+    #####:   68:void HAL_NVIC_SetPriority(IRQn_Type IRQn, uint32_t prio, uint32_t subprio) {
+        -:   69:    (void)IRQn; (void)prio; (void)subprio;
+    #####:   70:}
+        -:   71:
+        -:   72:/* ========== RCC stubs ========== */
+    #####:   73:int HAL_RCC_OscConfig(RCC_OscInitTypeDef *osc) {
+        -:   74:    (void)osc;
+    #####:   75:    return HAL_OK;
+        -:   76:}
+        -:   77:
+    #####:   78:int HAL_RCC_ClockConfig(RCC_ClkInitTypeDef *clk, uint32_t FLatency) {
+        -:   79:    (void)clk; (void)FLatency;
+    #####:   80:    return HAL_OK;
+        -:   81:}
+        -:   82:
+    #####:   83:int HAL_RCCEx_PeriphCLKConfig(RCC_PeriphCLKInitTypeDef *pclk) {
+        -:   84:    (void)pclk;
+    #####:   85:    return HAL_OK;
+        -:   86:}
+        -:   87:
+        -:   88:/* ========== RTC hardware init mock ========== */
+        -:   89:static bool rtc_init_called = false;
+        -:   90:
+    #####:   91:void mock_HAL_RTC_Init_reset(void) {
+    #####:   92:    rtc_init_called = false;
+    #####:   93:}
+        -:   94:
+    #####:   95:bool mock_HAL_RTC_Init_called(void) {
+    #####:   96:    return rtc_init_called;
+        -:   97:}
+        -:   98:
+    #####:   99:int HAL_RTC_Init(RTC_HandleTypeDef *hrtc) {
+    #####:  100:    rtc_init_called = true;
+        -:  101:    (void)hrtc;
+    #####:  102:    return HAL_OK;
+        -:  103:}
+        -:  104:
+    #####:  105:void HAL_RTCEx_WakeUpTimerIRQHandler(RTC_HandleTypeDef *hrtc) { (void)hrtc; }
+    #####:  106:void HAL_RTCEx_DeactivateWakeUpTimer(RTC_HandleTypeDef *hrtc) { (void)hrtc; }
+    #####:  107:void HAL_RTCEx_SetWakeUpTimer_IT(RTC_HandleTypeDef *hrtc, uint32_t wakeup_counter, uint32_t clock) {
+        -:  108:    (void)hrtc; (void)wakeup_counter; (void)clock;
+    #####:  109:}
+    #####:  110:void HAL_RTC_GetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, uint32_t format) {
+        -:  111:    (void)hrtc; (void)format;
+    #####:  112:    if (sTime) memset(sTime, 0, sizeof(*sTime));
+    #####:  113:}
+    #####:  114:void HAL_RTC_SetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, uint32_t format) {
+        -:  115:    (void)hrtc; (void)sTime; (void)format;
+    #####:  116:}
+    #####:  117:void HAL_RTC_GetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDate, uint32_t format) {
+        -:  118:    (void)hrtc; (void)format;
+    #####:  119:    if (sDate) memset(sDate, 0, sizeof(*sDate));
+    #####:  120:}
+    #####:  121:void HAL_RTC_SetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDate, uint32_t format) {
+        -:  122:    (void)hrtc; (void)sDate; (void)format;
+    #####:  123:}
+    #####:  124:void HAL_RTCEx_SetSmoothCalib(RTC_HandleTypeDef *hrtc, uint32_t period, uint32_t pulse, uint32_t ppm) {
+        -:  125:    (void)hrtc; (void)period; (void)pulse; (void)ppm;
+    #####:  126:}
+    #####:  127:void HAL_PWR_EnableBkUpAccess(void) {}
+    #####:  128:void HAL_SuspendTick(void) {}
+    #####:  129:void HAL_ResumeTick(void) {}
+    #####:  130:void vTaskStepTick(uint32_t ticks) { (void)ticks; }
+        -:  131:
+        -:  132:/* ========== I2C mock ========== */
+        -:  133:static bool i2c_init_called = false;
+        -:  134:
+    #####:  135:void mock_HAL_I2C_Init_reset(void) { i2c_init_called = false; }
+    #####:  136:bool mock_HAL_I2C_Init_called(void) { return i2c_init_called; }
+    #####:  137:void HAL_I2C_Init(I2C_HandleTypeDef *hi2c) {
+    #####:  138:    i2c_init_called = true;
+        -:  139:    (void)hi2c;
+    #####:  140:}
+        -:  141:
+        -:  142:/* ========== SPI mock ========== */
+        -:  143:static bool spi_init_called = false;
+        -:  144:
+    #####:  145:void HAL_SPI_Init(SPI_HandleTypeDef *hspi) {
+        -:  146:    (void)hspi;
+    #####:  147:    spi_init_called = true;
+    #####:  148:}
+    #####:  149:void HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint8_t *pRxData, uint16_t Size, uint32_t Timeout) {
+        -:  150:    (void)hspi; (void)pTxData; (void)Size; (void)Timeout;
+    #####:  151:    if (pRxData) memset(pRxData, 0, Size);
+    #####:  152:}
+    #####:  153:bool mock_HAL_SPI_Init_called(void) { return spi_init_called; }
+        -:  154:
+        -:  155:/* ========== TIM mock for PWM ========== */
+        -:  156:static bool pwm_init_called = false;
+        -:  157:
+    #####:  158:void HAL_TIM_PWM_Init(TIM_HandleTypeDef *htim) {
+        -:  159:    (void)htim;
+    #####:  160:    pwm_init_called = true;
+    #####:  161:}
+    #####:  162:void HAL_TIM_PWM_ConfigChannel(TIM_HandleTypeDef *htim, TIM_OC_InitTypeDef *sConfig, uint32_t Channel) {
+        -:  163:    (void)htim; (void)sConfig; (void)Channel;
+    #####:  164:}
+    #####:  165:void HAL_TIM_PWM_Start(TIM_HandleTypeDef *htim, uint32_t Channel) {
+        -:  166:    (void)htim; (void)Channel;
+    #####:  167:}
+    #####:  168:bool mock_HAL_TIM_PWM_Init_called(void) { return pwm_init_called; }
+        -:  169:
+        -:  170:/* ========== FreeRTOS stubs ========== */
+    #####:  171:QueueHandle_t xQueueCreate(uint32_t length, uint32_t itemSize) {
+        -:  172:    (void)length; (void)itemSize;
+    #####:  173:    return (QueueHandle_t)1;
+        -:  174:}
+    #####:  175:BaseType_t xQueueReceive(QueueHandle_t queue, void *buffer, TickType_t wait) {
+        -:  176:    (void)queue; (void)buffer; (void)wait;
+    #####:  177:    return pdFALSE;
+        -:  178:}
+    #####:  179:BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t wait) {
+        -:  180:    (void)queue; (void)item; (void)wait;
+    #####:  181:    return pdPASS;
+        -:  182:}
+    #####:  183:BaseType_t xQueueSendFromISR(QueueHandle_t queue, const void *item, BaseType_t *pxWoken) {
+        -:  184:    (void)queue; (void)item;
+    #####:  185:    if (pxWoken) *pxWoken = pdFALSE;
+    #####:  186:    return pdPASS;
+        -:  187:}
+    #####:  188:BaseType_t xTaskNotify(TaskHandle_t task, uint32_t value, eNotifyAction action) {
+        -:  189:    (void)task; (void)value; (void)action;
+    #####:  190:    return pdPASS;
+        -:  191:}
+    #####:  192:BaseType_t xTaskNotifyFromISR(TaskHandle_t task, uint32_t value, eNotifyAction action, BaseType_t *pxWoken) {
+        -:  193:    (void)task; (void)value; (void)action;
+    #####:  194:    if (pxWoken) *pxWoken = pdFALSE;
+    #####:  195:    return pdPASS;
+        -:  196:}
+    #####:  197:void portYIELD_FROM_ISR(BaseType_t xWoken) { (void)xWoken; }
+    #####:  198:void taskENTER_CRITICAL(void) {}
+    #####:  199:void taskEXIT_CRITICAL(void) {}
+    #####:  200:void *pvPortMalloc(size_t size) { return malloc(size); }
+    #####:  201:void vPortFree(void *ptr) { free(ptr); }
+    #####:  202:void vTaskDelay(TickType_t ticks) { (void)ticks; }
+        -:  203:
+        -:  204:/* ========== Other HAL stubs ========== */
+    #####:  205:uint32_t HAL_GetTick(void) { return 0; }
+    #####:  206:void HAL_InitTick(uint32_t TickPriority) { (void)TickPriority; }
+    #####:  207:void HAL_TIM_Base_Start_IT(TIM_HandleTypeDef *htim) { (void)htim; }

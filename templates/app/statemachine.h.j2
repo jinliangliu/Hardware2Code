@@ -4,7 +4,10 @@
 #include <stdint.h>
 #include "event_mgr.h"
 
+{% for region in business_flow.regions %}
+#define REGION_{{ region.name | upper }} {{ loop.index0 }}
+{% endfor %}
+
 void statemachine_init(void);
 void statemachine_process(event_t *evt);
-
 #endif
