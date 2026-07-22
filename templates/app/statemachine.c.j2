@@ -1,0 +1,43 @@
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "FreeRTOS.h"
+#include "task.h"
+#endif
+
+#include "statemachine.h"
+
+{% for state in business_flow.states %}
+#define STATE_{{ state.name }} {{ loop.index0 }}
+{% endfor %}
+
+static uint32_t current_state;
+
+void statemachine_init(void) {
+    current_state = STATE_{{ business_flow.initial_state }};
+}
+
+void statemachine_process(event_t *evt) {
+    switch (current_state) {
+{% for state in business_flow.states %}
+        case STATE_{{ state.name }}:
+{% for trans in state.transitions %}
+            if (evt->id == EVENT_{{ trans.event }}) {
+{% for action in trans.actions %}
+{% if action == 'toggle_led' %}
+#ifndef TEST
+                led_task_notify();
+#else
+                /* 测试环境：调用本地桩函数 */
+                extern void led_task_notify(void);
+                led_task_notify();
+#endif
+{% endif %}
+{% endfor %}
+                current_state = STATE_{{ trans.target }};
+            }
+{% endfor %}
+            break;
+{% endfor %}
+    }
+}

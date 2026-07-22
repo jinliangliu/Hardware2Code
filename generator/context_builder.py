@@ -30,6 +30,7 @@ def build_context(hw: dict, project_name: str) -> dict:
     pins = hw.get("pins", [])
     sleep = hw.get("sleep", {})
     app_tasks = hw.get("app_tasks", [])
+    business_flow = hw.get('business_flow', {})
 
     # ---------- 引脚字段补充默认值 ----------
     for pin in pins:
@@ -57,6 +58,15 @@ def build_context(hw: dict, project_name: str) -> dict:
     has_i2c = False
     has_rtc = False
     has_mpu6050 = False  # 用于测试框架判断
+    has_pwm = False
+    has_spi = False
+    has_W25Q32 = False
+    
+    # ---------- LED 处理 ----------
+    # 检测是否定义了 LED
+    has_led = any(pin.get('label') == 'LED' for pin in pins)
+    # 检测是否创建了 led_task
+    has_led_task = any(t.get('name') == 'led_task' for t in app_tasks)
 
     for p in peripherals:
         model = load_model(p['type'])
@@ -78,6 +88,10 @@ def build_context(hw: dict, project_name: str) -> dict:
                 has_mpu6050 = True
         if model.get('type') == 'Internal_RTC':
             has_rtc = True
+        if 'SPI' in iface:
+            has_spi = True
+            if p['type'] == 'SPI_Flash_W25Q32':
+                has_W25Q32 = True
 
     # 根据检测结果添加对应的 HAL 源文件
     if has_i2c:
@@ -85,11 +99,18 @@ def build_context(hw: dict, project_name: str) -> dict:
             hal_sources.append('stm32g0xx_hal_i2c.c')
     if has_rtc:
         for rtc_file in ['stm32g0xx_hal_rtc.c', 'stm32g0xx_hal_rtc_ex.c',
-                        'stm32g0xx_hal_timebase_tim.c',    # 官方 timebase
+                        'stm32g0xx_hal_timebase_tim.c',
                         'stm32g0xx_hal_tim.c', 'stm32g0xx_hal_tim_ex.c']:
             if rtc_file not in hal_sources:
                 hal_sources.append(rtc_file)
-
+    if has_spi:
+        if 'stm32g0xx_hal_spi.c' not in hal_sources:
+            hal_sources.append('stm32g0xx_hal_spi.c')
+    if has_pwm:
+        if 'stm32g0xx_hal_tim.c' not in hal_sources:
+            hal_sources.append('stm32g0xx_hal_tim.c')
+            hal_sources.append('stm32g0xx_hal_tim_ex.c')
+    
     # ---------- 静态库绝对路径 ----------
     static_dir_absolute = os.path.abspath("static/stm32g0").replace("\\", "/")
 
@@ -105,11 +126,18 @@ def build_context(hw: dict, project_name: str) -> dict:
         "drivers": drivers,
         "has_i2c": has_i2c,
         "has_rtc": has_rtc,
-        "has_mpu6050": has_mpu6050,   # 供测试模板使用
+        "has_pwm": has_pwm,
+        "has_spi": has_spi,
+        "has_mpu6050": has_mpu6050,
+        "has_W25Q32": has_W25Q32,
+        "has_led": has_led,
+        "has_led_task": has_led_task,
         "heap_size": hw.get("heap_size", "0x200"),
         "stack_size": hw.get("stack_size", "0x400"),
         "static_dir_absolute": static_dir_absolute,
         "has_event_mgr": True,        # 始终启用事件管理器
+        "has_business_flow": bool(business_flow),
+        "business_flow": business_flow
     }
 
     return context

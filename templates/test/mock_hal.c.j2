@@ -7,13 +7,13 @@
  * External variables
  * ====================================================================== */
 TaskHandle_t led_task_handle = NULL;
-QueueHandle_t event_queue = NULL;
 
 /* ======================================================================
  * GPIO mock state (history based)
  * ====================================================================== */
 static GPIO_InitTypeDef gpio_history[MAX_GPIO_PINS];
 static uint32_t gpio_call_count = 0;
+static bool spi_init_called = false;
 
 void mock_HAL_GPIO_Init_reset(void) {
     gpio_call_count = 0;
@@ -86,6 +86,17 @@ static void record_nvic(IRQn_Type IRQn) {
 /* ======================================================================
  * Real HAL function stubs (call the internal recorders)
  * ====================================================================== */
+void HAL_SPI_Init(SPI_HandleTypeDef *hspi) {
+    (void)hspi;
+    spi_init_called = true;
+}
+bool mock_HAL_SPI_Init_called(void) { return spi_init_called; }
+
+void HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint8_t *pRxData, uint16_t Size, uint32_t Timeout) {
+    /* 简单返回0 */
+    if (pRxData) memset(pRxData, 0, Size);
+}
+
 void HAL_GPIO_Init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *init) {
     record_gpio_init(GPIOx, init);
 }

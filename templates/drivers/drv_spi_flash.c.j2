@@ -1,0 +1,45 @@
+#include "drv_{{ peripheral.name }}.h"
+
+static SPI_HandleTypeDef *spi_handle;
+static uint8_t tx_buf[4], rx_buf[4];
+
+void {{ peripheral.name }}_init(SPI_HandleTypeDef *hspi) {
+    spi_handle = hspi;
+}
+
+void {{ peripheral.name }}_read_id(uint8_t *id) {
+    tx_buf[0] = {{ model.commands.READ_ID }};
+    HAL_SPI_TransmitReceive(spi_handle, tx_buf, id, 3, 100);
+}
+
+void {{ peripheral.name }}_read_data(uint32_t addr, uint8_t *buf, uint32_t len) {
+    tx_buf[0] = {{ model.commands.READ_DATA }};
+    tx_buf[1] = (addr >> 16) & 0xFF;
+    tx_buf[2] = (addr >> 8) & 0xFF;
+    tx_buf[3] = addr & 0xFF;
+    HAL_SPI_Transmit(spi_handle, tx_buf, 4, 100);
+    HAL_SPI_Receive(spi_handle, buf, len, 1000);
+}
+
+void {{ peripheral.name }}_sector_erase(uint32_t addr) {
+    tx_buf[0] = {{ model.commands.WRITE_ENABLE }};
+    HAL_SPI_Transmit(spi_handle, tx_buf, 1, 100);
+    tx_buf[0] = {{ model.commands.SECTOR_ERASE }};
+    tx_buf[1] = (addr >> 16) & 0xFF;
+    tx_buf[2] = (addr >> 8) & 0xFF;
+    tx_buf[3] = addr & 0xFF;
+    HAL_SPI_Transmit(spi_handle, tx_buf, 4, 200);
+    HAL_Delay(100);
+}
+
+void {{ peripheral.name }}_write_data(uint32_t addr, const uint8_t *buf, uint32_t len) {
+    tx_buf[0] = {{ model.commands.WRITE_ENABLE }};
+    HAL_SPI_Transmit(spi_handle, tx_buf, 1, 100);
+    tx_buf[0] = 0x02;  // Page Program command (not in model, common)
+    tx_buf[1] = (addr >> 16) & 0xFF;
+    tx_buf[2] = (addr >> 8) & 0xFF;
+    tx_buf[3] = addr & 0xFF;
+    HAL_SPI_Transmit(spi_handle, tx_buf, 4, 100);
+    HAL_SPI_Transmit(spi_handle, (uint8_t *)buf, len, 2000);
+    HAL_Delay(10);
+}

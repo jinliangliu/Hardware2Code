@@ -53,6 +53,7 @@ typedef struct {
 #define GPIO_MODE_OUTPUT_PP     1
 #define GPIO_MODE_IT_FALLING    2
 #define GPIO_MODE_AF_OD         3
+#define GPIO_MODE_AF_PP         4
 #define GPIO_NOPULL             0
 #define GPIO_PULLUP             1
 #define GPIO_SPEED_FREQ_LOW     2
@@ -176,6 +177,23 @@ typedef struct {
 } I2C_HandleTypeDef;
 
 /* ======================================================================
+ * SPI stubs
+ * ====================================================================== */
+typedef void SPI_HandleTypeDef;
+
+/* ======================================================================
+ * TIM stubs
+ * ====================================================================== */
+ typedef void TIM_HandleTypeDef;
+
+/* PWM additional types */
+typedef struct {
+    uint32_t OCMode;
+    uint32_t Pulse;
+    uint32_t OCPolarity;
+} TIM_OC_InitTypeDef;
+
+/* ======================================================================
  * Common HAL constants
  * ====================================================================== */
 #define HAL_OK      0
@@ -261,8 +279,18 @@ void HAL_ResumeTick(void);
 void vTaskStepTick(uint32_t ticks);
 
 
-typedef void TIM_HandleTypeDef;
+
 void HAL_InitTick(uint32_t TickPriority);
 void HAL_TIM_Base_Start_IT(TIM_HandleTypeDef *htim);
+
+/* SPI mock */
+void HAL_SPI_Init(SPI_HandleTypeDef *hspi);
+void HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint8_t *pRxData, uint16_t Size, uint32_t Timeout);
+bool mock_HAL_SPI_Init_called(void);
+
+void HAL_TIM_PWM_Init(TIM_HandleTypeDef *htim);
+void HAL_TIM_PWM_ConfigChannel(TIM_HandleTypeDef *htim, TIM_OC_InitTypeDef *sConfig, uint32_t Channel);
+void HAL_TIM_PWM_Start(TIM_HandleTypeDef *htim, uint32_t Channel);
+bool mock_HAL_TIM_PWM_Init_called(void);
 
 #endif /* MOCK_HAL_H */

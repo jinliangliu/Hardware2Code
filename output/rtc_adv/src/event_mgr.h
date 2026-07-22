@@ -4,10 +4,12 @@
 #include <stdint.h>
 
 #ifdef TEST
-#include "mock_hal.h"      // 提供 QueueHandle_t, TickType_t 等
+#include "mock_hal.h"
+extern QueueHandle_t event_queue;
 #else
 #include "FreeRTOS.h"
 #include "queue.h"
+extern QueueHandle_t event_queue;   // 实际定义在 event_mgr.c
 #endif
 
 typedef enum {

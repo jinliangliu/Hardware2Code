@@ -1,0 +1,12 @@
+#ifndef __DRV_{{ peripheral.name | upper }}_H
+#define __DRV_{{ peripheral.name | upper }}_H
+
+#include "stm32g0xx_hal.h"
+
+void {{ peripheral.name }}_init(SPI_HandleTypeDef *hspi);
+void {{ peripheral.name }}_read_id(uint8_t *id);
+void {{ peripheral.name }}_read_data(uint32_t addr, uint8_t *buf, uint32_t len);
+void {{ peripheral.name }}_sector_erase(uint32_t addr);
+void {{ peripheral.name }}_write_data(uint32_t addr, const uint8_t *buf, uint32_t len);
+
+#endif

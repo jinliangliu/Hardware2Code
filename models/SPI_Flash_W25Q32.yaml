@@ -1,0 +1,15 @@
+model: "W25Q32"
+type: "SPI_Flash"
+interface: "SPI"
+driver_template: "drivers/drv_spi_flash.c.j2"
+header_template: "drivers/drv_spi_flash.h.j2"
+spi_mode: 0           # CPOL=0, CPHA=0
+max_freq: 4000000
+sector_size: 4096
+total_size: 4194304   # 4 MB
+commands:
+  READ_ID: 0x9F
+  READ_DATA: 0x03
+  WRITE_ENABLE: 0x06
+  SECTOR_ERASE: 0x20
+  CHIP_ERASE: 0xC7

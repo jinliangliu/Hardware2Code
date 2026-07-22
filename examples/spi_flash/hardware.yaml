@@ -1,0 +1,35 @@
+mcu:
+  part: STM32G0B1RET6
+pins:
+  - id: PA5
+    function: SPI1_SCK
+    label: "SPI1_SCK"
+    af: 0
+  - id: PA6
+    function: SPI1_MISO
+    label: "SPI1_MISO"
+    af: 0
+  - id: PA7
+    function: SPI1_MOSI
+    label: "SPI1_MOSI"
+    af: 0
+  - id: PC4
+    function: GPIO_Output
+    label: "SPI1_NSS"
+    active_level: low
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+peripherals:
+  - name: "flash"
+    type: "SPI_Flash_W25Q32"
+    bus: "SPI1"
+    cs_pin: "PC4"
+app_tasks:
+  - name: flash_test_task
+    priority: 2
+    stack_size: 512
+  - name: led_task
+    priority: 2
+    stack_size: 128

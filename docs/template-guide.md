@@ -101,3 +101,34 @@ templates/
 - 使用 `template.render(context)` 的异常信息定位 Jinja2 语法错误。
 - 编译生成的代码时，注意查看错误信息，多数情况下是模板未正确输出变量导致的宏/函数名错误。
 
+
+1. 业务逻辑 DSL
+简介：通过 business_flow 节点定义状态机，自动生成 statemachine.c/h。
+
+语法示例（引用 rtc_adv 的 YAML）：
+
+yaml
+business_flow:
+  initial_state: "IDLE"
+  states:
+    - name: "IDLE"
+      transitions:
+        - event: "BUTTON_PRESS"
+          target: "ACTIVE"
+          actions:
+            - "toggle_led"
+    - name: "ACTIVE"
+      transitions:
+        - event: "RTC_TICK"
+          target: "IDLE"
+可用事件：EVENT_BUTTON_PRESS, EVENT_RTC_TICK, EVENT_MPU6050_ALERT 等（参见 event_mgr.h）。
+
+内置动作：toggle_led（通过 led_task_notify 通知 LED 任务）。
+
+2. 测试框架扩展
+如何为新外设编写测试：参照 test_gpio.c.j2 的模式，使用 mock_hal 验证 HAL 调用。
+
+状态机测试：test_statemachine.c 验证状态转换和动作执行。
+
+RTC 定时器集成测试：test_rtc_timers.c 验证多定时器并发和周期触发。
+

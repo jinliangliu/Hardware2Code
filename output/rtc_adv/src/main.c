@@ -19,6 +19,8 @@ void MX_GPIO_Init(void);
 
 /* ------- I2C Handles (if I2C peripherals are used) ------- */
 
+/* ------- SPI Handles (if SPI peripherals are used) ------- */
+
 /* ------- Task handles ------- */
 TaskHandle_t rtc_demo_task_handle = NULL;
 TaskHandle_t led_task_handle = NULL;
@@ -51,6 +53,8 @@ void SystemClock_Config(void)
 }
 
 /* ------- I2C initialization (if peripherals with I2C are present) ------- */
+
+/* ------- SPI initialization (if peripherals with SPI are present) ------- */
 
 /* ------- Main ------- */
 int main(void)
@@ -106,5 +110,11 @@ void led_task(void *pvParameters)
     while(1) {
         xTaskNotifyWait( 0x00, 0xFFFFFFFF, &ulNotifiedValue, portMAX_DELAY );
         HAL_GPIO_TogglePin( LED_GPIO_Port, LED_GPIO_Pin );
+    }
+}
+
+void led_task_notify(void) {
+    if (led_task_handle) {
+        xTaskNotify(led_task_handle, 0, eSetBits);
     }
 }

@@ -28,6 +28,11 @@ void MX_GPIO_Init(void);
 I2C_HandleTypeDef hi2c{{ p.bus[-1] }};
 {% endfor %}
 
+/* ------- SPI Handles (if SPI peripherals are used) ------- */
+{% for p in peripherals if 'SPI' in p.model.interface %}
+SPI_HandleTypeDef hspi{{ p.bus[-1] }};
+{% endfor %}
+
 /* ------- Task handles ------- */
 {% for task in app_tasks %}
 TaskHandle_t {{ task.name }}_handle = NULL;
@@ -77,6 +82,25 @@ static void MX_I2C{{ p.bus[-1] }}_Init(void)
 }
 {% endfor %}
 
+/* ------- SPI initialization (if peripherals with SPI are present) ------- */
+{% for p in peripherals if 'SPI' in p.model.interface %}
+static void MX_SPI{{ p.bus[-1] }}_Init(void)
+{
+    hspi{{ p.bus[-1] }}.Instance = {{ p.bus }};
+    hspi{{ p.bus[-1] }}.Init.Mode = SPI_MODE_MASTER;
+    hspi{{ p.bus[-1] }}.Init.Direction = SPI_DIRECTION_2LINES;
+    hspi{{ p.bus[-1] }}.Init.DataSize = SPI_DATASIZE_8BIT;
+    hspi{{ p.bus[-1] }}.Init.CLKPolarity = SPI_POLARITY_LOW;
+    hspi{{ p.bus[-1] }}.Init.CLKPhase = SPI_PHASE_1EDGE;
+    hspi{{ p.bus[-1] }}.Init.NSS = SPI_NSS_SOFT;
+    hspi{{ p.bus[-1] }}.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+    hspi{{ p.bus[-1] }}.Init.FirstBit = SPI_FIRSTBIT_MSB;
+    hspi{{ p.bus[-1] }}.Init.TIMode = SPI_TIMODE_DISABLE;
+    hspi{{ p.bus[-1] }}.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+    if (HAL_SPI_Init(&hspi{{ p.bus[-1] }}) != HAL_OK) while(1);
+}
+{% endfor %}
+
 /* ------- Main ------- */
 int main(void)
 {
@@ -104,12 +128,17 @@ int main(void)
     {% if 'I2C' in p.model.interface %}
     MX_I2C{{ p.bus[-1] }}_Init();
     {{ p.name }}_init(&hi2c{{ p.bus[-1] }});
+    {% elif 'SPI' in p.model.interface %}
+    MX_SPI{{ p.bus[-1] }}_Init();
+    {{ p.name }}_init(&hspi{{ p.bus[-1] }});
     {% elif p.type == 'Internal_RTC' %}
     RTC_Init();
     {% endif %}
     {% endfor %}
 
+    {% if has_rtc %}
     RTC_Start();
+    {% endif %}
 
     
 
@@ -153,3 +182,11 @@ void {{ task.name }}(void *pvParameters)
     {% endif %}
 }
 {% endfor %}
+
+{% if has_led_task and not test_mode %}
+void led_task_notify(void) {
+    if (led_task_handle) {
+        xTaskNotify(led_task_handle, 0, eSetBits);
+    }
+}
+{% endif %}

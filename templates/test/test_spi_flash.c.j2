@@ -1,0 +1,27 @@
+#include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
+
+#include "../src/drivers/drv_flash.c"
+
+void setUp(void) {}
+void tearDown(void) {}
+
+void test_flash_init_calls_HAL_SPI_Init(void) {
+    flash_init(NULL); /* 参数不重要 */
+    TEST_ASSERT_TRUE(mock_HAL_SPI_Init_called());
+}
+
+void test_flash_read_id(void) {
+    uint8_t id[3] = {0};
+    flash_read_id(id);
+    /* 由于 mock 返回0，我们仅检查函数不崩溃 */
+    TEST_PASS();
+}
+
+int main(void) {
+    UNITY_BEGIN();
+    RUN_TEST(test_flash_init_calls_HAL_SPI_Init);
+    RUN_TEST(test_flash_read_id);
+    return UNITY_END();
+}

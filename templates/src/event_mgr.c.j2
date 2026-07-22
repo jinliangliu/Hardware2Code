@@ -1,28 +1,36 @@
 {#
-    event_mgr.c.j2 - Event manager source template
-    ...
+event_mgr.c.j2 - Central event manager task
 #}
 
 #ifdef TEST
 #include "mock_hal.h"
-extern QueueHandle_t event_queue;   /* defined in mock_hal.c */
 #else
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
-#include "event_mgr.h"
-QueueHandle_t event_queue = NULL;
 #endif
 
-/* Include any driver headers needed by handlers */
+#include "event_mgr.h"
+
+{% if has_business_flow %}
+#ifndef TEST
+#include "statemachine.h"
+#endif
+{% endif %}
+
 {% for drv in drivers %}
 #include "drv_{{ drv.name }}.h"
 {% endfor %}
 
-/* External LED task handle */
+{% if has_led_task %}
 extern TaskHandle_t led_task_handle;
+{% endif %}
 
-/* Forward declarations of internal handlers */
+/* event_queue 在真实环境和测试环境中都由此定义 */
+QueueHandle_t event_queue = NULL;
+
+/* 内部处理器（无业务流时使用） */
+{% if not has_business_flow %}
 static void handle_minute_tick(void);
 static void handle_hour_tick(void);
 static void handle_button_press(void);
@@ -31,9 +39,11 @@ static void handle_button_press(void);
 static void handle_mpu6050_alert(void);
 {% endif %}
 {% endfor %}
+{% endif %}
 
 void EventMgr_Init(void)
 {
+    /* 测试模式和真实模式都创建队列（mock 的 xQueueCreate 会返回非空） */
     event_queue = xQueueCreate(100, sizeof(event_t));
 }
 
@@ -42,7 +52,10 @@ void EventMgr_Task(void *pvParameters)
     event_t evt;
     while(1) {
         if( xQueueReceive(event_queue, &evt, portMAX_DELAY) == pdTRUE ) {
-            {% raw %}
+#ifndef TEST
+{% if has_business_flow %}
+            statemachine_process(&evt);
+{% else %}
             switch(evt.id) {
                 case EVENT_MINUTE_TICK:
                     handle_minute_tick();
@@ -53,7 +66,6 @@ void EventMgr_Task(void *pvParameters)
                 case EVENT_BUTTON_PRESS:
                     handle_button_press();
                     break;
-{% endraw %}
 {% for p in peripherals %}
 {% if p.type == 'I2C_Sensor_MPU6050' %}
                 case EVENT_MPU6050_ALERT:
@@ -61,49 +73,49 @@ void EventMgr_Task(void *pvParameters)
                     break;
 {% endif %}
 {% endfor %}
-#ifndef TEST
+{% if has_rtc %}
                 case EVENT_RTC_TICK:
                     RTC_ProcessTimers();
                     break;
-#endif
+{% endif %}
                 default:
                     break;
             }
+{% endif %}
+#else
+            /* 测试模式：仅标记事件已处理 */
+            (void)evt;
+#endif
         }
     }
 }
 
-/* ---------- Handler implementations ---------- */
-static void handle_minute_tick(void)
-{
+{% if not has_business_flow %}
+/* 经典事件处理器（测试环境不参与） */
+#ifndef TEST
+static void handle_minute_tick(void) {
     static uint32_t min_count = 0;
     if (++min_count >= 30) {
         min_count = 0;
-        if (led_task_handle) {
-            xTaskNotify(led_task_handle, 0, eSetBits);
-        }
+        {% if has_led_task %}
+        if (led_task_handle) xTaskNotify(led_task_handle, 0, eSetBits);
+        {% endif %}
     }
 }
-
-static void handle_hour_tick(void)
-{
-    /* Hourly tasks */
+static void handle_hour_tick(void) {}
+static void handle_button_press(void) {
+    {% if has_led_task %}
+    if (led_task_handle) xTaskNotify(led_task_handle, 0, eSetBits);
+    {% endif %}
 }
-
-static void handle_button_press(void)
-{
-    if (led_task_handle) {
-        xTaskNotify(led_task_handle, 0, eSetBits);
-    }
-}
-
 {% for p in peripherals %}
 {% if p.type == 'I2C_Sensor_MPU6050' %}
-static void handle_mpu6050_alert(void)
-{
-    if (led_task_handle) {
-        xTaskNotify(led_task_handle, 0, eSetBits);
-    }
+static void handle_mpu6050_alert(void) {
+    {% if has_led_task %}
+    if (led_task_handle) xTaskNotify(led_task_handle, 0, eSetBits);
+    {% endif %}
 }
 {% endif %}
 {% endfor %}
+#endif /* !TEST */
+{% endif %}

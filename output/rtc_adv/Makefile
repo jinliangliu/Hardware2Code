@@ -82,6 +82,7 @@ C_SOURCES += \
 ./src/sleep.c \
 ./src/stm32g0xx_it.c \
 ./src/event_mgr.c \
+./src/statemachine.c \
 ./src/drivers/drv_rtc.c \
 
 # Assembly startup

@@ -30,3 +30,16 @@ app_tasks:
   - name: led_task
     priority: 2
     stack_size: 128
+business_flow:
+  initial_state: "IDLE"
+  states:
+    - name: "IDLE"
+      transitions:
+        - event: "BUTTON_PRESS"
+          target: "ACTIVE"
+          actions:
+            - "toggle_led"
+    - name: "ACTIVE"
+      transitions:
+        - event: "RTC_TICK"
+          target: "IDLE"

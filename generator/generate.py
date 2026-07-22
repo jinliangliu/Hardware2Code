@@ -16,7 +16,6 @@ from jinja2 import Environment, FileSystemLoader
 from context_builder import build_context
 from validator import validate_hardware
 
-
 def load_yaml(file_path: str) -> dict:
     """加载硬件描述 YAML 文件"""
     with open(file_path, "r", encoding="utf-8") as f:
@@ -114,12 +113,33 @@ def render_templates(env: Environment, context: dict, output_dir: str):
     if context.get("has_rtc"):
         test_templates["test/test_rtc.c.j2"] = os.path.join(test_dir, "test_rtc.c")
         test_templates["test/test_event_mgr.c.j2"] = os.path.join(test_dir, "test_event_mgr.c")
+        test_templates["test/test_rtc_timers.c.j2"] = os.path.join(test_dir, "test_rtc_timers.c")
 
     # 如果存在 MPU6050，添加其测试
     for p in context.get("peripherals", []):
         if p.get("type") == "I2C_Sensor_MPU6050":
             test_templates["test/test_mpu6050.c.j2"] = os.path.join(test_dir, "test_mpu6050.c")
-            break  # 只加一次
+            break
+    
+    if context.get('has_spi_flash'):
+        test_templates["test/test_spi_flash.c.j2"] = os.path.join(test_dir, "test_spi_flash.c")
+        
+    if context.get('has_pwm'):
+        test_templates["test/test_pwm.c.j2"] = os.path.join(test_dir, "test_pwm.c")
+
+    # 如果存在业务流程，添加状态机模板
+    if context.get('has_business_flow'):
+        test_templates["test/test_statemachine.c.j2"] = os.path.join(test_dir, "test_statemachine.c")
+        state_templates = {
+            "app/statemachine.c.j2": os.path.join(output_dir, "src", "statemachine.c"),
+            "app/statemachine.h.j2": os.path.join(output_dir, "src", "statemachine.h"),
+        }
+        for tmpl, out in state_templates.items():
+            template = env.get_template(tmpl)
+            rendered = template.render(context)
+            with open(out, 'w', encoding="utf-8", newline="\n") as f:
+                f.write(rendered)
+            print(f"Generated: {out}")
 
     for tmpl_name, out_path in test_templates.items():
         template = env.get_template(tmpl_name)
@@ -159,9 +179,9 @@ def generate(hardware_yaml: str, output_dir: str):
     # 构建上下文
     context = build_context(hw, project_name)
 
-    # 初始化 Jinja2 环境，模板目录为 templates/
+    # 初始化 Jinja2 环境，模板目录为 templates, 显式指定 UTF-8 编码/
     env = Environment(
-        loader=FileSystemLoader("templates"),
+        loader=FileSystemLoader("templates", encoding='utf-8'),
         trim_blocks=True,
         lstrip_blocks=True,
     )
