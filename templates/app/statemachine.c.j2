@@ -84,6 +84,13 @@ static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_
 {% endfor %}
 {% endif %}
 
+/* ========== 子状态栈（仅单区域） ========== */
+{% if not business_flow.regions %}
+#define MAX_SUBSTATE_STACK 4
+static uint32_t substate_stack[MAX_SUBSTATE_STACK];
+static int substate_stack_top = -1;
+{% endif %}
+
 /* ========== 动作实现宏 ========== */
 {% macro action_impl(action, region_name='') -%}
 {% if action == 'toggle_led' %}
@@ -137,6 +144,23 @@ static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_
         }
         {% endif %}
     }
+{% elif action.startswith('enter_substate ') %}
+    {
+        uint32_t target = {{ 'STATE_' + action.split(' ')[1] }};
+        if (substate_stack_top < MAX_SUBSTATE_STACK - 1) {
+            substate_stack[++substate_stack_top] = current_state;
+            current_state = target;
+            /* 执行目标子状态的 on_entry（需用户自行处理或后续扩展） */
+        }
+    }
+{% elif action == 'return' %}
+    {
+        if (substate_stack_top >= 0) {
+            current_state = substate_stack[substate_stack_top--];
+            event_t evt_ret = { .id = EVENT_RETURN, .param = 0 };
+            statemachine_process(&evt_ret);
+        }
+    }
 {% endif %}
 {%- endmacro %}
 
@@ -153,7 +177,7 @@ static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_
 {% endfor %}
 {% endmacro %}
 
-/* ========== 定时器收集宏（排除 defer 生成的定时器） ========== */
+/* ========== 定时器收集宏 ========== */
 {% set all_actions = [] %}
 {% macro collect_timers(states, region_name='') %}
 {% for state in states %}
@@ -201,7 +225,7 @@ static void {{ action.split(' ')[1] }}_cb(void *arg) {
 }
 {% endfor %}
 
-/* ========== 延迟动作定时器回调（单独生成句柄和回调） ========== */
+/* ========== 延迟动作定时器回调 ========== */
 {% for d in defer_actions %}
 static rtc_timer_handle_t {{ d.timer_name }}_handle = NULL;
 static void {{ d.timer_name }}_cb(void *arg) {

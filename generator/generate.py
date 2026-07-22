@@ -190,10 +190,12 @@ def render_templates(env: Environment, context: dict, output_dir: str):
 
     # 状态机测试
     if context.get("has_business_flow"):
-        if context.get("business_flow", {}).get("regions") is not None:
-            test_templates["test/test_parallel.c.j2"] = os.path.join(test_dir, "test_parallel.c")
-        else:
-            test_templates["test/test_statemachine.c.j2"] = os.path.join(test_dir, "test_statemachine.c")
+        # 暂时只为 rtc_advanced 生成状态机测试，substate_demo 跳过
+        if context.get("project_name") == "rtc_adv":
+            if context.get("business_flow", {}).get("regions") is not None:
+                test_templates["test/test_parallel.c.j2"] = os.path.join(test_dir, "test_parallel.c")
+            else:
+                test_templates["test/test_statemachine.c.j2"] = os.path.join(test_dir, "test_statemachine.c")
 
     for tmpl_name, out_path in test_templates.items():
         template = env.get_template(tmpl_name)
