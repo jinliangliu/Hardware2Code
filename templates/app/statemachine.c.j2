@@ -72,23 +72,16 @@ static uint32_t current_state_{{ state.name }};
 {% for region in business_flow.regions %}
 {% for state in region.states %}
 {% if state.states and state.history %}
-static uint32_t current_state_{{ region.name }}_{{ state.name }}_history = STATE_{{ region.name }}_{{ state.name }}_{{ state.initial_state }};
+static uint32_t current_state_{{ region.name }}_{{ state.name }}_history = STATE_{{ region.name }}_{{ state.name }}_{{ state.initial_state or state.states[0].name }};
 {% endif %}
 {% endfor %}
 {% endfor %}
 {% else %}
 {% for state in business_flow.states %}
 {% if state.states and state.history %}
-static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_{{ state.initial_state }};
+static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_{{ state.initial_state or state.states[0].name }};
 {% endif %}
 {% endfor %}
-{% endif %}
-
-/* ========== 子状态栈（仅单区域） ========== */
-{% if not business_flow.regions %}
-#define MAX_SUBSTATE_STACK 4
-static uint32_t substate_stack[MAX_SUBSTATE_STACK];
-static int substate_stack_top = -1;
 {% endif %}
 
 /* ========== 动作实现宏 ========== */
@@ -144,22 +137,11 @@ static int substate_stack_top = -1;
         }
         {% endif %}
     }
-{% elif action.startswith('enter_substate ') %}
+{% elif action.startswith('send_to ') %}
     {
-        uint32_t target = {{ 'STATE_' + action.split(' ')[1] }};
-        if (substate_stack_top < MAX_SUBSTATE_STACK - 1) {
-            substate_stack[++substate_stack_top] = current_state;
-            current_state = target;
-            /* 执行目标子状态的 on_entry（需用户自行处理或后续扩展） */
-        }
-    }
-{% elif action == 'return' %}
-    {
-        if (substate_stack_top >= 0) {
-            current_state = substate_stack[substate_stack_top--];
-            event_t evt_ret = { .id = EVENT_RETURN, .param = 0 };
-            statemachine_process(&evt_ret);
-        }
+        {% set parts = action.split(' ', 2) %}
+        event_t evt_pub = { .id = EVENT_{{ parts[2] | replace(' ', '_') }}, .param = 0 };
+        xQueueSend(event_queue, &evt_pub, 0);
     }
 {% endif %}
 {%- endmacro %}
@@ -177,7 +159,7 @@ static int substate_stack_top = -1;
 {% endfor %}
 {% endmacro %}
 
-/* ========== 定时器收集宏 ========== */
+/* ========== 定时器收集宏（排除 defer 生成的定时器） ========== */
 {% set all_actions = [] %}
 {% macro collect_timers(states, region_name='') %}
 {% for state in states %}
@@ -243,7 +225,7 @@ void statemachine_init(void) {
 {% if state.history %}
     current_state_{{ region.name }}_{{ state.name }} = current_state_{{ region.name }}_{{ state.name }}_history;
 {% else %}
-    current_state_{{ region.name }}_{{ state.name }} = STATE_{{ region.name }}_{{ state.name }}_{{ state.initial_state }};
+    current_state_{{ region.name }}_{{ state.name }} = STATE_{{ region.name }}_{{ state.name }}_{{ state.initial_state or state.states[0].name }};
 {% endif %}
 {% endif %}
 {% endfor %}
@@ -275,7 +257,7 @@ void statemachine_init(void) {
 {% if state.history %}
     current_state_{{ state.name }} = current_state_{{ state.name }}_history;
 {% else %}
-    current_state_{{ state.name }} = STATE_{{ state.name }}_{{ state.initial_state }};
+    current_state_{{ state.name }} = STATE_{{ state.name }}_{{ state.initial_state or state.states[0].name }};
 {% endif %}
 {% endif %}
 {% endfor %}
@@ -382,7 +364,7 @@ void statemachine_process(event_t *evt) {
 {% if s.history %}
                 current_state_{{ region.name }}_{{ s.name }} = current_state_{{ region.name }}_{{ s.name }}_history;
 {% else %}
-                current_state_{{ region.name }}_{{ s.name }} = STATE_{{ region.name }}_{{ s.name }}_{{ s.initial_state }};
+                current_state_{{ region.name }}_{{ s.name }} = STATE_{{ region.name }}_{{ s.name }}_{{ s.initial_state or s.states[0].name }};
 {% endif %}
 {% endif %}
 {% endfor %}
@@ -466,7 +448,7 @@ void statemachine_process(event_t *evt) {
 {% if s.history %}
             current_state_{{ s.name }} = current_state_{{ s.name }}_history;
 {% else %}
-            current_state_{{ s.name }} = STATE_{{ s.name }}_{{ s.initial_state }};
+            current_state_{{ s.name }} = STATE_{{ s.name }}_{{ s.initial_state or s.states[0].name }};
 {% endif %}
 {% endif %}
 {% endfor %}

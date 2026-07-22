@@ -187,7 +187,9 @@ def render_templates(env: Environment, context: dict, output_dir: str):
 
     if context.get("has_uart"):
         test_templates["test/test_uart.c.j2"] = os.path.join(test_dir, "test_uart.c")
-
+    # if context.get('has_substate'):
+    #     test_templates["test/test_substate.c.j2"] = os.path.join(test_dir, "test_substate.c")
+        
     # 状态机测试
     if context.get("has_business_flow"):
         # 暂时只为 rtc_advanced 生成状态机测试，substate_demo 跳过

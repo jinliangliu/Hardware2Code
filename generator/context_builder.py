@@ -126,6 +126,39 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
     has_led = any(pin.get('label') == 'LED' for pin in pins)
     has_led_task = any(t.get('name') == 'led_task' for t in app_tasks)
 
+    # ---------- 确保每个复合状态都有 initial_state ----------
+    def fix_initial_state(states):
+        for s in states:
+            if s.get('states'):
+                if not s.get('initial_state'):
+                    s['initial_state'] = s['states'][0]['name']
+                # 递归修复子状态
+                fix_initial_state(s['states'])
+
+    if business_flow:
+        if business_flow.get('states'):
+            fix_initial_state(business_flow['states'])
+        if business_flow.get('regions'):
+            for region in business_flow['regions']:
+                fix_initial_state(region['states'])
+
+    # 检查是否有子状态
+    def has_nested_states(states):
+        for s in states:
+            if s.get('states'):
+                return True
+        return False
+
+    has_substate = False
+    if business_flow:
+        if business_flow.get('states'):
+            has_substate = has_nested_states(business_flow['states'])
+        if business_flow.get('regions'):
+            for region in business_flow['regions']:
+                if has_nested_states(region['states']):
+                    has_substate = True
+                    break
+
     # ---------- HIL 配置 ----------
     hil_config = hw.get('hil', {})
     if not hil_config:
@@ -177,7 +210,6 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
     }
 """
             })
-        # 可继续添加其他外设的 HIL 测试
     if not hil_tests:
         hil_tests.append({
             'name': 'test_dummy',
@@ -256,6 +288,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         "has_led_task": has_led_task,
         "has_business_flow": has_business_flow,
         "business_flow": business_flow,
+        "has_substate": has_substate,
         "hil": hil_config,
         "hil_tests": hil_tests,
         "hil_mode": hil_mode,
@@ -263,7 +296,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         "stack_size": hw.get("stack_size", "0x400"),
         "static_dir_absolute": static_dir_absolute,
         "has_event_mgr": True,
-        "defer_actions": defer_actions,   # 新增
+        "defer_actions": defer_actions,
     }
 
     return context

@@ -25,17 +25,12 @@ static uint32_t current_state_PROCESS;
 
 /* ========== 历史状态变量 ========== */
 
-/* ========== 子状态栈（仅单区域） ========== */
-#define MAX_SUBSTATE_STACK 4
-static uint32_t substate_stack[MAX_SUBSTATE_STACK];
-static int substate_stack_top = -1;
-
 /* ========== 动作实现宏 ========== */
 
 /* ========== 动作列表处理宏 ========== */
 
 
-/* ========== 定时器收集宏 ========== */
+/* ========== 定时器收集宏（排除 defer 生成的定时器） ========== */
 
         
 
@@ -96,14 +91,7 @@ void statemachine_process(event_t *evt) {
                 break;
             case STATE_PROCESS_STEP2:
                 if (evt->id == EVENT_RTC_TICK) {
-                            {
-        if (substate_stack_top >= 0) {
-            current_state = substate_stack[substate_stack_top--];
-            event_t evt_ret = { .id = EVENT_RETURN, .param = 0 };
-            statemachine_process(&evt_ret);
-        }
-    }
-
+                        
 
                     current_state_PROCESS = STATE_PROCESS_;
                     handled = 1;
