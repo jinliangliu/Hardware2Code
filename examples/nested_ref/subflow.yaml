@@ -1,0 +1,20 @@
+business_flow:
+  initial_state: "SUB_IDLE"
+  variables:
+    - name: "local_counter"
+      type: "uint32_t"
+      initial: 0
+  states:
+    - name: "SUB_IDLE"
+      transitions:
+        - event: "RTC_TICK"
+          target: "SUB_ACTIVE"
+          actions:
+            - "calc nested_local_counter = nested_local_counter + 1"
+    - name: "SUB_ACTIVE"
+      transitions:
+        - event: "RTC_TICK"
+          target: "SUB_IDLE"
+          actions:
+            - "when nested_local_counter > 2 => toggle_led"
+            - "when nested_local_counter > 4 => publish_async HIGH_COUNT"

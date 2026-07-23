@@ -12,6 +12,10 @@
 /* Include event manager header (always present) */
 #include "event_mgr.h"
 
+{% if has_business_flow %}
+#include "statemachine.h"
+{% endif %}
+
 /* GPIO initialization function */
 void MX_GPIO_Init(void);
 

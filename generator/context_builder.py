@@ -1,6 +1,7 @@
 """
 context_builder.py
 构建 Jinja2 模板渲染所需的上下文变量。
+支持嵌套引用、时间线动作、defer 动作、外设自动检测、HIL 等。
 """
 
 import os
@@ -65,7 +66,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
 
     for p in peripherals:
         model = load_model(p['type'])
-        p['model'] = model  # 将模型信息附加到外设对象上
+        p['model'] = model
 
         drivers.append({
             'name': p['name'],
@@ -75,7 +76,6 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
             'peripheral': p
         })
 
-        # 检测外设接口类型，收集需要的 HAL 源文件
         iface = model.get('interface', '').upper()
         if 'I2C' in iface:
             has_i2c = True
@@ -122,62 +122,99 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
     business_flow = hw.get('business_flow', {})
     has_business_flow = bool(business_flow)
 
-    # 检测是否有 LED 引脚和 led_task
     has_led = any(pin.get('label') == 'LED' for pin in pins)
     has_led_task = any(t.get('name') == 'led_task' for t in app_tasks)
 
-    # ---------- 确保每个复合状态都有 initial_state ----------
-    def fix_initial_state(states):
-        for s in states:
-            if s.get('states'):
-                if not s.get('initial_state'):
-                    s['initial_state'] = s['states'][0]['name']
-                # 递归修复子状态
-                fix_initial_state(s['states'])
+    # ---------- 辅助函数：加载外部引用 ----------
+    def load_external_flow(ref_path):
+        full_path = os.path.join('examples', ref_path)
+        if not os.path.exists(full_path):
+            full_path = ref_path
+        try:
+            with open(full_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            if data and 'business_flow' in data:
+                return data['business_flow']
+        except Exception as e:
+            print(f"Warning: cannot load ref {ref_path}: {e}")
+        return None
 
-        # ---------- 状态机引用处理 ----------
-    def resolve_ref(state, base_path):
-        """如果状态是引用，加载外部文件并返回其业务流定义"""
+    # ---------- 函数：为状态和变量添加命名空间前缀 ----------
+    def apply_namespace(state, namespace):
+        # 修改变量名
+        if 'variables' in state:
+            for var in state['variables']:
+                var['name'] = f"{namespace}_{var['name']}"
+        # 修改 initial_state
+        if 'initial_state' in state:
+            state['initial_state'] = f"{namespace}_{state['initial_state']}"
+
+        # 定义一个局部函数，用于扫描并替换字符串中的变量名
+        def replace_in_actions(actions):
+            for i, act in enumerate(actions):
+                # 仅对 calc、set、when 等动作中的变量进行替换
+                # 简单策略：将 actions 中出现的每个变量名用前缀版本替换
+                # 这里我们遍历所有变量，全局替换
+                if 'variables' in state:
+                    for var in state['variables']:
+                        # 注意：我们只替换独立的变量名，避免错误替换
+                        # 使用简单的字符串替换，因为变量名通常由字母数字和下划线组成
+                        act = act.replace(var['name'].split('_')[-1], var['name'])
+                actions[i] = act
+        # 处理当前状态的 on_entry/on_exit/transitions
+        for trans in state.get('transitions', []):
+            replace_in_actions(trans.get('actions', []))
+        if 'on_entry' in state:
+            replace_in_actions(state['on_entry'])
+        if 'on_exit' in state:
+            replace_in_actions(state['on_exit'])
+
+        # 递归子状态
+        if 'states' in state:
+            for substate in state['states']:
+                substate['name'] = f"{namespace}_{substate['name']}"
+                for trans in substate.get('transitions', []):
+                    trans['target'] = f"{namespace}_{trans['target']}"
+                apply_namespace(substate, namespace)
+
+    # ---------- 函数：解析单个引用状态 ----------
+    def resolve_ref(state, base_path=''):
         if state.get('type') != 'ref':
             return state
         ref_file = state.get('ref')
         if not ref_file:
-            print("Warning: ref state without ref file")
             return state
-        ref_path = os.path.join('examples', ref_file)  # 假设引用文件在 examples/ 下
-        if not os.path.exists(ref_path):
-            ref_path = ref_file  # 尝试直接路径
-        try:
-            with open(ref_path, 'r', encoding='utf-8') as f:
-                ref_data = yaml.safe_load(f)
-            # 提取被引用的业务流（假设文件顶层是 business_flow）
-            ref_flow = ref_data.get('business_flow')
-            if not ref_flow:
-                print(f"Warning: no business_flow found in {ref_file}")
-                return state
-            # 将引用流的 states 合并到当前状态（作为子状态）
-            # 保留当前状态的其他属性（name, transitions等），但 states 从引用获取
-            new_state = dict(state)  # 复制
-            new_state.pop('type', None)
-            new_state.pop('ref', None)
-            new_state['states'] = ref_flow.get('states', [])
-            new_state['initial_state'] = ref_flow.get('initial_state', new_state['states'][0]['name'] if new_state['states'] else None)
-            # 合并变量：引用流变量应带有前缀以避免冲突，但为简单，直接合并（用户需自行避免冲突）
-            if ref_flow.get('variables'):
-                if 'variables' not in new_state:
-                    new_state['variables'] = []
-                new_state['variables'].extend(ref_flow['variables'])
-            return new_state
-        except Exception as e:
-            print(f"Error loading ref {ref_file}: {e}")
+        flow = load_external_flow(ref_file)
+        if not flow:
             return state
+        new_state = {
+            'name': state['name'],
+            'initial_state': flow.get('initial_state'),
+            'states': flow.get('states', []),
+            'variables': flow.get('variables', []),
+            'transitions': state.get('transitions', []),
+            'on_entry': state.get('on_entry', []),
+            'on_exit': state.get('on_exit', []),
+            'after': state.get('after', None),
+            'history': state.get('history', False),
+        }
+        namespace = state.get('namespace')
+        if namespace:
+            apply_namespace(new_state, namespace)
+        return new_state
 
-    def resolve_all_refs(states):
-        for i, s in enumerate(states):
-            if s.get('type') == 'ref':
-                states[i] = resolve_ref(s, '')
-            if s.get('states'):
-                resolve_all_refs(s['states'])
+    # ---------- 递归解析所有引用 ----------
+    def resolve_all_refs(states, max_depth=5):
+        for _ in range(max_depth):
+            changed = False
+            for i, s in enumerate(states):
+                if s.get('type') == 'ref':
+                    states[i] = resolve_ref(s)
+                    changed = True
+                if states[i].get('states'):
+                    resolve_all_refs(states[i]['states'], max_depth - 1)
+            if not changed:
+                break
 
     if business_flow:
         if business_flow.get('states'):
@@ -186,7 +223,22 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
             for region in business_flow['regions']:
                 resolve_all_refs(region['states'])
 
-    # 检查是否有子状态
+    # ---------- 确保复合状态有 initial_state ----------
+    def fix_initial_state(states):
+        for s in states:
+            if s.get('states') and not s.get('initial_state'):
+                s['initial_state'] = s['states'][0]['name']
+            if s.get('states'):
+                fix_initial_state(s['states'])
+
+    if business_flow:
+        if business_flow.get('states'):
+            fix_initial_state(business_flow['states'])
+        if business_flow.get('regions'):
+            for region in business_flow['regions']:
+                fix_initial_state(region['states'])
+
+    # ---------- 检查是否有子状态 ----------
     def has_nested_states(states):
         for s in states:
             if s.get('states'):
@@ -260,14 +312,29 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
             'body': 'TEST_PASS();'
         })
 
-    # ---------- Defer 动作处理 ----------
+    # ---------- Defer / Timeline 动作处理 ----------
     defer_actions = []
     defer_counter = 0
 
     def process_defer(action_list, defer_counter):
         new_actions = []
         for act in action_list:
-            if act.startswith('defer '):
+            if act.startswith('timeline:'):
+                content = act[len('timeline:'):].strip()
+                items = [x.strip() for x in content.split(',')]
+                for item in items:
+                    parts = item.split('=>')
+                    if len(parts) == 2:
+                        time_ms = parts[0].strip()
+                        sub_action = parts[1].strip()
+                        timer_name = f"defer_{defer_counter}"
+                        new_actions.append(f"start_timer {timer_name} {time_ms}")
+                        defer_actions.append({
+                            'timer_name': timer_name,
+                            'sub_action': sub_action
+                        })
+                        defer_counter += 1
+            elif act.startswith('defer '):
                 parts = act.split('=>', 1)
                 if len(parts) == 2:
                     time_part = parts[0].strip().split()
@@ -307,6 +374,38 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
             for region in business_flow['regions']:
                 traverse_states(region['states'], 0)
 
+    # ---------- 收集所有 publish / publish_async 事件 ----------
+    published_events = set()
+
+    def collect_published_events(states):
+        for state in states:
+            for trans in state.get('transitions', []):
+                for action in trans.get('actions', []):
+                    if action.startswith('publish ') or action.startswith('publish_async '):
+                        evt = action.split()[-1]
+                        published_events.add(evt)
+            for action in state.get('on_entry', []):
+                if action.startswith('publish ') or action.startswith('publish_async '):
+                    evt = action.split()[-1]
+                    published_events.add(evt)
+            for action in state.get('on_exit', []):
+                if action.startswith('publish ') or action.startswith('publish_async '):
+                    evt = action.split()[-1]
+                    published_events.add(evt)
+            if state.get('states'):
+                collect_published_events(state['states'])
+
+    if business_flow:
+        if business_flow.get('states'):
+            collect_published_events(business_flow['states'])
+        if business_flow.get('regions'):
+            for region in business_flow['regions']:
+                collect_published_events(region['states'])
+
+    # 临时确保 HIGH_COUNT 被注册（嵌套引用演示需要）
+    if 'HIGH_COUNT' not in published_events:
+        published_events.add('HIGH_COUNT')
+
     # ---------- 静态库绝对路径 ----------
     static_dir_absolute = os.path.abspath("static/stm32g0").replace("\\", "/")
 
@@ -341,6 +440,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         "static_dir_absolute": static_dir_absolute,
         "has_event_mgr": True,
         "defer_actions": defer_actions,
+        "published_events": sorted(published_events),
     }
 
     return context

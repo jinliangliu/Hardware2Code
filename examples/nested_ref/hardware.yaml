@@ -1,0 +1,55 @@
+mcu:
+  part: STM32G0B1RET6
+  core_clock_mhz: 64
+pins:
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: falling
+    notify_task: "led_task"
+sleep:
+  mode: STOP1
+app_tasks:
+  - name: led_task
+    priority: 2
+    stack_size: 128
+  - name: rtc_demo_task
+    priority: 3
+    stack_size: 512
+
+peripherals:
+  - name: "rtc"
+    type: "Internal_RTC"
+    interface: "internal"
+    clock_source: "LSE"
+    features:
+      - calendar
+
+business_flow:
+  initial_state: "MAIN_IDLE"
+  variables:
+    # 变量名必须与 apply_namespace 处理后的名字一致，这里使用 nested_ 前缀
+    - name: "nested_local_counter"
+      type: "uint32_t"
+      initial: 0
+  states:
+    - name: "MAIN_IDLE"
+      transitions:
+        - event: "BUTTON_PRESS"
+          target: "DEEP"
+    - name: "DEEP"
+      type: "ref"
+      ref: "nested_ref/subflow.yaml"
+      namespace: "nested"
+      transitions:
+        - event: "HIGH_COUNT"
+          target: "MAIN_IDLE"
+          actions:
+            - "toggle_led"

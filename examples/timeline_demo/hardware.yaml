@@ -20,11 +20,17 @@ app_tasks:
   - name: led_task
     priority: 2
     stack_size: 128
+  - name: rtc_demo_task
+    priority: 3
+    stack_size: 512
 
 peripherals:
   - name: "rtc"
     type: "Internal_RTC"
     interface: "internal"
+    clock_source: "LSE"
+    features:
+      - calendar
 
 business_flow:
   initial_state: "IDLE"
@@ -32,8 +38,11 @@ business_flow:
     - name: "IDLE"
       transitions:
         - event: "BUTTON_PRESS"
-          target: "BLINK"
-    - name: "BLINK"
-      type: "ref"
-      ref: "common_subflow.yaml"
-      namespace: "blinker"   # 变量和状态将带有 blinker_ 前缀
+          target: "PLAYING"
+    - name: "PLAYING"
+      after: 5000   # 5 秒后自动返回 IDLE
+      on_entry:
+        - "timeline: 1000=>toggle_led, 2000=>toggle_led, 3000=>toggle_led"
+      transitions:
+        - event: "TIMER_EXPIRED_PLAYING_timeout"
+          target: "IDLE"

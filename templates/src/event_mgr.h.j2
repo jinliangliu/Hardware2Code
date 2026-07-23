@@ -23,7 +23,7 @@ typedef enum {
 {% endfor %}
     EVENT_RETURN,   /* 子状态返回事件 */
 
-/* ========== 动态定时器事件（从 start_timer 和 after 生成） ========== */
+/* ========== 动态定时器事件（由模板自动收集） ========== */
 {% set all_timer_events = [] %}
 {% macro collect_timer_events(states, prefix='') %}
 {% for state in states %}
@@ -77,52 +77,9 @@ typedef enum {
     {{ evt }},
 {% endfor %}
 
-/* ========== 动态发布事件（从 publish 和 publish_async 动作生成） ========== */
-{% set published_events = [] %}
-{% macro collect_publishes(states) %}
-{% for state in states %}
-    {% for trans in state.transitions %}
-        {% for action in trans.actions %}
-            {% if action.startswith('publish ') or action.startswith('publish_async ') %}
-                {% set evt = 'EVENT_' + action.split()[-1] | replace(' ', '_') %}
-                {% if evt not in published_events %}
-                    {% set _ = published_events.append(evt) %}
-                {% endif %}
-            {% endif %}
-        {% endfor %}
-    {% endfor %}
-    {% for action in state.get('on_entry', []) %}
-        {% if action.startswith('publish ') or action.startswith('publish_async ') %}
-            {% set evt = 'EVENT_' + action.split()[-1] | replace(' ', '_') %}
-            {% if evt not in published_events %}
-                {% set _ = published_events.append(evt) %}
-            {% endif %}
-        {% endif %}
-    {% endfor %}
-    {% for action in state.get('on_exit', []) %}
-        {% if action.startswith('publish ') or action.startswith('publish_async ') %}
-            {% set evt = 'EVENT_' + action.split()[-1] | replace(' ', '_') %}
-            {% if evt not in published_events %}
-                {% set _ = published_events.append(evt) %}
-            {% endif %}
-        {% endif %}
-    {% endfor %}
-    {% if state.states %}
-        {{ collect_publishes(state.states) }}
-    {% endif %}
-{% endfor %}
-{% endmacro %}
-
-{% if business_flow.regions %}
-{% for region in business_flow.regions %}
-{{ collect_publishes(region.states) }}
-{% endfor %}
-{% else %}
-{{ collect_publishes(business_flow.states) }}
-{% endif %}
-
+/* ========== 动态发布事件（由生成器提供） ========== */
 {% for evt in published_events %}
-    {{ evt }},
+    EVENT_{{ evt }},
 {% endfor %}
 
     EVENT_MAX

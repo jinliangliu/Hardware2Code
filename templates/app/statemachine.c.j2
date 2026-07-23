@@ -84,6 +84,12 @@ static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_
 {% endfor %}
 {% endif %}
 
+{% if has_led_task %}
+#ifndef TEST
+extern void led_task_notify(void);
+#endif
+{% endif %}
+
 /* ========== 动作实现宏 ========== */
 {% macro action_impl(action, region_name='') -%}
 {% if action == 'toggle_led' %}

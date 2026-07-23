@@ -6,9 +6,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-{% if has_rtc %}
 #include "drv_rtc.h"
-{% endif %}
 
 extern void SystemClock_Config(void);
 
@@ -33,12 +31,10 @@ void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
     {
         HAL_SuspendTick();
 
-{% if has_rtc %}
         const uint32_t counts_per_tick = 2;
         uint32_t req_counts = xExpectedIdleTime * counts_per_tick;
         if( req_counts > 0xFFFF ) req_counts = 0xFFFF;
         RTC_SetWakeUpCounter( req_counts );
-{% endif %}
 
         __disable_irq();
 #ifdef DEBUG
@@ -50,8 +46,6 @@ void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
 
         SystemClock_Config();
         HAL_ResumeTick();
-{% if has_rtc %}
         vTaskStepTick( xExpectedIdleTime );
-{% endif %}
     }
 }

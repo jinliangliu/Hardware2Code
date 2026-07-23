@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hardware2Code 业务逻辑 DSL 设计指南</title>
+  <style>
+    :root {
+      --primary: #2d3748;
+      --accent: #3182ce;
+      --bg: #f7fafc;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #1a202c;
+      --text-muted: #718096;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    header {
+      background: linear-gradient(135deg, #2b6cb0 0%, #2d3748 100%);
+      color: white;
+      padding: 3rem 1.5rem;
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 2.8rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    header p {
+      font-size: 1.2rem;
+      opacity: 0.9;
+      margin-top: 0.5rem;
+    }
+    h2 {
+      font-size: 2rem;
+      border-bottom: 3px solid var(--accent);
+      padding-bottom: 0.5rem;
+      margin-top: 3rem;
+      margin-bottom: 1.5rem;
+    }
+    h3 {
+      font-size: 1.5rem;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      color: var(--accent);
+    }
+    h4 {
+      font-size: 1.2rem;
+      margin-top: 1.5rem;
+      color: var(--primary);
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    pre {
+      background: #1a202c;
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 1.2rem 1.5rem;
+      overflow-x: auto;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      margin: 1rem 0;
+    }
+    code {
+      font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    }
+    .inline-code {
+      background: #edf2f7;
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: #c7254e;
+    }
+    .tag {
+      display: inline-block;
+      background: #ebf8ff;
+      color: #2b6cb0;
+      border-radius: 4px;
+      padding: 0.2em 0.6em;
+      font-size: 0.8em;
+      font-weight: 600;
+      margin-right: 0.5em;
+    }
+    .checklist {
+      list-style: none;
+      padding-left: 0;
+    }
+    .checklist li::before {
+      content: '✅ ';
+      font-size: 1.1em;
+    }
+    .warning {
+      background: #fffaf0;
+      border-left: 4px solid #ed8936;
+      padding: 0.8rem 1rem;
+      margin: 1.5rem 0;
+      border-radius: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.6rem 1rem;
+      text-align: left;
+    }
+    th {
+      background: #edf2f7;
+      font-weight: 600;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    footer {
+      text-align: center;
+      color: var(--text-muted);
+      margin-top: 4rem;
+      padding: 1.5rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Hardware2Code DSL 设计指南</h1>
+  <p>从硬件描述到业务逻辑——嵌入式状态机 DSL 完全参考</p>
+</header>
+
+<div class="container">
+
+  <section class="card">
+    <h2>一、项目概述</h2>
+    <p>Hardware2Code 是一个面向 STM32 微控制器的模型驱动代码生成工具。它以 <strong>YAML 硬件描述文件</strong> 为核心，自动生成包含 FreeRTOS、HAL 层及业务逻辑的完整工程。业务逻辑 DSL 是其中的核心创新，让开发者通过声明式语法定义复杂的状态机、事件驱动行为和定时动作，而无需手写 C 代码。</p>
+  </section>
+
+  <section class="card">
+    <h2>二、DSL 设计哲学</h2>
+    <ul>
+      <li><strong>声明式描述</strong>：用 YAML 表达“做什么”，而非“怎么做”。</li>
+      <li><strong>事件驱动</strong>：所有行为通过事件触发，事件管理集中化。</li>
+      <li><strong>层次化状态机</strong>：支持单区域、多区域并行以及嵌套复合状态，鼓励模块化设计。</li>
+      <li><strong>动作库丰富</strong>：内置翻转 LED、启动定时器、数学计算、条件执行、事件发布、时间线等常用动作，可组合使用。</li>
+      <li><strong>可测试性</strong>：生成的状态机代码与硬件解耦，配套 Unity 单元测试可直接在 PC 运行。</li>
+      <li><strong>低功耗感知</strong>：业务逻辑与 RTC 唤醒深度集成，空闲时自动进入 STOP 模式。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>三、核心语法参考</h2>
+
+    <h3>3.1 基本结构</h3>
+    <p>在 YAML 中通过 <code>business_flow</code> 节点定义业务逻辑。支持两种模式：<strong>单区域顺序状态机</strong> 和 <strong>多区域并行状态机</strong>。</p>
+
+    <h4>单区域模式</h4>
+    <pre><code>business_flow:
+  initial_state: "IDLE"
+  states:
+    - name: "IDLE"
+      transitions:
+        - event: "BUTTON_PRESS"
+          target: "ACTIVE"
+          actions:
+            - "toggle_led"
+    - name: "ACTIVE"
+      transitions:
+        - event: "RTC_TICK"
+          target: "IDLE"</code></pre>
+
+    <h4>多区域并行模式</h4>
+    <pre><code>business_flow:
+  regions:
+    - name: "button_control"
+      initial_state: "UP"
+      states: ...
+    - name: "led_control"
+      initial_state: "OFF"
+      states: ...</code></pre>
+
+    <h3>3.2 状态</h3>
+    <p>每个状态可包含以下属性：</p>
+    <ul>
+      <li><span class="tag">name</span> 状态名，必需。</li>
+      <li><span class="tag">transitions</span> 转换列表。</li>
+      <li><span class="tag">on_entry / on_exit</span> 进入/退出时执行的动作列表。</li>
+      <li><span class="tag">after</span> 超时毫秒数，到期自动产生 <code>EVENT_TIMER_EXPIRED_&lt;state&gt;_timeout</code> 事件。</li>
+      <li><span class="tag">history</span> 布尔值，为 <code>true</code> 时启用历史状态记忆。</li>
+      <li><span class="tag">states</span> 嵌套子状态定义，形成复合状态。</li>
+    </ul>
+
+    <h3>3.3 转换</h3>
+    <pre><code>transitions:
+  - event: "BUTTON_PRESS"        # 必需，事件名（前缀 EVENT_ 自动补全）
+    target: "ACTIVE"              # 目标状态名
+    guard: "press_count < 3"     # 可选，C 语言条件表达式
+    actions:                     # 可选，触发时执行的动作</code></pre>
+
+    <h3>3.4 动作库</h3>
+    <table>
+      <tr><th>动作语法</th><th>说明</th><th>示例</th></tr>
+      <tr><td><code>toggle_led</code></td><td>翻转 LED（需存在 LED 引脚和 led_task）</td><td><code>toggle_led</code></td></tr>
+      <tr><td><code>start_timer &lt;name&gt; &lt;ms&gt;</code></td><td>创建一次性定时器，到期产生 <code>EVENT_TIMER_EXPIRED_&lt;name&gt;</code></td><td><code>start_timer exit_timer 3000</code></td></tr>
+      <tr><td><code>stop_timer &lt;name&gt;</code></td><td>停止指定定时器</td><td><code>stop_timer exit_timer</code></td></tr>
+      <tr><td><code>set &lt;var&gt; &lt;value|inc|dec&gt;</code></td><td>变量赋值、自增或自减</td><td><code>set press_count inc</code></td></tr>
+      <tr><td><code>calc &lt;var&gt; = &lt;expr&gt;</code></td><td>数学表达式赋值（C 语法）</td><td><code>calc press_count = press_count * 2 + 1</code></td></tr>
+      <tr><td><code>publish &lt;event&gt;</code></td><td>同步发布事件（立即递归调用状态机）</td><td><code>publish EMERGENCY</code></td></tr>
+      <tr><td><code>publish_async &lt;event&gt;</code></td><td>异步发布事件（放入全局事件队列）</td><td><code>publish_async LED_ON</code></td></tr>
+      <tr><td><code>defer &lt;ms&gt; => &lt;action&gt;</code></td><td>延迟执行一个子动作</td><td><code>defer 5000 => toggle_led</code></td></tr>
+      <tr><td><code>when &lt;condition&gt; => &lt;action&gt;</code></td><td>条件执行子动作</td><td><code>when press_count < 3 => toggle_led</code></td></tr>
+      <tr><td><code>send_to &lt;region&gt; &lt;event&gt;</code></td><td>向并行区域发送事件（实际为 publish_async）</td><td><code>send_to led_region LED_ON</code></td></tr>
+      <tr><td><code>timeline: &lt;ms1&gt;=>&lt;action1&gt;, &lt;ms2&gt;=>&lt;action2&gt;, ...</code></td><td>按时间序列执行多个延迟动作</td><td><code>timeline: 1000=>toggle_led, 2000=>publish TIMEOUT</code></td></tr>
+    </table>
+
+    <h3>3.5 变量</h3>
+    <p>变量在 <code>variables</code> 列表中声明，类型直接使用 C 标准类型（如 <code>uint32_t</code>）。并行模式下变量自动添加区域前缀以避免冲突。</p>
+    <pre><code>variables:
+  - name: "press_count"
+    type: "uint32_t"
+    initial: 0</code></pre>
+
+    <h3>3.6 事件</h3>
+    <p>事件分为预定义事件和动态事件。预定义事件包括：</p>
+    <ul>
+      <li><code>EVENT_BUTTON_PRESS</code>、<code>EVENT_RTC_TICK</code>、<code>EVENT_MINUTE_TICK</code> 等</li>
+      <li><code>EVENT_RETURN</code>（子状态返回专用）</li>
+    </ul>
+    <p>动态事件由 <code>start_timer</code>、<code>after</code>、<code>publish</code>/<code>publish_async</code> 自动注册，无需手动声明。</p>
+  </section>
+
+  <section class="card">
+    <h2>四、高级特性</h2>
+
+    <h3>4.1 嵌套引用与变量作用域</h3>
+    <p>通过 <code>type: "ref"</code> 和 <code>ref</code> 字段，可引用外部 YAML 文件中定义的业务流，实现模块化复用。使用 <code>namespace</code> 字段可为被引用流的所有变量和内部状态添加前缀，避免名称冲突。</p>
+    <pre><code>states:
+  - name: "DEEP"
+    type: "ref"
+    ref: "common_subflow.yaml"
+    namespace: "sub"    # 内部变量 local_counter 将变为 sub_local_counter</code></pre>
+    <p>被引用的子状态机可以继续嵌套引用，形成多层结构。</p>
+
+    <h3>4.2 时间线动作</h3>
+    <p><code>timeline</code> 允许在进入状态时启动一系列延迟动作，常用于实现复杂的异步操作序列。</p>
+    <pre><code>on_entry:
+  - "timeline: 1000=>toggle_led, 3000=>toggle_led, 5000=>publish_async TIMEOUT"</code></pre>
+    <p>该动作会自动创建多个 RTC 定时器，并生成对应的回调函数，模板无需修改。</p>
+
+    <h3>4.3 并行区域通信</h3>
+    <p>并行区域（<code>regions</code>）通过全局事件队列进行通信。使用 <code>send_to</code> 或 <code>publish_async</code> 将事件放入队列，目标区域监听对应事件即可响应。</p>
+    <pre><code>actions:
+  - "send_to led_region LED_ON"   # 发送事件到 led_region</code></pre>
+
+    <h3>4.4 历史状态</h3>
+    <p>为复合状态设置 <code>history: true</code>，离开后再进入时会恢复到上一次的子状态，而不是从初始子状态开始。</p>
+  </section>
+
+  <section class="card">
+    <h2>五、并行区域设计规范</h2>
+    <p>当业务需要多个独立模块并发工作时，使用 <code>regions</code> 定义并行区域。每个区域拥有自己的状态、变量和转换，通过全局事件队列通信。</p>
+
+    <h3>5.1 区域划分原则</h3>
+    <ul>
+      <li><strong>功能解耦</strong>：按硬件外设或业务功能划分（如“按键处理”、“LED 控制”、“传感器读取”）。</li>
+      <li><strong>独立状态</strong>：每个区域有独立的状态变量，互不干扰。</li>
+      <li><strong>事件通信</strong>：使用 <code>send_to</code> 或 <code>publish_async</code> 发送自定义事件，通过事件队列传递给目标区域。</li>
+    </ul>
+
+    <h3>5.2 事件命名指南</h3>
+    <ul>
+      <li><strong>使用 <code>UPPER_SNAKE_CASE</code></strong>：如 <code>LED_ON</code>、<code>MOTOR_START</code>。</li>
+      <li><strong>添加区域前缀避免冲突</strong>：例如 <code>BUTTON_LED_ON</code> 而非直接 <code>LED_ON</code>。</li>
+      <li><strong>事件名与动作中的引用完全一致</strong>（空格替换为下划线）。</li>
+      <li><strong>预定义事件保留关键字</strong>：不要重新定义 <code>RTC_TICK</code>、<code>BUTTON_PRESS</code> 等硬件事件。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>六、实施路线图</h2>
+    <table>
+      <tr><th>阶段</th><th>内容</th><th>状态</th></tr>
+      <tr><td>基础</td><td>单区域状态机、变量、guard、on_entry/on_exit</td><td>✅ 已完成</td></tr>
+      <tr><td>定时器</td><td>start_timer / stop_timer / after / defer / timeline</td><td>✅ 已完成</td></tr>
+      <tr><td>动作扩展</td><td>toggle_led, set, calc, publish, publish_async, when, send_to</td><td>✅ 已完成</td></tr>
+      <tr><td>并行区域</td><td>多区域并行、事件通信</td><td>✅ 已完成</td></tr>
+      <tr><td>历史状态</td><td>history 记忆嵌套状态</td><td>✅ 已完成</td></tr>
+      <tr><td>状态机引用</td><td>外部 YAML 引用（ref）、namespace 作用域</td><td>✅ 已完成</td></tr>
+      <tr><td>时间线</td><td>timeline 多级延迟动作</td><td>✅ 已完成</td></tr>
+      <tr><td>文档与示例</td><td>DSL 设计指南、多示例演示</td><td>🔄 持续更新</td></tr>
+      <tr><td>高级特性</td><td>子状态调用（enter_substate/return）完善、可视化编辑器</td><td>📅 规划中</td></tr>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>七、当前工程状态</h2>
+    <ul class="checklist">
+      <li>外设模型库：GPIO、I2C(MPU6050)、SPI(W25Q32)、RTC、PWM、ADC、UART</li>
+      <li>事件管理器：基于队列的异步事件分发</li>
+      <li>代码生成器：YAML → C 工程（含测试、Makefile、FreeRTOS）</li>
+      <li>单元测试：Unity + CMock，覆盖 GPIO/RTC/EventMgr/Statemachine</li>
+      <li>测试覆盖率：gcov 报告</li>
+      <li>持续集成：GitHub Actions</li>
+      <li>示例工程：blinky_g0, mpu6050, rtc_adv, spi_flash, pwm, parallel_states, adc_uart, substate_demo, ref_demo, timeline_demo</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>八、后续规划</h2>
+    <ul>
+      <li><strong>增强子状态机</strong>：完善 enter_substate/return 动作，支持自动执行 on_entry。</li>
+      <li><strong>可视化编辑</strong>：基于 Web 的状态机图形编辑器，直接输出 YAML。</li>
+      <li><strong>高级动作库</strong>：日志输出、数学函数、GPIO 直接控制（无需 LED 任务）。</li>
+      <li><strong>多 MCU 系列支持</strong>：扩展到 STM32F4/H7/G0 全系列。</li>
+      <li><strong>IAR / Keil 工程生成</strong>：覆盖主流 IDE。</li>
+    </ul>
+  </section>
+
+</div>
+
+<footer>
+  Hardware2Code &copy; 2026 · <a href="https://github.com/jinliangliu/Hardware2Code">GitHub 仓库</a> · 文档持续更新
+</footer>
+</body>
+</html>
