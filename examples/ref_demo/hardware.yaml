@@ -1,0 +1,43 @@
+mcu:
+  part: STM32G0B1RET6
+  core_clock_mhz: 64
+pins:
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: falling
+    notify_task: "led_task"
+sleep:
+  mode: STOP1
+app_tasks:
+  - name: led_task
+    priority: 2
+    stack_size: 128
+
+peripherals:
+  - name: "rtc"
+    type: "Internal_RTC"
+    interface: "internal"
+
+business_flow:
+  initial_state: "IDLE"
+  states:
+    - name: "IDLE"
+      transitions:
+        - event: "BUTTON_PRESS"
+          target: "BLINK"
+    - name: "BLINK"
+      type: "ref"
+      ref: "common_subflow.yaml"   # 引用外部业务流
+      transitions:
+        - event: "BUTTON_PRESS"
+          target: "IDLE"
+          actions:
+            - "toggle_led"

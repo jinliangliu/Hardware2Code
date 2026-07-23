@@ -135,12 +135,56 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
                 # 递归修复子状态
                 fix_initial_state(s['states'])
 
+        # ---------- 状态机引用处理 ----------
+    def resolve_ref(state, base_path):
+        """如果状态是引用，加载外部文件并返回其业务流定义"""
+        if state.get('type') != 'ref':
+            return state
+        ref_file = state.get('ref')
+        if not ref_file:
+            print("Warning: ref state without ref file")
+            return state
+        ref_path = os.path.join('examples', ref_file)  # 假设引用文件在 examples/ 下
+        if not os.path.exists(ref_path):
+            ref_path = ref_file  # 尝试直接路径
+        try:
+            with open(ref_path, 'r', encoding='utf-8') as f:
+                ref_data = yaml.safe_load(f)
+            # 提取被引用的业务流（假设文件顶层是 business_flow）
+            ref_flow = ref_data.get('business_flow')
+            if not ref_flow:
+                print(f"Warning: no business_flow found in {ref_file}")
+                return state
+            # 将引用流的 states 合并到当前状态（作为子状态）
+            # 保留当前状态的其他属性（name, transitions等），但 states 从引用获取
+            new_state = dict(state)  # 复制
+            new_state.pop('type', None)
+            new_state.pop('ref', None)
+            new_state['states'] = ref_flow.get('states', [])
+            new_state['initial_state'] = ref_flow.get('initial_state', new_state['states'][0]['name'] if new_state['states'] else None)
+            # 合并变量：引用流变量应带有前缀以避免冲突，但为简单，直接合并（用户需自行避免冲突）
+            if ref_flow.get('variables'):
+                if 'variables' not in new_state:
+                    new_state['variables'] = []
+                new_state['variables'].extend(ref_flow['variables'])
+            return new_state
+        except Exception as e:
+            print(f"Error loading ref {ref_file}: {e}")
+            return state
+
+    def resolve_all_refs(states):
+        for i, s in enumerate(states):
+            if s.get('type') == 'ref':
+                states[i] = resolve_ref(s, '')
+            if s.get('states'):
+                resolve_all_refs(s['states'])
+
     if business_flow:
         if business_flow.get('states'):
-            fix_initial_state(business_flow['states'])
+            resolve_all_refs(business_flow['states'])
         if business_flow.get('regions'):
             for region in business_flow['regions']:
-                fix_initial_state(region['states'])
+                resolve_all_refs(region['states'])
 
     # 检查是否有子状态
     def has_nested_states(states):
