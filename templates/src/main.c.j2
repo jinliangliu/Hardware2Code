@@ -16,6 +16,10 @@
 #include "statemachine.h"
 {% endif %}
 
+{% if has_bootloader %}
+#include "boot_app.h"
+{% endif %}
+
 /* GPIO initialization function */
 void MX_GPIO_Init(void);
 
@@ -51,6 +55,44 @@ TaskHandle_t {{ task.name }}_handle = NULL;
 {% for task in app_tasks %}
 void {{ task.name }}(void *pvParameters);
 {% endfor %}
+
+{% if has_bootloader %}
+/* ------- IWDG 独立看门狗初始化 ------- */
+/**
+ * @brief  初始化 IWDG（独立看门狗）
+ * @note   时钟源 LSI ~32kHz，预分频 256，超时时间从 boot_config.wdg_timeout_ms 计算。
+ *         一旦使能 IWDG，只有复位才能停止。
+ *         此函数放在 App 初始化早期，Bootloader 不配置 IWDG。
+ */
+static void MX_IWDG_Init(void)
+{
+    /* 使能 LSI（IWDG 时钟源） */
+    RCC->CSR |= RCC_CSR_LSION;
+    while ((RCC->CSR & RCC_CSR_LSIRDY) == 0) { }
+
+    /* 解锁 IWDG 写保护 */
+    IWDG->KR = 0x5555;
+
+    /* 预分频器 = 256（每个 LSI 计数约 8ms）, PR[2:0] = 110 */
+    IWDG->PR = 0x06;
+
+    /* 重装载值 = wdg_timeout_ms / 8ms（每个 tick 约 8ms） */
+    uint32_t reload = {{ boot_config.wdg_timeout_ms | default(5000) }} / 8;
+    if (reload > 0xFFF) reload = 0xFFF;   /* 12-bit 上限 */
+    if (reload < 1)    reload = 1;
+    IWDG->RLR = (uint32_t)reload;
+
+    /* 重装载并启动 IWDG */
+    IWDG->KR = 0xAAAA;
+    IWDG->KR = 0xCCCC;
+}
+
+/* ------- IWDG 刷新（喂狗） ------- */
+static inline void IWDG_Refresh(void)
+{
+    IWDG->KR = 0xAAAA;
+}
+{% endif %}
 
 /* ------- System clock configuration (HSI 16MHz default) ------- */
 void SystemClock_Config(void)
@@ -176,6 +218,14 @@ int main(void)
     /* Create the central event manager task (highest priority) */
     xTaskCreate(EventMgr_Task, "event_mgr", 512, NULL, configMAX_PRIORITIES - 1, NULL);
 
+{% if has_bootloader %}
+    /* 初始化 IWDG 看门狗 — App 挂死后硬件复位，Bootloader 检测 boot_ok 缺失 */
+    MX_IWDG_Init();
+
+    /* 标记启动成功 — Bootloader 在下次上电时检测此标志 */
+    boot_app_mark_ok();
+{% endif %}
+
     vTaskStartScheduler();
     while(1);
 }
@@ -207,6 +257,9 @@ void {{ task.name }}(void *pvParameters)
         event_t evt = { .id = EVENT_RTC_TICK, .param = 0 };
         xQueueSend(event_queue, &evt, 0);
         RTC_ProcessTimers();
+{% if has_bootloader %}
+        IWDG_Refresh();      /* 喂狗 — 防止 App 死锁导致看门狗复位 */
+{% endif %}
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     {% else %}

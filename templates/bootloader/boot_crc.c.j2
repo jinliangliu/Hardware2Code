@@ -1,0 +1,55 @@
+/**
+ * @file    boot_crc.c
+ * @brief   CRC32 硬件计算实现（STM32G0 内置 CRC 单元）
+ *          使用直接寄存器操作，不依赖 HAL。
+ *          多项式: 0x4C11DB7 (Ethernet / STM32 默认)
+ */
+
+#include "boot_crc.h"
+#include "stm32g0xx.h"
+
+/**
+ * @brief   CRC32 硬件校验
+ * @param   flash_start : 固件镜像起始地址
+ * @param   max_size : 槽位最大可用空间（用于读取元数据位置）
+ * @return  true 校验通过, false 校验失败
+ * @note    镜像末尾 8 字节为元数据：[4B image_size][4B CRC32]
+ */
+bool boot_crc_verify(uint32_t flash_start, uint32_t slot_size)
+{
+    if (flash_start == 0 || slot_size == 0) {
+        return false;                   /* 参数非法 */
+    }
+
+    /* 镜像元数据位于槽位末尾 8 字节（4B image_size + 4B CRC32） */
+    uint32_t meta_addr    = flash_start + slot_size - 8;
+    uint32_t image_size   = ((volatile uint32_t *)meta_addr)[0];
+    uint32_t stored_crc   = ((volatile uint32_t *)meta_addr)[1];
+
+    /* 校验 image_size 合法性 */
+    if (image_size == 0 || image_size == 0xFFFFFFFF || image_size > slot_size) {
+        return false;
+    }
+    if ((image_size & 0x3) != 0) {
+        return false;                   /* 非字对齐 */
+    }
+
+    /* 使能 CRC 时钟 */
+    RCC->AHBENR |= RCC_AHBENR_CRCEN;
+
+    /* 复位 CRC 模块 */
+    CRC->CR |= CRC_CR_RESET;
+    CRC->CR &= ~CRC_CR_RESET;
+
+    /* 按 32-bit 字逐字计算 CRC（仅计算 image_size 范围） */
+    uint32_t word_count = image_size / 4;
+    uint32_t *pdata = (uint32_t *)flash_start;
+
+    for (uint32_t i = 0; i < word_count; i++) {
+        CRC->DR = pdata[i];
+    }
+
+    uint32_t calculated_crc = CRC->DR;
+
+    return (calculated_crc == stored_crc);
+}

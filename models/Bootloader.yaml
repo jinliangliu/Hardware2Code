@@ -1,0 +1,24 @@
+model: "STM32G0_Bootloader"
+type: "Bootloader"
+interface: "internal"
+driver_template: ""
+header_template: ""
+init_sequence:
+  - size_kb: 8                     # Bootloader 占用 Flash 大小（KB）
+  - app_a_offset: 0x2000           # App Slot A 起始偏移
+  - app_b_offset: 0x40000          # App Slot B 起始偏移（Bank2）
+  - crc_method: "crc32_hw"         # CRC 校验方式
+  - boot_flag_src: "tamp_bkp"      # 启动标志存储位置
+  - max_retries: 3                 # 最大重试次数
+  - wdg_timeout_ms: 5000           # 看门狗超时（预留）
+capabilities:
+  - firmware_integrity_check       # CRC32 硬件校验
+  - dual_slot_rollback             # 双槽位故障回退
+  - persistent_boot_flags          # TAMP 备份寄存器持久化
+  - soft_reset                     # NVIC 软复位
+default_params:
+  size_kb: 8
+  crc_method: "crc32_hw"
+  max_retries: 3
+  app_a_offset: 0x00002000
+  app_b_offset: 0x00040000

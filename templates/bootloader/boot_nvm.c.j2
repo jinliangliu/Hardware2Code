@@ -1,0 +1,85 @@
+/**
+ * @file    boot_nvm.c
+ * @brief   TAMP 备份寄存器驱动的启动标志存储实现
+ *          依赖 stm32g0xx.h (CMSIS)，不依赖 HAL。
+ */
+
+#include "boot_nvm.h"
+#include "stm32g0xx.h"
+
+/* ---------- 初始化 ---------- */
+
+void boot_nvm_init(void)
+{
+    /* 使能 PWR 时钟（TAMP 备份域依赖 PWR 的 DBP 位解锁） */
+    RCC->APBENR1 |= RCC_APBENR1_PWREN;
+
+    /* 使能 RTC/TAMP 时钟 */
+    RCC->APBENR1 |= RCC_APBENR1_RTCAPBEN;
+
+    /* 解锁备份域写保护（PWR DBP 位） */
+    PWR->CR1 |= PWR_CR1_DBP;
+}
+
+/* ---------- 复位 ---------- */
+
+void boot_nvm_reset(void)
+{
+    TAMP->BKP0R = 0;                     /* 计数器归零 */
+    TAMP->BKP1R = BOOT_SLOT_A;           /* 默认槽位 A */
+    TAMP->BKP2R = 0;                     /* 清除启动标志 */
+}
+
+/* ---------- 计数器 ---------- */
+
+uint32_t boot_nvm_get_attempt_count(void)
+{
+    return TAMP->BKP0R;
+}
+
+void boot_nvm_inc_attempt_count(void)
+{
+    TAMP->BKP0R++;
+}
+
+void boot_nvm_clear_attempt_count(void)
+{
+    TAMP->BKP0R = 0;
+}
+
+/* ---------- 槽位 ---------- */
+
+uint32_t boot_nvm_get_active_slot(void)
+{
+    uint32_t slot = TAMP->BKP1R;
+    /* 非法值回退到 Slot A */
+    if (slot != BOOT_SLOT_A && slot != BOOT_SLOT_B) {
+        TAMP->BKP1R = BOOT_SLOT_A;
+        return BOOT_SLOT_A;
+    }
+    return slot;
+}
+
+void boot_nvm_swap_active_slot(void)
+{
+    uint32_t current = boot_nvm_get_active_slot();
+    TAMP->BKP1R = (current == BOOT_SLOT_A) ? BOOT_SLOT_B : BOOT_SLOT_A;
+    TAMP->BKP0R = 0;                     /* 切换时计数器归零 */
+}
+
+/* ---------- 启动标志 ---------- */
+
+bool boot_nvm_is_boot_ok(void)
+{
+    return (TAMP->BKP2R == BOOT_OK_MAGIC);
+}
+
+void boot_nvm_set_boot_ok(void)
+{
+    TAMP->BKP2R = BOOT_OK_MAGIC;
+}
+
+void boot_nvm_clear_boot_ok(void)
+{
+    TAMP->BKP2R = 0;
+}

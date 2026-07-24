@@ -65,6 +65,18 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
     has_adc = False
     has_uart = False
 
+    # ---------- Bootloader ----------
+    boot_config = hw.get('bootloader', {})
+    has_bootloader = boot_config.get('enabled', False)
+    if has_bootloader:
+        boot_config.setdefault('size_kb', 8)
+        boot_config.setdefault('app_a_offset', 0x2000)
+        boot_config.setdefault('app_b_offset', 0x40000)
+        boot_config.setdefault('crc_method', 'crc32_hw')
+        boot_config.setdefault('boot_flag_src', 'tamp_bkp')
+        boot_config.setdefault('max_retries', 3)
+        boot_config.setdefault('wdg_timeout_ms', 5000)
+
     for p in peripherals:
         model = load_model(p['type'])
         p['model'] = model
@@ -453,6 +465,9 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         "has_business_flow": has_business_flow,
         "business_flow": business_flow,
         "has_substate": has_substate,
+        "has_bootloader": has_bootloader,
+        "boot_config": boot_config,
+        "boot_max_retries": boot_config.get('max_retries', 3),
         "hil": hil_config,
         "hil_tests": hil_tests,
         "hil_mode": hil_mode,

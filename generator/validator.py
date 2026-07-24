@@ -90,6 +90,25 @@ def validate_hardware(hw):
         if hw['sleep']['mode'] not in valid_modes:
             errors.append(f"[WARNING] Invalid sleep mode '{hw['sleep']['mode']}'. Valid options: {valid_modes}")
 
+    if 'bootloader' in hw and hw['bootloader']:
+        bl = hw['bootloader']
+        if bl.get('enabled'):
+            size_kb = bl.get('size_kb', 8)
+            if not isinstance(size_kb, int) or size_kb < 4 or size_kb > 32:
+                errors.append(f"[ERROR] Bootloader size_kb '{size_kb}' is invalid. Must be 4-32 (KB).")
+
+            max_retries = bl.get('max_retries', 3)
+            if not isinstance(max_retries, int) or max_retries < 1 or max_retries > 10:
+                errors.append(f"[ERROR] Bootloader max_retries '{max_retries}' is invalid. Must be 1-10.")
+
+            app_a = bl.get('app_a_offset', 0x2000)
+            app_b = bl.get('app_b_offset', 0x40000)
+            if app_a >= app_b:
+                errors.append(f"[ERROR] Bootloader app_a_offset (0x{app_a:X}) must be less than app_b_offset (0x{app_b:X}).")
+
+            if app_a < size_kb * 1024:
+                errors.append(f"[ERROR] Bootloader app_a_offset (0x{app_a:X}) must be >= bootloader size ({size_kb}KB = 0x{size_kb*1024:X}).")
+
     if 'business_flow' in hw and hw['business_flow']:
         bf = hw['business_flow']
         

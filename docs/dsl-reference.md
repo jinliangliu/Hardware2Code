@@ -101,6 +101,36 @@ peripherals:
 | `I2C_Sensor_MPU6050` | MPU6050 accelerometer via I2C | bus |
 | `SPI_Flash_W25Q32` | W25Q32 SPI flash | bus |
 
+### 1.7 Bootloader Configuration
+
+```yaml
+bootloader:
+  enabled: true               # Required: Enable dual-slot bootloader
+  size_kb: 8                  # Optional: Bootloader Flash size (default: 8)
+  max_retries: 3              # Optional: Max consecutive boot failures before slot swap (default: 3)
+  app_a_offset: 0x2000        # Optional: App Slot A start offset (default: 0x2000)
+  app_b_offset: 0x40000       # Optional: App Slot B start offset (default: 0x40000)
+  crc_method: crc32_hw        # Optional: CRC method (default: crc32_hw)
+  boot_flag_src: tamp_bkp     # Optional: Boot flag storage (default: tamp_bkp)
+  wdg_timeout_ms: 5000        # Optional: Watchdog timeout (default: 5000)
+```
+
+When enabled, the bootloader occupies the first `size_kb` KB of Flash and manages two App slots:
+
+- **App Slot A**: `app_a_offset` → `app_b_offset` (Bank 1 remainder)
+- **App Slot B**: `app_b_offset` → flash end (Bank 2)
+
+The bootloader flow:
+1. Read TAMP backup registers for boot state
+2. If previous boot was OK → clear counter → CRC check → jump to App
+3. If previous boot failed → increment counter → CRC check → jump to App
+4. If counter exceeds `max_retries` → swap to other slot → soft reset
+5. If CRC fails → swap slot → soft reset (indicates corrupted firmware)
+6. If both slots fail → LED SOS pattern (recovery mode)
+
+Supported CRC methods:
+- `crc32_hw`: STM32G0 hardware CRC unit (fast, low code size)
+
 ---
 
 ## 2. Business Flow DSL

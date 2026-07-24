@@ -43,7 +43,7 @@ HAL_DIR             = $(HARDWARE2CODE_STATIC)/HAL
 CMSIS_DEVICE_DIR    = $(HARDWARE2CODE_STATIC)/CMSIS/Device/ST/STM32G0xx
 CMSIS_CORE_DIR      = $(HARDWARE2CODE_STATIC)/CMSIS/Core
 STARTUP_DIR         = $(CMSIS_DEVICE_DIR)/Source/Templates/gcc
-LINKER_SCRIPT       = ./linker/STM32G0B1RETx_FLASH.ld
+LINKER_SCRIPT       = ./linker/{{ 'app_slot_a.ld' if has_bootloader else 'STM32G0B1RETx_FLASH.ld' }}
 
 {% if hil_mode %}
 # ---------------------------------------------------------------------------
@@ -114,6 +114,9 @@ C_SOURCES += \
 {% if has_business_flow %}
 ./src/statemachine.c \
 {% endif %}
+{% if has_bootloader %}
+./src/boot_app.c \
+{% endif %}
 {% for drv in drivers %}
 ./src/drivers/drv_{{ drv.name }}.c \
 {% endfor %}
@@ -156,7 +159,7 @@ OBJS        = $(C_OBJS) $(ASM_OBJS)
 # ---------------------------------------------------------------------------
 # Build rules
 # ---------------------------------------------------------------------------
-.PHONY: all flash flash-daplink clean test coverage{% if hil_mode %} hil-flash{% endif %}
+.PHONY: all flash flash-daplink clean test coverage{% if hil_mode %} hil-flash{% endif %}{% if has_bootloader %} bootloader app combined flash-combined{% endif %}
 
 all: $(BUILD_DIR)/$(PROJECT_NAME).elf $(BUILD_DIR)/$(PROJECT_NAME).bin $(BUILD_DIR)/$(PROJECT_NAME).hex
 
@@ -223,12 +226,31 @@ $(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf
 	$(CP) -O ihex $< $@
 
 # ----- Flash (ST-Link) -----
+{% if has_bootloader %}
+# With bootloader: flash combined image (bootloader + app)
+flash: combined
+	"$(ST_PROG)" -c port=SWD -w build\combined.bin 0x08000000 -rst
+
+# Flash app-only to its slot (for OTA update, with CRC)
+flash-app: app
+	"$(ST_PROG)" -c port=SWD -w build\{{ project_name }}_crc.bin 0x08002000 -rst
+
+{% else %}
 flash: $(BUILD_DIR)/$(PROJECT_NAME).bin
 	"$(ST_PROG)" -c port=SWD -w $< 0x08000000 -rst
+{% endif %}
 
 # ----- Flash (DAP-Link) -----
+{% if has_bootloader %}
+flash-daplink: combined
+	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program build\combined.bin 0x08000000 verify reset exit"
+
+flash-daplink-app: app
+	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program build\{{ project_name }}_crc.bin 0x08002000 verify reset exit"
+{% else %}
 flash-daplink: $(BUILD_DIR)/$(PROJECT_NAME).bin
 	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program $< 0x08000000 verify reset exit"
+{% endif %}
 
 {% if hil_mode %}
 # ----- HIL Flash & Run Listener -----
@@ -247,4 +269,30 @@ test:
 
 coverage:
 	python test/run_tests.py --coverage
+
+{% if has_bootloader %}
+# ----- Bootloader build (uses separate Makefile in bootloader/) -----
+bootloader:
+	cd bootloader && $(MAKE) all
+
+app: all
+	@echo "Patching CRC32 into App firmware..."
+	python patch_crc.py build\{{ project_name }}.bin -o build\{{ project_name }}_crc.bin
+	@echo "App firmware with CRC: build\{{ project_name }}_crc.bin"
+
+# ----- Combined flash image: Bootloader + App Slot A -----
+combined: bootloader app
+	@echo "Padding bootloader to {{ boot_config.size_kb }}KB and merging with app..."
+	python -c "import sys; bl=open('bootloader/build/bootloader.bin','rb').read(); bl_padded=bl+b'\xFF'*({{ boot_config.size_kb * 1024 }}-len(bl)); app=open('build/{{ project_name }}_crc.bin','rb').read(); open('build/combined.bin','wb').write(bl_padded+app)"
+	$(SZ) build\{{ project_name }}.elf
+	@echo "Combined image: build\combined.bin"
+
+# ----- Flash combined image -----
+flash-combined: combined
+	"$(ST_PROG)" -c port=SWD -w build\combined.bin 0x08000000 -rst
+
+# ----- Flash combined with DAP-Link -----
+flash-daplink-combined: combined
+	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program build\combined.bin 0x08000000 verify reset exit"
+{% endif %}
 {% endif %}

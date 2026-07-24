@@ -250,6 +250,79 @@ def render_templates(env: Environment, context: dict, output_dir: str):
         else:
             print(f"Warning: {timebase_src} not found")
 
+    # ---------- Bootloader ----------
+    if context.get("has_bootloader"):
+        boot_dir = os.path.join(output_dir, "bootloader")
+        os.makedirs(boot_dir, exist_ok=True)
+
+        # Bootloader 链接脚本
+        boot_ld = env.get_template("linker/bootloader.ld.j2")
+        rendered = boot_ld.render(context)
+        ld_path = os.path.join(output_dir, "linker", "bootloader.ld")
+        with open(ld_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(rendered)
+        print(f"Generated: {ld_path}")
+
+        # App Slot A 链接脚本
+        slot_a_ld = env.get_template("linker/app_slot_a.ld.j2")
+        rendered = slot_a_ld.render(context)
+        ld_path = os.path.join(output_dir, "linker", "app_slot_a.ld")
+        with open(ld_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(rendered)
+        print(f"Generated: {ld_path}")
+
+        # App Slot B 链接脚本
+        slot_b_ld = env.get_template("linker/app_slot_b.ld.j2")
+        rendered = slot_b_ld.render(context)
+        ld_path = os.path.join(output_dir, "linker", "app_slot_b.ld")
+        with open(ld_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(rendered)
+        print(f"Generated: {ld_path}")
+
+        # Bootloader 核心源文件
+        boot_templates = {
+            "bootloader/boot_main.c.j2": "main.c",
+            "bootloader/boot_nvm.c.j2": "boot_nvm.c",
+            "bootloader/boot_nvm.h.j2": "boot_nvm.h",
+            "bootloader/boot_crc.c.j2": "boot_crc.c",
+            "bootloader/boot_crc.h.j2": "boot_crc.h",
+            "bootloader/boot_jump.c.j2": "boot_jump.c",
+            "bootloader/boot_jump.h.j2": "boot_jump.h",
+        }
+        for tmpl_name, fname in boot_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            out_path = os.path.join(boot_dir, fname)
+            with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(rendered)
+            print(f"Generated: {out_path}")
+
+        # Bootloader Makefile（独立 Makefile 在 bootloader/ 目录下）
+        boot_makefile = env.get_template("project/bootloader_makefile.j2")
+        rendered = boot_makefile.render(context)
+        makefile_path = os.path.join(boot_dir, "Makefile")
+        with open(makefile_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(rendered)
+        print(f"Generated: {makefile_path}")
+
+        # App 端启动标记文件
+        boot_app_templates = {
+            "bootloader/boot_app.h.j2": os.path.join(output_dir, "src", "boot_app.h"),
+            "bootloader/boot_app.c.j2": os.path.join(output_dir, "src", "boot_app.c"),
+        }
+        for tmpl_name, out_path in boot_app_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(rendered)
+            print(f"Generated: {out_path}")
+
+        # 复制 CRC 后处理脚本
+        crc_script = os.path.join("generator", "patch_crc.py")
+        if os.path.exists(crc_script):
+            shutil.copy(crc_script, os.path.join(output_dir, "patch_crc.py"))
+            print("Copied patch_crc.py")
+
 
 def generate(hardware_yaml: str, output_dir: str, hil_mode: bool = False):
     print(f"\n{'='*60}")
