@@ -53,3 +53,13 @@ void TIM14_IRQHandler(void)
     HAL_TIM_IRQHandler(&TimHandle);
 }
 {% endif %}
+
+{% if has_log %}
+/* USART2 日志输出中断 — 转发到 drv_log.c 中的处理函数 */
+extern void log_uart_irq_handler(void);
+
+void USART2_LPUART2_IRQHandler(void)
+{
+    log_uart_irq_handler();
+}
+{% endif %}

@@ -22,8 +22,9 @@ void boot_jump_to_app(uint32_t app_addr)
     uint32_t app_entry = ((uint32_t *)app_addr)[1];
 
     /* —— 安全检查 —— */
-    if ((app_stack & 0x2FFE0000) != 0x20000000) {
-        /* SP 不在 RAM 地址范围内（0x20000000~0x20024000），跳转不安全 */
+    /* STM32G0B1RE: 144KB SRAM (0x20000000 ~ 0x20024000), SP 初始指向 RAM 顶部 */
+    if (app_stack < 0x20000000 || app_stack > 0x20024000) {
+        /* SP 不在 RAM 地址范围内，跳转不安全 */
         return;
     }
     if ((app_entry & 0xFFE00000) != 0x08000000) {

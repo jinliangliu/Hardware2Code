@@ -7,6 +7,14 @@
 #include "boot_nvm.h"
 #include "stm32g0xx.h"
 
+/* TAMP BKP 寄存器分配:
+ *   BKP0R = 启动失败计数器
+ *   BKP1R = 当前活动槽位 (0=A, 1=B)
+ *   BKP2R = App 启动成功标志
+ *   BKP3R = NVM 初始化魔数（校验寄存器是否已初始化）
+ */
+#define BOOT_NVM_INIT_MAGIC  0x4E564D00UL   /* "NVM\0" */
+
 /* ---------- 初始化 ---------- */
 
 void boot_nvm_init(void)
@@ -19,6 +27,12 @@ void boot_nvm_init(void)
 
     /* 解锁备份域写保护（PWR DBP 位） */
     PWR->CR1 |= PWR_CR1_DBP;
+
+    /* 校验 NVM 区域是否已初始化 — 首次上电 TAMP BKP 寄存器为随机值 */
+    if (TAMP->BKP3R != BOOT_NVM_INIT_MAGIC) {
+        boot_nvm_reset();
+        TAMP->BKP3R = BOOT_NVM_INIT_MAGIC;
+    }
 }
 
 /* ---------- 复位 ---------- */

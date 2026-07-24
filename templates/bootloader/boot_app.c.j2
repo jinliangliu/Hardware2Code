@@ -26,6 +26,9 @@ void boot_app_mark_ok(void)
     /* 解锁备份域写保护 */
     PWR->CR1 |= PWR_CR1_DBP;
 
+    /* 等待 DBP 位同步完成 — 备份域由低速时钟驱动，写操作需同步延迟 */
+    while ((PWR->CR1 & PWR_CR1_DBP) == 0U) { }
+
     /* 写入启动成功魔数 */
     TAMP->BKP2R = BOOT_OK_MAGIC;
 }

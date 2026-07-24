@@ -16,6 +16,9 @@ void MX_GPIO_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
+    /* SYSCFG clock must be enabled for EXTI line mapping (STM32G0) */
+    __HAL_RCC_SYSCFG_CLK_ENABLE();
+
 {% for pin in pins %}
     /* {{ pin.label }} ({{ pin.id }}) */
     __HAL_RCC_GPIO{{ pin.id[1] }}_CLK_ENABLE();

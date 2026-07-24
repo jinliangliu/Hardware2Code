@@ -39,6 +39,17 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
+  /* 固件镜像头部（紧随向量表，偏移 0xC0, 12 字节）
+     Bootloader 从 slot_start + 0xC0 读取此头部。
+     格式: [image_size(4B) | CRC32(4B) | magic(4B)] */
+  .app_header :
+  {
+    . = ALIGN(4);
+    LONG(0xFFFFFFFF);         /* 镜像大小占位，编译后由 patch_crc.py 填充 */
+    LONG(0xFFFFFFFF);         /* CRC32 占位，编译后由 patch_crc.py 填充 */
+    LONG(0x4841436B);         /* magic "H2Ck"，标识有效头部 */
+  } >FLASH
+
   .text :
   {
     . = ALIGN(4);
@@ -149,17 +160,6 @@ SECTIONS
     libm.a ( * )
     libgcc.a ( * )
   }
-
-  /* 固件镜像元数据（bin 文件最后 8 字节: 4B 镜像大小 + 4B CRC32）
-     必须放在所有 >FLASH 段之后，确保位于 bin 末尾。
-     Bootloader 从 slot_start + slot_size - 8 读取此元数据。 */
-  .app_meta :
-  {
-    . = ALIGN(4);
-    __app_image_end__ = .;
-    LONG(0xFFFFFFFF);  /* 镜像大小占位，编译后由脚本填充 */
-    LONG(0xFFFFFFFF);  /* CRC32 占位，编译后由脚本填充 */
-  } >FLASH
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
 }

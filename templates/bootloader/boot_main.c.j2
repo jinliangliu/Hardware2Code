@@ -90,12 +90,27 @@ static void soft_reset(void)
     while (1) { }
 }
 
+/* ========== 诊断 LED 闪烁（Bootloader 存活信号，3 次慢闪） ========== */
+static void led_heartbeat(void)
+{
+    for (int i = 0; i < 3; i++) {
+        BOOT_LED_ON();  delay_ms(200);
+        BOOT_LED_OFF(); delay_ms(200);
+    }
+}
+
 /* ========== 主入口 ========== */
 int main(void)
 {
     /* --- 阶段 1: 硬件初始化 --- */
     clock_init();
     gpio_init();
+
+    /* 诊断：Bootloader 存活信号（3 次慢闪，约 1.2 秒）
+       如果能看到此闪烁 → Bootloader 启动正常，问题在后续阶段
+       如果看不到 → Bootloader 未执行到此处（向量表/时钟问题） */
+    led_heartbeat();
+
     boot_nvm_init();
 
     /* --- 阶段 2: 读取持久化状态 --- */
@@ -157,7 +172,11 @@ int main(void)
 
     /* --- 阶段 6: 启动 App 或进入恢复模式 --- */
     if (crc_ok) {
-        /* 固件完整 — 跳转 */
+        /* 固件完整 — 长闪 LED 1 次表示即将跳转 */
+        BOOT_LED_ON();  delay_ms(300);
+        BOOT_LED_OFF(); delay_ms(300);
+
+        /* 跳转 App */
         boot_jump_to_app(app_addr);
         /* 跳转失败不应到达此处 */
     }

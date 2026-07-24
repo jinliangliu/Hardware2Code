@@ -87,6 +87,10 @@ C_SOURCES  = \
 {% for src in hal_sources %}
 $(HAL_DIR)/Src/{{ src }} \
 {% endfor %}
+{% if has_log %}
+$(HAL_DIR)/Src/stm32g0xx_hal_uart.c \
+$(HAL_DIR)/Src/stm32g0xx_hal_uart_ex.c \
+{% endif %}
 $(CMSIS_DEVICE_DIR)/Source/Templates/system_stm32g0xx.c
 
 # FreeRTOS Kernel sources
@@ -120,6 +124,9 @@ C_SOURCES += \
 {% for drv in drivers %}
 ./src/drivers/drv_{{ drv.name }}.c \
 {% endfor %}
+{% if has_log %}
+./src/drivers/drv_log.c \
+{% endif %}
 
 # Assembly startup
 ASM_SOURCES = $(STARTUP_DIR)/startup_stm32g0b1xx.s
@@ -138,7 +145,7 @@ INCLUDES  = \
 # Compiler / Linker flags
 CFLAGS   = $(MCU_FLAGS) $(CPU_DEFINE) $(CLOCK_DEFINE) \
            -Og -g3 -Wall -fdata-sections -ffunction-sections \
-           $(INCLUDES) -DSTM32G0B1xx -DUSE_HAL_DRIVER
+           $(INCLUDES) -DSTM32G0B1xx -DUSE_HAL_DRIVER{% if has_bootloader %} -DVECT_TAB_OFFSET={{ boot_config.app_a_offset | default(0x2000) }}U{% endif %}
 
 {% endif %}
 
@@ -243,10 +250,10 @@ flash: $(BUILD_DIR)/$(PROJECT_NAME).bin
 # ----- Flash (DAP-Link) -----
 {% if has_bootloader %}
 flash-daplink: combined
-	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program build\combined.bin 0x08000000 verify reset exit"
+	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program build/combined.bin 0x08000000 verify reset exit"
 
 flash-daplink-app: app
-	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program build\{{ project_name }}_crc.bin 0x08002000 verify reset exit"
+	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program build/{{ project_name }}_crc.bin 0x08002000 verify reset exit"
 {% else %}
 flash-daplink: $(BUILD_DIR)/$(PROJECT_NAME).bin
 	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program $< 0x08000000 verify reset exit"
@@ -293,6 +300,6 @@ flash-combined: combined
 
 # ----- Flash combined with DAP-Link -----
 flash-daplink-combined: combined
-	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program build\combined.bin 0x08000000 verify reset exit"
+	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program build/combined.bin 0x08000000 verify reset exit"
 {% endif %}
 {% endif %}
