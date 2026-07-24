@@ -15,3 +15,15 @@ extra_fields:
   instance: "USART2"    # 默认实例
   tx_pin: "PA2"
   rx_pin: "PA3"
+extra_schema:
+  baudrate:
+    type: int
+    required: false
+    default: 115200
+    values: [9600, 19200, 38400, 57600, 115200, 230400, 460800]
+  tx_pin:
+    type: pin
+    required: false
+  rx_pin:
+    type: pin
+    required: false

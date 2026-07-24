@@ -1,0 +1,28 @@
+#ifndef __DRV_IWDG_H
+#define __DRV_IWDG_H
+
+#ifndef TEST
+#include "stm32g0xx_hal.h"
+#else
+#include <stdint.h>
+#endif
+
+/* IWDG timeout in milliseconds (derived from peripheral.wdg_timeout_ms) */
+#define IWDG_TIMEOUT_MS     {{ peripheral.wdg_timeout_ms | default(5000) }}U
+
+/**
+ * @brief   Initialize the Independent Watchdog (IWDG)
+ * @note    Clock source: LSI ~32 kHz, prescaler /256 (~8 ms per tick).
+ *          Once enabled, IWDG can only be stopped by a system reset.
+ *          Must be called early in App init (after boot_app_mark_ok).
+ */
+void IWDG_Init(void);
+
+/**
+ * @brief   Feed (refresh) the IWDG to prevent a reset
+ * @note    Call periodically in the main loop or a low-priority task.
+ *          Recommended interval: <= IWDG_TIMEOUT_MS / 2.
+ */
+void IWDG_Refresh(void);
+
+#endif /* __DRV_IWDG_H */

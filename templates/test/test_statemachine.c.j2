@@ -2,7 +2,7 @@
 #include "mock_hal.h"
 #include <string.h>
 
-/* 测试桩 */
+/* Test stubs */
 typedef void * rtc_timer_handle_t;
 typedef void (*rtc_timer_cb_t)(void *arg);
 #define RTC_TIMER_MODE_ONE_SHOT     0
@@ -31,41 +31,105 @@ void setUp(void) {
 
 void tearDown(void) {}
 
-void test_initial_state_is_IDLE(void) {
-    TEST_ASSERT_EQUAL(1, led_notify_count);
+{#
+  Compute all expected toggle_led counts from the business_flow context.
+  Uses Jinja2 namespace() objects for mutable variables inside loops.
+#}
+{%- set ns = namespace(init_entry=0, transitions=[]) -%}
+{%- set initial_name = business_flow.initial_state -%}
+
+{# Find initial state and count its on_entry toggle_led calls #}
+{%- for s in business_flow.states -%}
+{%-     if s.name == initial_name -%}
+{%-         for a in (s.get('on_entry') or []) -%}
+{%-             if a == 'toggle_led' %}{% set ns.init_entry = ns.init_entry + 1 %}{% endif -%}
+{%-         endfor -%}
+{%-     endif -%}
+{%- endfor -%}
+
+{# Collect all transitions with their metadata #}
+{%- for s in business_flow.states -%}
+{%-     if s.transitions -%}
+{%-         for t in s.transitions -%}
+{%-             set trans_actions = t.get('actions') or [] -%}
+{%-             set fwd_toggle = namespace(val=0) -%}
+{%-             for a in trans_actions -%}
+{%-                 if a == 'toggle_led' %}{% set fwd_toggle.val = fwd_toggle.val + 1 %}{% endif -%}
+{%-             endfor -%}
+{# Find target state and count its on_entry toggle_led #}
+{%-             set tgt_entry_toggle = namespace(val=0) -%}
+{%-             for ts in business_flow.states -%}
+{%-                 if ts.name == t.target -%}
+{%-                     for a in (ts.get('on_entry') or []) -%}
+{%-                         if a == 'toggle_led' %}{% set tgt_entry_toggle.val = tgt_entry_toggle.val + 1 %}{% endif -%}
+{%-                     endfor -%}
+{%-                 endif -%}
+{%-             endfor -%}
+{%-             set _ = ns.transitions.append({
+                    'state': s.name,
+                    'event': t.event,
+                    'target': t.target,
+                    'fwd_toggle': fwd_toggle.val,
+                    'tgt_entry_toggle': tgt_entry_toggle.val
+                }) -%}
+{%-         endfor -%}
+{%-     endif -%}
+{%- endfor -%}
+
+{# Compute expected totals and back-transitions for each test case #}
+{%- for tr in ns.transitions -%}
+{%-     set _ = tr.update({'expected': ns.init_entry + tr.fwd_toggle + tr.tgt_entry_toggle}) -%}
+{%-     for back in ns.transitions -%}
+{%-         if back.state == tr.target and back.target == initial_name -%}
+{%-             set _ = tr.update({'back_event': back.event, 'back_toggle': back.fwd_toggle + ns.init_entry}) -%}
+{%-         endif -%}
+{%-     endfor -%}
+{%- endfor -%}
+
+void test_initial_state_actions(void) {
+    TEST_ASSERT_EQUAL({{ ns.init_entry }}, led_notify_count);
 }
 
-void test_IDLE_plus_BUTTON_PRESS_transitions_to_ACTIVE_and_toggles_led(void) {
-    event_t evt = { .id = EVENT_BUTTON_PRESS };
+{% for tr in ns.transitions %}{% if tr.state == initial_name %}
+void test_{{ tr.state }}_to_{{ tr.target }}_on_{{ tr.event }}(void) {
+    event_t evt = { .id = EVENT_{{ tr.event | replace(' ', '_') }} };
     statemachine_process(&evt);
-    TEST_ASSERT_EQUAL(2, led_notify_count);
+    TEST_ASSERT_EQUAL({{ tr.expected }}, led_notify_count);
 }
+{% endif %}{% endfor %}
 
-void test_ACTIVE_plus_RTC_TICK_transitions_to_IDLE(void) {
-    event_t evt1 = { .id = EVENT_BUTTON_PRESS };
-    statemachine_process(&evt1);
+{% for tr in ns.transitions %}{% if tr.back_event is defined %}
+void test_{{ tr.target }}_to_{{ initial_name }}_on_{{ tr.back_event }}(void) {
+    event_t evt_fwd = { .id = EVENT_{{ tr.event | replace(' ', '_') }} };
+    statemachine_process(&evt_fwd);
     led_notify_count = 0;
-    event_t evt2 = { .id = EVENT_RTC_TICK };
-    statemachine_process(&evt2);
-    TEST_ASSERT_EQUAL(1, led_notify_count);
+    event_t evt_back = { .id = EVENT_{{ tr.back_event | replace(' ', '_') }} };
+    statemachine_process(&evt_back);
+    TEST_ASSERT_EQUAL({{ tr.back_toggle }}, led_notify_count);
 }
+{% endif %}{% endfor %}
 
-void test_press_count_initial_zero(void) {
-    event_t press = { .id = EVENT_BUTTON_PRESS };
+{% for tr in ns.transitions %}{% if tr.back_event is defined %}
+void test_roundtrip_cycle(void) {
     for (int i = 0; i < 4; i++) {
-        press.id = EVENT_BUTTON_PRESS;
-        statemachine_process(&press);
-        event_t tick = { .id = EVENT_RTC_TICK };
-        statemachine_process(&tick);
+        event_t evt_fwd = { .id = EVENT_{{ tr.event | replace(' ', '_') }} };
+        statemachine_process(&evt_fwd);
+        event_t evt_back = { .id = EVENT_{{ tr.back_event | replace(' ', '_') }} };
+        statemachine_process(&evt_back);
     }
-    TEST_ASSERT_EQUAL(9, led_notify_count);
+    TEST_ASSERT_EQUAL({{ 4 * (tr.expected - ns.init_entry + tr.back_toggle) }}, led_notify_count);
 }
+{% endif %}{% endfor %}
 
 int main(void) {
     UNITY_BEGIN();
-    RUN_TEST(test_initial_state_is_IDLE);
-    RUN_TEST(test_IDLE_plus_BUTTON_PRESS_transitions_to_ACTIVE_and_toggles_led);
-    RUN_TEST(test_ACTIVE_plus_RTC_TICK_transitions_to_IDLE);
-    RUN_TEST(test_press_count_initial_zero);
+    RUN_TEST(test_initial_state_actions);
+{% for tr in ns.transitions %}
+    RUN_TEST(test_{{ tr.state }}_to_{{ tr.target }}_on_{{ tr.event }});
+{% endfor %}
+{% for tr in ns.transitions %}{% if tr.back_event is defined %}
+    RUN_TEST(test_{{ tr.target }}_to_{{ initial_name }}_on_{{ tr.back_event }});
+{% endif %}{% endfor %}
+    RUN_TEST(test_roundtrip_cycle);
     return UNITY_END();
 }

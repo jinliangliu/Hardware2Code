@@ -22,6 +22,13 @@ extern "C" {
  */
 bool boot_crc_verify(uint32_t flash_start, uint32_t slot_size);
 
+/**
+ * @brief   读取固件映像的版本号
+ * @param   flash_start : 固件 Flash 起始地址
+ * @return  版本号 (1~0xFFFFFF)，0 表示未找到有效头部
+ */
+uint32_t boot_read_fw_version(uint32_t flash_start);
+
 #ifdef __cplusplus
 }
 #endif

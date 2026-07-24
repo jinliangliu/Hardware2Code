@@ -2,9 +2,23 @@
 #include "mock_hal.h"
 #include <string.h>
 
+/* Provide stubs for RTC timer subsystem (defer timers won't fire in test) */
+typedef void * rtc_timer_handle_t;
+typedef void (*rtc_timer_cb_t)(void *arg);
+#define RTC_TIMER_MODE_ONE_SHOT     0
+#define RTC_TIMER_MODE_PERIODIC     1
+
+rtc_timer_handle_t RTC_TimerCreate(uint32_t period_ms, uint8_t mode, rtc_timer_cb_t callback, void *arg) {
+    (void)period_ms; (void)mode; (void)callback; (void)arg;
+    return (rtc_timer_handle_t)1;
+}
+void RTC_TimerStart(rtc_timer_handle_t handle) { (void)handle; }
+void RTC_TimerStop(rtc_timer_handle_t handle) { (void)handle; }
+void RTC_TimerDelete(rtc_timer_handle_t handle) { (void)handle; }
+void RTC_ProcessTimers(void) {}
+
 /* 提供 event_queue 供 defer 使用 */
 QueueHandle_t event_queue = NULL;
-#include "../src/drivers/drv_rtc.c"
 #include "../src/statemachine.c"
 
 static int led_notify_count = 0;
@@ -19,47 +33,78 @@ void setUp(void) {
 
 void tearDown(void) {}
 
-/* 测试子状态进入：BUTTON_PRESS 进入 PROCESS，应自动进入子状态 STEP1 */
-void test_enter_substate_on_button_press(void) {
+{% set states = business_flow.states %}
+{% set parent_state = namespace(name="") %}
+{% set substate0_evt = namespace(name="") %}
+{% set substate1_evt = namespace(name="") %}
+{% for s in states %}
+  {% if s.states %}
+    {% set parent_state.name = s.name %}
+    {% for sub in s.states %}
+      {% if sub.transitions and not substate0_evt.name %}
+        {% set substate0_evt.name = sub.transitions[0].event %}
+      {% elif sub.transitions and not substate1_evt.name %}
+        {% set substate1_evt.name = sub.transitions[0].event %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+{% endfor %}
+
+/* Test: BUTTON_PRESS enters {{ parent_state.name }} substate, auto-enters first sub-state */
+void test_enter_substate_initial_step(void) {
     event_t evt = { .id = EVENT_BUTTON_PRESS };
     statemachine_process(&evt);
-    /* 状态应变为 PROCESS，但子状态栈顶部为 PROCESS，当前状态应为 STEP1 */
-    /* 由于无法直接读取静态变量，我们通过触发 RTC_TICK 观察行为 */
-    /* 当前在 STEP1，触发 RTC_TICK 会进入 STEP2 */
-    event_t tick = { .id = EVENT_RTC_TICK };
-    statemachine_process(&tick);
-    /* 在 STEP2 再触发一次 RTC_TICK 应触发 return，最终回到 IDLE */
-    statemachine_process(&tick);
-    /* 检查 LED 翻转次数：进入 PROCESS 时 toggle_led 一次，
-       defer 动作不影响，return 后回到 IDLE 又 toggle_led 一次，
-       整个过程共 2 次 LED 通知（IDLE->PROCESS 一次，PROCESS->IDLE 一次） */
+    /* IDLE→{{ parent_state.name }} transition: toggle_led fired once */
+    TEST_ASSERT_EQUAL(1, led_notify_count);
+}
+
+/* Test: First sub-state transitions via defer event */
+void test_substate_step1_to_step2(void) {
+    /* Enter {{ parent_state.name }} / step 1 */
+    event_t press = { .id = EVENT_BUTTON_PRESS };
+    statemachine_process(&press);
+    /* Send {{ substate0_evt.name }} (what defer would publish after 1000ms) */
+    event_t step_evt = { .id = EVENT_{{ substate0_evt.name }} };
+    statemachine_process(&step_evt);
+    /* No toggle_led on step 1→step 2 transition */
+    TEST_ASSERT_EQUAL(1, led_notify_count);
+}
+
+/* Test: return action from last sub-state triggers parent exit transition */
+void test_substate_return_to_idle(void) {
+    /* Navigate: IDLE → {{ parent_state.name }} → step 1 → step 2 */
+    event_t press = { .id = EVENT_BUTTON_PRESS };
+    statemachine_process(&press);
+    event_t evt1 = { .id = EVENT_{{ substate0_evt.name }} };
+    statemachine_process(&evt1);
+    /* Send {{ substate1_evt.name }} → return → {{ parent_state.name }} transition → IDLE */
+    event_t evt2 = { .id = EVENT_{{ substate1_evt.name }} };
+    statemachine_process(&evt2);
+    /* return → pop substate → parent RETURN→IDLE transition → toggle_led */
     TEST_ASSERT_EQUAL(2, led_notify_count);
 }
 
-/* 测试 return 动作是否正确产生 EVENT_RETURN 并回到父状态 */
-void test_return_from_substate(void) {
-    /* 先进入 PROCESS */
+/* Test: After return to IDLE, further events have no effect */
+void test_idle_after_return_is_stable(void) {
+    /* Navigate to IDLE via substate chain */
     event_t press = { .id = EVENT_BUTTON_PRESS };
     statemachine_process(&press);
-    /* 此时在 STEP1，发送 RTC_TICK 到 STEP2 */
-    event_t tick1 = { .id = EVENT_RTC_TICK };
-    statemachine_process(&tick1);
-    /* 现在在 STEP2，再次发送 RTC_TICK 触发 return */
-    event_t tick2 = { .id = EVENT_RTC_TICK };
-    statemachine_process(&tick2);
-    /* return 动作产生 EVENT_RETURN，父状态 PROCESS 的转换应被触发，进入 IDLE */
-    /* LED 应已翻转两次（同上） */
-    TEST_ASSERT_EQUAL(2, led_notify_count);
-    /* 再发送一次 RTC_TICK，不应有任何动作 */
+    event_t evt1 = { .id = EVENT_{{ substate0_evt.name }} };
+    statemachine_process(&evt1);
+    event_t evt2 = { .id = EVENT_{{ substate1_evt.name }} };
+    statemachine_process(&evt2);
     led_notify_count = 0;
-    event_t tick3 = { .id = EVENT_RTC_TICK };
-    statemachine_process(&tick3);
+    /* RTC_TICK should have no effect in IDLE */
+    event_t tick = { .id = EVENT_RTC_TICK };
+    statemachine_process(&tick);
     TEST_ASSERT_EQUAL(0, led_notify_count);
 }
 
 int main(void) {
     UNITY_BEGIN();
-    RUN_TEST(test_enter_substate_on_button_press);
-    RUN_TEST(test_return_from_substate);
+    RUN_TEST(test_enter_substate_initial_step);
+    RUN_TEST(test_substate_step1_to_step2);
+    RUN_TEST(test_substate_return_to_idle);
+    RUN_TEST(test_idle_after_return_is_stable);
     return UNITY_END();
 }

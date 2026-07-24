@@ -50,6 +50,12 @@ peripherals:
     clock_source: "LSI"
     features:
       - calendar
+  - name: "uart2"
+    type: "UART_Serial"
+    instance: "USART2"
+    interface: "uart"
+    extra:
+      baudrate: 115200
 
 # ========== 业务状态机 ==========
 business_flow:

@@ -64,6 +64,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
     has_spi_flash = False
     has_adc = False
     has_uart = False
+    uart_name = ""
 
     # ---------- Bootloader ----------
     boot_config = hw.get('bootloader', {})
@@ -106,6 +107,45 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
             has_adc = True
         if model.get('type') == 'UART_Serial':
             has_uart = True
+            uart_name = p['name']
+
+    # IWDG driver is auto-injected when bootloader is enabled
+    if has_bootloader:
+        drivers.append({
+            'name': 'iwdg',
+            'template': 'drivers/drv_iwdg.c.j2',
+            'header_template': 'drivers/drv_iwdg.h.j2',
+            'model': {'type': 'Internal_IWDG'},
+            'peripheral': {
+                'name': 'iwdg',
+                'wdg_timeout_ms': boot_config.get('wdg_timeout_ms', 5000)
+            }
+        })
+
+    # FOTA modules are auto-injected when bootloader + UART are both enabled
+    has_fota = has_bootloader and has_uart
+    if has_fota:
+        drivers.append({
+            'name': 'fota',
+            'template': 'drivers/drv_fota.c.j2',
+            'header_template': 'drivers/drv_fota.h.j2',
+            'model': {'type': 'Internal_FOTA'},
+            'peripheral': {
+                'name': 'fota',
+                'uart_name': uart_name
+            }
+        })
+        drivers.append({
+            'name': 'fota_bspatch',
+            'template': 'drivers/fota_bspatch.c.j2',
+            'header_template': 'drivers/fota_bspatch.h.j2',
+            'model': {'type': 'Internal_FOTA'},
+            'peripheral': {'name': 'fota_bspatch'}
+        })
+        if 'stm32g0xx_hal_flash.c' not in hal_sources:
+            hal_sources.append('stm32g0xx_hal_flash.c')
+        if 'stm32g0xx_hal_flash_ex.c' not in hal_sources:
+            hal_sources.append('stm32g0xx_hal_flash_ex.c')
 
     # 根据检测结果添加对应的 HAL 源文件
     if has_i2c:
@@ -129,6 +169,9 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
     if has_uart or hil_mode:
         if 'stm32g0xx_hal_uart.c' not in hal_sources:
             hal_sources.append('stm32g0xx_hal_uart.c')
+    if has_bootloader:
+        if 'stm32g0xx_hal_iwdg.c' not in hal_sources:
+            hal_sources.append('stm32g0xx_hal_iwdg.c')
 
     # ---------- 业务逻辑 DSL ----------
     business_flow = hw.get('business_flow', {})
@@ -317,6 +360,93 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
             'body': 'TEST_PASS();'
         })
 
+    # ---------- Dict-format action normalization ----------
+    # Convert new dict-format actions to legacy string format before processing.
+    def normalize_dict_action(action):
+        """
+        Convert dict-format action to string format.
+        E.g. {defer: {after: 3000, do: toggle_led}} -> "defer 3000 => toggle_led"
+             {start_timer: {name: exit_timer, ms: 3000}} -> "start_timer exit_timer 3000"
+             {timeline: [{ms: 1000, do: toggle_led}]} -> "timeline: 1000=>toggle_led"
+        Returns the same string if already a string.
+        """
+        if isinstance(action, str):
+            return action
+        if not isinstance(action, dict):
+            return str(action)
+
+        keys = list(action.keys())
+        if len(keys) != 1:
+            return str(action)
+        name = keys[0]
+        params = action[name]
+
+        # Simple actions (no params): toggle_led, return
+        if name in ('toggle_led', 'return', 'EVENT_NONE'):
+            return name
+
+        if params is None:
+            return name
+
+        if name == 'defer':
+            return f"defer {params.get('after', 0)} => {params.get('do', '')}"
+        elif name == 'start_timer':
+            return f"start_timer {params.get('name', '')} {params.get('ms', 0)}"
+        elif name == 'stop_timer':
+            return f"stop_timer {params.get('name', '')}"
+        elif name == 'set':
+            if 'op' in params:
+                return f"set {params.get('var', '')} {params.get('op', 'inc')}"
+            return f"set {params.get('var', '')} {params.get('value', 0)}"
+        elif name == 'calc':
+            return f"calc {params.get('var', '')} = {params.get('expr', '')}"
+        elif name == 'publish':
+            return f"publish {params.get('event', '')}"
+        elif name == 'publish_async':
+            return f"publish_async {params.get('event', '')}"
+        elif name == 'when':
+            return f"when {params.get('cond', '')} => {params.get('do', '')}"
+        elif name == 'send_to':
+            return f"send_to {params.get('region', '')} {params.get('event', '')}"
+        elif name == 'timeline':
+            if isinstance(params, list):
+                parts = [f"{item.get('ms', 0)}=>{item.get('do', '')}" for item in params]
+                return "timeline: " + ", ".join(parts)
+            return name
+        else:
+            return name
+
+    def normalize_actions(action_list):
+        """Normalize all actions in a list, converting dicts to strings."""
+        if not action_list:
+            return
+        for i, act in enumerate(action_list):
+            action_list[i] = normalize_dict_action(act)
+
+    # Apply normalization to all action lists in business_flow
+    def traverse_and_normalize(states_or_regions):
+        """Walk all states/regions and normalize action lists."""
+        entries = states_or_regions if isinstance(states_or_regions, list) else [states_or_regions]
+        for entry in entries:
+            # States list
+            for state in entry.get('states', []):
+                if state.get('on_entry'):
+                    normalize_actions(state['on_entry'])
+                if state.get('on_exit'):
+                    normalize_actions(state['on_exit'])
+                for trans in state.get('transitions', []):
+                    if trans.get('actions'):
+                        normalize_actions(trans['actions'])
+                if state.get('states'):
+                    traverse_and_normalize(state)
+
+    if business_flow:
+        if business_flow.get('states'):
+            traverse_and_normalize({'states': business_flow['states']})
+        if business_flow.get('regions'):
+            for region in business_flow['regions']:
+                traverse_and_normalize(region)
+
     # ---------- Defer / Timeline 动作处理 ----------
     defer_actions = []
     defer_counter = 0
@@ -460,12 +590,14 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         "has_mpu6050": has_mpu6050,
         "has_adc": has_adc,
         "has_uart": has_uart,
+        "uart_name": uart_name,
         "has_led": has_led,
         "has_led_task": has_led_task,
         "has_business_flow": has_business_flow,
         "business_flow": business_flow,
         "has_substate": has_substate,
         "has_bootloader": has_bootloader,
+        "has_fota": has_fota,
         "boot_config": boot_config,
         "boot_max_retries": boot_config.get('max_retries', 3),
         "hil": hil_config,

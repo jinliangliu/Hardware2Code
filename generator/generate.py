@@ -114,10 +114,12 @@ def render_templates(env: Environment, context: dict, output_dir: str):
 
     # ---------- 外设驱动 ----------
     drivers = context.get("drivers", [])
+    boot_config = context.get("boot_config", {})
     for drv in drivers:
         if drv.get("header_template"):
             template = env.get_template(drv["header_template"])
-            rendered = template.render(peripheral=drv["peripheral"], model=drv["model"])
+            rendered = template.render(peripheral=drv["peripheral"], model=drv["model"],
+                                       boot_config=boot_config)
             out_path = os.path.join(output_dir, "src", "drivers", f"drv_{drv['name']}.h")
             with open(out_path, "w", encoding="utf-8") as f:
                 f.write(rendered)
@@ -125,7 +127,8 @@ def render_templates(env: Environment, context: dict, output_dir: str):
 
         if drv.get("template"):
             template = env.get_template(drv["template"])
-            rendered = template.render(peripheral=drv["peripheral"], model=drv["model"])
+            rendered = template.render(peripheral=drv["peripheral"], model=drv["model"],
+                                       boot_config=boot_config)
             out_path = os.path.join(output_dir, "src", "drivers", f"drv_{drv['name']}.c")
             with open(out_path, "w", encoding="utf-8") as f:
                 f.write(rendered)
@@ -194,17 +197,26 @@ def render_templates(env: Environment, context: dict, output_dir: str):
 
     if context.get("has_uart"):
         test_templates["test/test_uart.c.j2"] = os.path.join(test_dir, "test_uart.c")
-    # if context.get('has_substate'):
-    #     test_templates["test/test_substate.c.j2"] = os.path.join(test_dir, "test_substate.c")
+    if context.get("has_substate"):
+        test_templates["test/test_substate.c.j2"] = os.path.join(test_dir, "test_substate.c")
+
+    # Bootloader unit tests
+    if context.get("has_bootloader"):
+        test_templates["test/test_boot_crc.c.j2"] = os.path.join(test_dir, "test_boot_crc.c")
+        test_templates["test/test_boot_nvm.c.j2"] = os.path.join(test_dir, "test_boot_nvm.c")
+        test_templates["test/test_boot_jump.c.j2"] = os.path.join(test_dir, "test_boot_jump.c")
+
+    # FOTA unit tests
+    if context.get("has_fota"):
+        test_templates["test/test_fota_protocol.c.j2"] = os.path.join(test_dir, "test_fota_protocol.c")
+        test_templates["test/test_fota_bspatch.c.j2"] = os.path.join(test_dir, "test_fota_bspatch.c")
         
     # 状态机测试
     if context.get("has_business_flow"):
-        # 暂时只为 rtc_advanced 生成状态机测试，substate_demo 跳过
-        if context.get("project_name") == "rtc_adv":
-            if context.get("business_flow", {}).get("regions") is not None:
-                test_templates["test/test_parallel.c.j2"] = os.path.join(test_dir, "test_parallel.c")
-            else:
-                test_templates["test/test_statemachine.c.j2"] = os.path.join(test_dir, "test_statemachine.c")
+        if context.get("business_flow", {}).get("regions") is not None:
+            test_templates["test/test_parallel.c.j2"] = os.path.join(test_dir, "test_parallel.c")
+        else:
+            test_templates["test/test_statemachine.c.j2"] = os.path.join(test_dir, "test_statemachine.c")
 
     for tmpl_name, out_path in test_templates.items():
         template = env.get_template(tmpl_name)

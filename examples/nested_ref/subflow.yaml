@@ -10,11 +10,11 @@ business_flow:
         - event: "RTC_TICK"
           target: "SUB_ACTIVE"
           actions:
-            - "calc nested_local_counter = nested_local_counter + 1"
+            - "calc local_counter = local_counter + 1"
     - name: "SUB_ACTIVE"
       transitions:
         - event: "RTC_TICK"
           target: "SUB_IDLE"
           actions:
-            - "when nested_local_counter > 2 => toggle_led"
-            - "when nested_local_counter > 4 => publish HIGH_COUNT"
+            - "when local_counter > 2 => toggle_led"
+            - "when local_counter > 4 => publish HIGH_COUNT"

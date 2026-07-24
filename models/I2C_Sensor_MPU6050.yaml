@@ -19,3 +19,18 @@ default_params:
   accel_fs: 2
   gyro_fs: 250
   sample_rate_div: 0
+extra_schema:
+  accel_fs:
+    type: int
+    required: false
+    default: 2
+    values: [2, 4, 8, 16]
+  gyro_fs:
+    type: int
+    required: false
+    default: 250
+    values: [250, 500, 1000, 2000]
+  sample_rate_div:
+    type: int
+    required: false
+    default: 0

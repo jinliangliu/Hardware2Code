@@ -1,0 +1,169 @@
+/**
+ * @file    test_boot_nvm.c
+ * @brief   Unit tests for boot_nvm (TAMP backup register storage)
+ *          Tests: init, reset, counter, slot swap, boot_ok flag
+ */
+#include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
+
+/* Include the source under test */
+#include "../../bootloader/boot_nvm.c"
+
+void setUp(void)
+{
+    mock_cmsis_reset();
+}
+
+void tearDown(void) {}
+
+/* ---- Init tests ---- */
+
+void test_init_detects_uninitialized_nvm(void)
+{
+    /* TAMP BKP3R is zero after reset -> treated as uninitialized */
+    boot_nvm_init();
+    /* After init, slot should default to A (0) */
+    TEST_ASSERT_EQUAL(BOOT_SLOT_A, boot_nvm_get_active_slot());
+    /* Counter should be 0 */
+    TEST_ASSERT_EQUAL(0, boot_nvm_get_attempt_count());
+    /* Boot OK should be cleared */
+    TEST_ASSERT_FALSE(boot_nvm_is_boot_ok());
+}
+
+void test_init_recognizes_initialized_nvm(void)
+{
+    /* Pre-set magic to simulate already-initialized NVM */
+    TAMP->BKP3R = 0x4E564D00UL; /* BOOT_NVM_INIT_MAGIC */
+    TAMP->BKP1R = BOOT_SLOT_B;
+    TAMP->BKP0R = 2;
+    TAMP->BKP2R = BOOT_OK_MAGIC;
+
+    boot_nvm_init();
+
+    /* Values should be preserved */
+    TEST_ASSERT_EQUAL(BOOT_SLOT_B, boot_nvm_get_active_slot());
+    TEST_ASSERT_EQUAL(2, boot_nvm_get_attempt_count());
+    TEST_ASSERT_TRUE(boot_nvm_is_boot_ok());
+}
+
+/* ---- Reset tests ---- */
+
+void test_reset_sets_defaults(void)
+{
+    /* Set some non-default values */
+    TAMP->BKP0R = 5;
+    TAMP->BKP1R = BOOT_SLOT_B;
+    TAMP->BKP2R = BOOT_OK_MAGIC;
+
+    boot_nvm_reset();
+
+    TEST_ASSERT_EQUAL(0, boot_nvm_get_attempt_count());
+    TEST_ASSERT_EQUAL(BOOT_SLOT_A, boot_nvm_get_active_slot());
+    TEST_ASSERT_FALSE(boot_nvm_is_boot_ok());
+}
+
+/* ---- Counter tests ---- */
+
+void test_inc_attempt_count(void)
+{
+    boot_nvm_inc_attempt_count();
+    TEST_ASSERT_EQUAL(1, boot_nvm_get_attempt_count());
+
+    boot_nvm_inc_attempt_count();
+    TEST_ASSERT_EQUAL(2, boot_nvm_get_attempt_count());
+
+    boot_nvm_inc_attempt_count();
+    TEST_ASSERT_EQUAL(3, boot_nvm_get_attempt_count());
+}
+
+void test_clear_attempt_count(void)
+{
+    boot_nvm_inc_attempt_count();
+    boot_nvm_inc_attempt_count();
+    TEST_ASSERT_EQUAL(2, boot_nvm_get_attempt_count());
+
+    boot_nvm_clear_attempt_count();
+    TEST_ASSERT_EQUAL(0, boot_nvm_get_attempt_count());
+}
+
+/* ---- Boot OK flag tests ---- */
+
+void test_set_and_check_boot_ok(void)
+{
+    TEST_ASSERT_FALSE(boot_nvm_is_boot_ok());
+    boot_nvm_set_boot_ok();
+    TEST_ASSERT_TRUE(boot_nvm_is_boot_ok());
+}
+
+void test_clear_boot_ok(void)
+{
+    boot_nvm_set_boot_ok();
+    TEST_ASSERT_TRUE(boot_nvm_is_boot_ok());
+    boot_nvm_clear_boot_ok();
+    TEST_ASSERT_FALSE(boot_nvm_is_boot_ok());
+}
+
+/* ---- Slot tests ---- */
+
+void test_active_slot_default_a(void)
+{
+    TAMP->BKP1R = 0; /* uninitialized -> should default to A */
+    uint32_t slot = boot_nvm_get_active_slot();
+    TEST_ASSERT_EQUAL(BOOT_SLOT_A, slot);
+}
+
+void test_swap_active_slot_a_to_b(void)
+{
+    TAMP->BKP1R = BOOT_SLOT_A;
+    boot_nvm_swap_active_slot();
+    TEST_ASSERT_EQUAL(BOOT_SLOT_B, boot_nvm_get_active_slot());
+    /* Counter should be reset */
+    TEST_ASSERT_EQUAL(0, boot_nvm_get_attempt_count());
+}
+
+void test_swap_active_slot_b_to_a(void)
+{
+    TAMP->BKP1R = BOOT_SLOT_B;
+    boot_nvm_swap_active_slot();
+    TEST_ASSERT_EQUAL(BOOT_SLOT_A, boot_nvm_get_active_slot());
+}
+
+void test_swap_preserves_other_state(void)
+{
+    TAMP->BKP1R = BOOT_SLOT_A;
+    boot_nvm_set_boot_ok();
+
+    boot_nvm_swap_active_slot();
+
+    TEST_ASSERT_EQUAL(BOOT_SLOT_B, boot_nvm_get_active_slot());
+    /* Boot OK flag should be untouched by swap */
+    TEST_ASSERT_TRUE(boot_nvm_is_boot_ok());
+}
+
+void test_invalid_slot_returns_a(void)
+{
+    TAMP->BKP1R = 99; /* invalid */
+    uint32_t slot = boot_nvm_get_active_slot();
+    TEST_ASSERT_EQUAL(BOOT_SLOT_A, slot);
+    /* Should also fix the stored value */
+    TEST_ASSERT_EQUAL(BOOT_SLOT_A, TAMP->BKP1R);
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_init_detects_uninitialized_nvm);
+    RUN_TEST(test_init_recognizes_initialized_nvm);
+    RUN_TEST(test_reset_sets_defaults);
+    RUN_TEST(test_inc_attempt_count);
+    RUN_TEST(test_clear_attempt_count);
+    RUN_TEST(test_set_and_check_boot_ok);
+    RUN_TEST(test_clear_boot_ok);
+    RUN_TEST(test_active_slot_default_a);
+    RUN_TEST(test_swap_active_slot_a_to_b);
+    RUN_TEST(test_swap_active_slot_b_to_a);
+    RUN_TEST(test_swap_preserves_other_state);
+    RUN_TEST(test_invalid_slot_returns_a);
+    return UNITY_END();
+}

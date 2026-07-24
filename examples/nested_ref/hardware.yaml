@@ -35,7 +35,8 @@ peripherals:
 business_flow:
   initial_state: "MAIN_IDLE"
   variables:
-    # 变量名必须与 apply_namespace 处理后的名字一致，这里使用 nested_ 前缀
+    # Declare variable here so it can be referenced by the subflow after namespace prefix is applied.
+    # The subflow declares "local_counter" which gets auto-prefixed to "nested_local_counter".
     - name: "nested_local_counter"
       type: "uint32_t"
       initial: 0

@@ -3,6 +3,34 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* ========== CMSIS register mocks (static storage) ========== */
+static volatile CRC_TypeDef  mock_crc_regs;
+static volatile PWR_TypeDef  mock_pwr_regs;
+static volatile RCC_TypeDef  mock_rcc_regs;
+static volatile TAMP_TypeDef mock_tamp_regs;
+static volatile SCB_TypeDef  mock_scb_regs;
+static volatile NVIC_TypeDef mock_nvic_regs;
+static volatile SysTick_TypeDef mock_systick_regs;
+
+volatile CRC_TypeDef  *CRC  = &mock_crc_regs;
+volatile PWR_TypeDef  *PWR  = &mock_pwr_regs;
+volatile RCC_TypeDef  *RCC  = &mock_rcc_regs;
+volatile TAMP_TypeDef *TAMP = &mock_tamp_regs;
+volatile SCB_TypeDef  *SCB  = &mock_scb_regs;
+volatile NVIC_TypeDef *NVIC = &mock_nvic_regs;
+volatile SysTick_TypeDef *SysTick = &mock_systick_regs;
+
+void mock_cmsis_reset(void)
+{
+    memset((void *)&mock_crc_regs, 0, sizeof(mock_crc_regs));
+    memset((void *)&mock_pwr_regs, 0, sizeof(mock_pwr_regs));
+    memset((void *)&mock_rcc_regs, 0, sizeof(mock_rcc_regs));
+    memset((void *)&mock_tamp_regs, 0, sizeof(mock_tamp_regs));
+    memset((void *)&mock_scb_regs, 0, sizeof(mock_scb_regs));
+    memset((void *)&mock_nvic_regs, 0, sizeof(mock_nvic_regs));
+    memset((void *)&mock_systick_regs, 0, sizeof(mock_systick_regs));
+}
+
 /* External variables */
 TaskHandle_t led_task_handle = NULL;
 
@@ -209,6 +237,66 @@ void HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, 
     (void)huart; (void)pData; (void)Size; (void)Timeout;
 }
 bool mock_HAL_UART_Init_called(void) { return uart_init_called; }
+
+/* ========== IWDG mock ========== */
+static bool iwdg_init_called = false;
+static bool iwdg_refresh_called = false;
+
+HAL_StatusTypeDef HAL_IWDG_Init(IWDG_HandleTypeDef *hiwdg) {
+    (void)hiwdg;
+    iwdg_init_called = true;
+    return HAL_OK;
+}
+HAL_StatusTypeDef HAL_IWDG_Refresh(IWDG_HandleTypeDef *hiwdg) {
+    (void)hiwdg;
+    iwdg_refresh_called = true;
+    return HAL_OK;
+}
+bool mock_HAL_IWDG_Init_called(void) { return iwdg_init_called; }
+bool mock_HAL_IWDG_Refresh_called(void) { return iwdg_refresh_called; }
+
+void mock_HAL_IWDG_reset(void) {
+    iwdg_init_called = false;
+    iwdg_refresh_called = false;
+}
+
+/* ========== Flash mock (FOTA) ========== */
+static bool flash_erase_called = false;
+static bool flash_locked = true;
+static uint32_t flash_program_count = 0;
+
+HAL_StatusTypeDef HAL_FLASH_Unlock(void) {
+    flash_locked = false;
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_FLASH_Lock(void) {
+    flash_locked = true;
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_FLASH_Program(uint32_t TypeProgram, uint32_t Address, uint64_t Data) {
+    (void)TypeProgram;
+    (void)Address;
+    (void)Data;
+    flash_program_count++;
+    return HAL_OK;
+}
+
+void HAL_FLASHEx_Erase(FLASH_EraseInitTypeDef *pEraseInit, uint32_t *PageError) {
+    (void)pEraseInit;
+    if (PageError) *PageError = 0xFFFFFFFF;
+    flash_erase_called = true;
+}
+
+void mock_flash_reset(void) {
+    flash_erase_called = false;
+    flash_locked = true;
+    flash_program_count = 0;
+}
+
+bool mock_flash_get_erase_called(void) { return flash_erase_called; }
+uint32_t mock_flash_get_program_count(void) { return flash_program_count; }
 
 /* ========== FreeRTOS stubs ========== */
 QueueHandle_t xQueueCreate(uint32_t length, uint32_t itemSize) {

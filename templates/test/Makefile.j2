@@ -12,6 +12,9 @@ TEST_PROGS = test_gpio
 {% if has_rtc %}
 TEST_PROGS += test_rtc test_event_mgr
 {% endif %}
+{% if has_fota %}
+TEST_PROGS += test_fota_protocol test_fota_bspatch
+{% endif %}
 {% for p in peripherals %}
 {% if p.type == 'I2C_Sensor_MPU6050' %}
 TEST_PROGS += test_mpu6050
@@ -40,6 +43,14 @@ test_mpu6050: $(UNITY_SRC) $(MOCK_SRC) test_mpu6050.c
 	$(CC) $(CFLAGS) $^ -o $@
 {% endif %}
 {% endfor %}
+
+{% if has_fota %}
+test_fota_protocol: $(UNITY_SRC) $(MOCK_SRC) test_fota_protocol.c
+	$(CC) $(CFLAGS) $^ -o $@
+
+test_fota_bspatch: $(UNITY_SRC) $(MOCK_SRC) test_fota_bspatch.c
+	$(CC) $(CFLAGS) $^ -o $@
+{% endif %}
 
 clean:
 	rm -f $(TEST_PROGS)

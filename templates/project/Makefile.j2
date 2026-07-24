@@ -166,7 +166,7 @@ OBJS        = $(C_OBJS) $(ASM_OBJS)
 # ---------------------------------------------------------------------------
 # Build rules
 # ---------------------------------------------------------------------------
-.PHONY: all flash flash-daplink clean test coverage{% if hil_mode %} hil-flash{% endif %}{% if has_bootloader %} bootloader app combined flash-combined{% endif %}
+.PHONY: all flash flash-daplink clean test coverage{% if hil_mode %} hil-flash{% endif %}{% if has_bootloader %} bootloader app combined flash-combined{% if has_fota %} fota-diff fota-send{% endif %}{% endif %}
 
 all: $(BUILD_DIR)/$(PROJECT_NAME).elf $(BUILD_DIR)/$(PROJECT_NAME).bin $(BUILD_DIR)/$(PROJECT_NAME).hex
 
@@ -284,7 +284,7 @@ bootloader:
 
 app: all
 	@echo "Patching CRC32 into App firmware..."
-	python patch_crc.py build\{{ project_name }}.bin -o build\{{ project_name }}_crc.bin
+	python patch_crc.py build\{{ project_name }}.bin --version $(FOTA_VERSION) -o build\{{ project_name }}_crc.bin
 	@echo "App firmware with CRC: build\{{ project_name }}_crc.bin"
 
 # ----- Combined flash image: Bootloader + App Slot A -----
@@ -301,5 +301,24 @@ flash-combined: combined
 # ----- Flash combined with DAP-Link -----
 flash-daplink-combined: combined
 	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program build/combined.bin 0x08000000 verify reset exit"
+
+{% if has_fota %}
+# ----- FOTA: generate diff patch from previous firmware -----
+# Usage:
+#   make FOTA_PREV_FW=build/v1.0_crc.bin FOTA_VERSION=0x02 fota-diff
+#   make FOTA_PORT=COM4 fota-send
+FOTA_VERSION ?= 1
+FOTA_PREV_FW ?= build/prev_firmware_crc.bin
+
+fota-diff: app
+	@echo "Generating BSDIFF patch..."
+	@echo "  Old: $(FOTA_PREV_FW)"
+	@echo "  New: build/{{ project_name }}_crc.bin"
+	python generator/bsdiff_tool.py $(FOTA_PREV_FW) build/{{ project_name }}_crc.bin -o build/{{ project_name }}_diff.patch
+	@echo "Diff patch: build/{{ project_name }}_diff.patch"
+
+fota-send:
+	python generator/fota_sender.py $(FOTA_PORT) build/{{ project_name }}_diff.patch --baud $(FOTA_BAUD)
+{% endif %}
 {% endif %}
 {% endif %}

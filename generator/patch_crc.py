@@ -8,12 +8,14 @@ CRC32 固件后处理脚本（匹配 STM32G0 硬件 CRC）
   offset 0xC0 - 0xC3:  image_size (4 bytes, 小端序)
   offset 0xC4 - 0xC7:  CRC32 (4 bytes, 小端序)
   offset 0xC8 - 0xCB:  magic 0x4841436B "H2Ck" (4 bytes)
-  offset 0xCC - end:    实际代码 + 数据
+  offset 0xCC - 0xCF:  fw_version (4 bytes, --version 参数)
+  offset 0xD0 - end:   实际代码 + 数据
 
-CRC 计算范围: offset 0xCC 到 bin 末尾的所有数据。
+image_size = 4 (fw_version) + code_size
+CRC 计算范围: offset 0xCC (fw_version + code) 到 bin 末尾的所有数据。
 
 用法:
-    python patch_crc.py firmware.bin -o output.bin
+    python patch_crc.py firmware.bin -o output.bin [--version 1]
     python patch_crc.py firmware.bin --in-place
 """
 
@@ -44,11 +46,13 @@ def stm32_crc32(data: bytes) -> int:
     return crc ^ 0xFFFFFFFF
 
 
-def patch_firmware(input_path: str, output_path: str = None):
+def patch_firmware(input_path: str, output_path: str = None, version: int = 0):
     """
     在固件头部区域搜索 magic "H2Ck"，定位 Header，计算 CRC 并回填。
     Header 格式: [image_size(4B) | CRC32(4B) | magic(4B)]
-    CRC 覆盖范围: Header 之后的所有数据。
+    Payload 格式: [fw_version(4B)] [code...]
+    CRC 覆盖范围: magic 之后的所有数据（含 fw_version）。
+    image_size = len(payload) = 4 (fw_version) + len(code)
     """
     input_path = Path(input_path)
     if not input_path.exists():
@@ -78,17 +82,31 @@ def patch_firmware(input_path: str, output_path: str = None):
 
     print(f"Header found at offset 0x{header_offset:X} (magic @ 0x{magic_offset:X})")
 
-    # 计算 CRC（覆盖 magic 之后的所有数据）
-    payload = data[payload_offset:]
-    crc_value = stm32_crc32(payload)
+    # 插入版本号（在 magic 之后，原 payload 之前）
+    version_bytes = struct.pack('<I', version & 0x00FFFFFF)  # 24-bit version
+
+    # 原 payload（magic 之后的所有数据）
+    original_payload = data[payload_offset:]
+
+    # 新 payload = version(4B) + original code
+    new_payload = version_bytes + original_payload
+
+    # 替换 payload 部分
+    data[payload_offset:] = new_payload
+
+    # 计算 CRC（覆盖 magic 之后的所有数据，含 fw_version + code）
+    crc_value = stm32_crc32(new_payload)
 
     # 回填 image_size + CRC32（小端序）
-    struct.pack_into('<II', data, header_offset, len(payload), crc_value)
+    image_size = len(new_payload)
+    struct.pack_into('<II', data, header_offset, image_size, crc_value)
 
     dest = output_path or input_path
     Path(dest).write_bytes(data)
 
-    print(f"CRC32: 0x{crc_value:08X} (payload {len(payload)} bytes)")
+    print(f"Version: 0x{version:06X}")
+    print(f"Image size: {image_size} bytes")
+    print(f"CRC32: 0x{crc_value:08X}")
     print(f"Output: {dest}")
 
 
@@ -97,6 +115,8 @@ def main():
     parser.add_argument("input", help="输入固件 .bin 文件")
     parser.add_argument("-o", "--output", help="输出文件路径（默认覆盖输入）")
     parser.add_argument("--in-place", action="store_true", help="原位修改（同没有 -o）")
+    parser.add_argument("--version", type=lambda x: int(x, 0), default=0,
+                        help="固件版本号（24-bit，如 1 或 0x01）")
     args = parser.parse_args()
 
     output = args.output if args.output else (args.input if args.in_place else None)
@@ -104,7 +124,7 @@ def main():
         print("[ERROR] Specify -o <output> or --in-place to modify in place.")
         sys.exit(1)
 
-    patch_firmware(args.input, output)
+    patch_firmware(args.input, output, args.version)
 
 
 if __name__ == "__main__":
