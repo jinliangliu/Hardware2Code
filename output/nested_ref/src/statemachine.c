@@ -58,11 +58,15 @@ void statemachine_process(event_t *evt) {
         if (
             (evt->id == EVENT_BUTTON_PRESS)
         ) {
-            /* 停止当前状态的时间序列定时器 */
-            /* 停止所有 defer 定时器 */
+            /* 停止并删除当前状态的超时定时器 */
+            /* 停止并删除所有 defer 定时器 */
             
             current_state = STATE_DEEP;
             /* 执行目标状态的进入动作并启动时间序列 */
+            /* 若目标也是复合状态，初始化子状态（考虑历史） */
+            nested_local_counter = 0;
+            current_state_DEEP = STATE_DEEP_nested_SUB_IDLE;
+            /* 执行初始子状态的进入动作并启动时间序列 */
         }
         break;
     case STATE_DEEP:
@@ -71,38 +75,41 @@ void statemachine_process(event_t *evt) {
             switch (current_state_DEEP) {
             case STATE_DEEP_nested_SUB_IDLE:
                 if (evt->id == EVENT_RTC_TICK) {
-                            {
-        nested_local_counter = nested_local_counter + 1;
-    }
-
+                    /* 停止并删除当前子状态的超时定时器 */
+                    /* 停止并删除所有 defer 定时器 */
+                    {
+                        nested_local_counter = nested_local_counter + 1;
+                    }
 
                     current_state_DEEP = STATE_DEEP_nested_SUB_ACTIVE;
+                    /* 执行目标子状态的进入动作并启动时间序列 */
                     handled = 1;
                     break;
                 }
                 break;
             case STATE_DEEP_nested_SUB_ACTIVE:
                 if (evt->id == EVENT_RTC_TICK) {
+                    /* 停止并删除当前子状态的超时定时器 */
+                    /* 停止并删除所有 defer 定时器 */
+                    {
+                        if (nested_local_counter > 2 ) {
+                            extern void led_task_notify(void);
+                    led_task_notify();
+
+                        }
+                    }
+                    {
+                        if (nested_local_counter > 4 ) {
                             {
-        if (nested_local_counter > 2 ) {
-                extern void led_task_notify(void);
-    led_task_notify();
+                        event_t evt_pub = { .id = EVENT_HIGH_COUNT, .param = 0 };
+                        statemachine_process(&evt_pub);
+                    }
 
-        }
-    }
-
-        {
-        if (nested_local_counter > 4 ) {
-                {
-        event_t evt_pub = { .id = EVENT_HIGH_COUNT, .param = 0 };
-        xQueueSend(event_queue, &evt_pub, 0);
-    }
-
-        }
-    }
-
+                        }
+                    }
 
                     current_state_DEEP = STATE_DEEP_nested_SUB_IDLE;
+                    /* 执行目标子状态的进入动作并启动时间序列 */
                     handled = 1;
                     break;
                 }
@@ -113,15 +120,13 @@ void statemachine_process(event_t *evt) {
         if (
             (evt->id == EVENT_HIGH_COUNT)
         ) {
-            /* 停止当前状态的时间序列定时器 */
-            /* 停止所有 defer 定时器 */
-                    extern void led_task_notify(void);
-    led_task_notify();
-
+            /* 停止并删除当前状态的超时定时器 */
+            /* 停止并删除所有 defer 定时器 */
+            extern void led_task_notify(void);
+            led_task_notify();
 
             current_state = STATE_MAIN_IDLE;
             /* 执行目标状态的进入动作并启动时间序列 */
-            /* 若目标也是复合状态，初始化子状态（考虑历史） */
         }
         break;
     }

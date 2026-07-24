@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "name": "ARM GCC",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/src/drivers",
+                "${workspaceFolder}/config",
+                "${workspaceFolder}/static/stm32g0/HAL/Inc",
+                "${workspaceFolder}/static/stm32g0/CMSIS/Device/ST/STM32G0xx/Include",
+                "${workspaceFolder}/static/stm32g0/CMSIS/Core/Include",
+                "${workspaceFolder}/static/stm32g0/FreeRTOS-Kernel/include",
+                "${workspaceFolder}/static/stm32g0/FreeRTOS-Kernel/portable/GCC/ARM_CM0"
+            ],
+            "defines": [
+                "STM32G0B1xx",
+                "USE_HAL_DRIVER",
+                "HSE_VALUE=8000000",
+                "HCLK_FREQ=16000000"
+            ],
+            "compilerPath": "arm-none-eabi-gcc",
+            "cStandard": "c99",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "gcc-arm"
+        }
+    ],
+    "version": 4
+}

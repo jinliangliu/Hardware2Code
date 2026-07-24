@@ -18,6 +18,8 @@ void MX_GPIO_Init(void)
 
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+    /* 初始输出高电平，LED 熄灭（低电平有效） */
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET);
     /* Enable NVIC if EXTI is configured */
     /* BUTTON (PC13) */
     __HAL_RCC_GPIOC_CLK_ENABLE();

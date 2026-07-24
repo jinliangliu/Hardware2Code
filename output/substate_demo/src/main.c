@@ -49,10 +49,6 @@ void SystemClock_Config(void)
     RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
     if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) while(1);
-
-//    HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000);
-//    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-//    HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 }
 
 /* ------- I2C initialization (if peripherals with I2C are present) ------- */
@@ -69,13 +65,12 @@ int main(void)
     /* 使能调试模块在 STOP 模式下的时钟，保持 SWD 连接 */
     DBG->CR |= DBG_CR_DBG_STOP;
 
-    HAL_InitTick(TICK_INT_PRIORITY);
-    
     SystemClock_Config();
 
-    /* USER CODE BEGIN SysInit */
-    SystemCoreClockUpdate();
-    /* USER CODE END SysInit */
+    /* 系统时钟配置完成后，重新初始化 HAL 时基（TIM14），
+       确保 HAL_GetTick() 使用正确的时钟频率。
+       RTC_WakeUp_Config 内部调用 HAL_RTCEx_SetWakeUpTimer_IT 会用到 HAL_GetTick */
+    HAL_InitTick(TICK_INT_PRIORITY);
 
     /* Initialize all configured peripherals */
     MX_GPIO_Init();

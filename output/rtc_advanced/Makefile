@@ -4,7 +4,7 @@
 # FreeRTOS Kernel: included from static
 
 SHELL = cmd
-PROJECT_NAME = nested_ref
+PROJECT_NAME = rtc_advanced
 
 # ---------------------------------------------------------------------------
 # Toolchain

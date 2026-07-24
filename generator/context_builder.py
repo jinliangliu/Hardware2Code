@@ -5,6 +5,7 @@ context_builder.py
 """
 
 import os
+import sys
 import yaml
 
 
@@ -372,21 +373,42 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
     # ---------- 收集所有 publish / publish_async 事件 ----------
     published_events = set()
 
+    def extract_publish_events(action_str: str):
+        """从动作字符串中提取 publish / publish_async 的事件名"""
+        events = set()
+        # 直接发布动作
+        if action_str.startswith('publish ') or action_str.startswith('publish_async '):
+            events.add(action_str.split()[-1])
+        # defer 内嵌发布：defer 1000 => publish FOO
+        elif action_str.startswith('defer ') and '=>' in action_str:
+            sub = action_str.split('=>', 1)[1].strip()
+            if sub.startswith('publish ') or sub.startswith('publish_async '):
+                events.add(sub.split()[-1])
+        # timeline 内嵌发布：timeline: 1000=>publish FOO, 2000=>publish BAR
+        elif action_str.startswith('timeline:') and '=>' in action_str:
+            # 提取 "timeline: " 之后的部分
+            content = action_str.split(':', 1)[1].strip() if ':' in action_str else action_str
+            for part in content.split(','):
+                if '=>' in part:
+                    sub = part.split('=>', 1)[1].strip()
+                    if sub.startswith('publish ') or sub.startswith('publish_async '):
+                        events.add(sub.split()[-1])
+        # when 条件发布：when condition => publish_async EVENT
+        elif '=>' in action_str:
+            sub = action_str.split('=>', 1)[1].strip()
+            if sub.startswith('publish ') or sub.startswith('publish_async '):
+                events.add(sub.split()[-1])
+        return events
+
     def collect_published_events(states):
         for state in states:
             for trans in state.get('transitions', []):
                 for action in trans.get('actions', []):
-                    if action.startswith('publish ') or action.startswith('publish_async '):
-                        evt = action.split()[-1]
-                        published_events.add(evt)
+                    published_events.update(extract_publish_events(action))
             for action in state.get('on_entry', []):
-                if action.startswith('publish ') or action.startswith('publish_async '):
-                    evt = action.split()[-1]
-                    published_events.add(evt)
+                published_events.update(extract_publish_events(action))
             for action in state.get('on_exit', []):
-                if action.startswith('publish ') or action.startswith('publish_async '):
-                    evt = action.split()[-1]
-                    published_events.add(evt)
+                published_events.update(extract_publish_events(action))
             if state.get('states'):
                 collect_published_events(state['states'])
 
@@ -396,6 +418,14 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         if business_flow.get('regions'):
             for region in business_flow['regions']:
                 collect_published_events(region['states'])
+
+    # 同时从已经处理好的 defer_actions 中提取 publish 事件
+    # （traverse_states 已将 "defer 1000 => publish FOO" 替换为 "start_timer defer_N 1000"，
+    #   原始 publish 动作被移入 defer_actions[].sub_action）
+    for d in defer_actions:
+        sub = d.get('sub_action', '')
+        if sub.startswith('publish ') or sub.startswith('publish_async '):
+            published_events.add(sub.split()[-1])
 
     # ---------- 静态库绝对路径 ----------
     static_dir_absolute = os.path.abspath("static/stm32g0").replace("\\", "/")

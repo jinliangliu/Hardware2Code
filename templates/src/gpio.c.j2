@@ -50,6 +50,10 @@ void MX_GPIO_Init(void)
 
     HAL_GPIO_Init(GPIO{{ pin.id[1] }}, &GPIO_InitStruct);
 
+{% if pin.function == 'GPIO_Output' and pin.active_level == 'low' %}
+    /* 初始输出高电平，LED 熄灭（低电平有效） */
+    HAL_GPIO_WritePin(GPIO{{ pin.id[1] }}, GPIO_PIN_{{ pin.id[2:] }}, GPIO_PIN_SET);
+{% endif %}
     /* Enable NVIC if EXTI is configured */
     {% if pin.exti and pin.exti.enable %}
     HAL_NVIC_EnableIRQ({{ macros.exti_irq_name(pin.id) }});

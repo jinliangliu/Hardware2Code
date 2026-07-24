@@ -93,7 +93,16 @@ static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_
 {% if action == 'toggle_led' %}
 extern void led_task_notify(void);
 led_task_notify();
-{% elif 'start_timer' in action %}
+{% elif action.startswith('stop_timer ') %}
+{
+    {% set timer_name = action.split(' ')[1] %}
+    if ({{ timer_name }}_handle) {
+        RTC_TimerStop({{ timer_name }}_handle);
+        RTC_TimerDelete({{ timer_name }}_handle);
+        {{ timer_name }}_handle = NULL;
+    }
+}
+{% elif action.startswith('start_timer ') %}
 {
     uint32_t period = {{ action.split(' ')[2] }};
     {% set timer_name = action.split(' ')[1] %}
@@ -105,15 +114,6 @@ led_task_notify();
                                            {{ timer_name }}_cb, NULL);
     {{ timer_name }}_handle = h;
     RTC_TimerStart(h);
-}
-{% elif 'stop_timer' in action %}
-{
-    {% set timer_name = action.split(' ')[1] %}
-    if ({{ timer_name }}_handle) {
-        RTC_TimerStop({{ timer_name }}_handle);
-        RTC_TimerDelete({{ timer_name }}_handle);
-        {{ timer_name }}_handle = NULL;
-    }
 }
 {% elif action.startswith('set ') %}
 {
@@ -321,9 +321,45 @@ void statemachine_process(event_t *evt) {
                 case STATE_{{ region.name }}_{{ state.name }}_{{ nested.name }}:
 {% for trans in nested.transitions %}
                     if (evt->id == EVENT_{{ trans.event | replace(' ', '_') }}) {
+{% if nested.on_exit %}
+{{ process_actions_for_region(region.name, nested.on_exit) | indent(24, true) }}
+{% endif %}
+                        /* 停止并删除当前子状态的超时定时器 */
+{% if nested.after %}
+                        if ({{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle) {
+                            RTC_TimerStop({{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle);
+                            RTC_TimerDelete({{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle);
+                            {{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle = NULL;
+                        }
+{% endif %}
+                        /* 停止并删除所有 defer 定时器 */
+{% for timer_name in defer_timer_names %}
+                        if ({{ timer_name }}_handle) {
+                            RTC_TimerStop({{ timer_name }}_handle);
+                            RTC_TimerDelete({{ timer_name }}_handle);
+                            {{ timer_name }}_handle = NULL;
+                        }
+{% endfor %}
 {{ process_actions_for_region(region.name, trans.actions) | indent(24, true) }}
 {% if trans.target %}
                         *p_nested = STATE_{{ region.name }}_{{ state.name }}_{{ trans.target }};
+                        /* 执行目标子状态的进入动作并启动时间序列 */
+{% for tgt in state.states %}
+{% if tgt.name == trans.target %}
+{% if tgt.on_entry %}
+{{ process_actions_for_region(region.name, tgt.on_entry) | indent(24, true) }}
+{% endif %}
+{% if tgt.after %}
+                        {
+                            uint32_t period = {{ tgt.after }};
+                            rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                                                                   {{ region.name }}_{{ state.name }}_{{ tgt.name }}_timeout_cb, NULL);
+                            {{ region.name }}_{{ state.name }}_{{ tgt.name }}_timeout_handle = h;
+                            RTC_TimerStart(h);
+                        }
+{% endif %}
+{% endif %}
+{% endfor %}
 {% endif %}
                         handled = 1;
                         break;
@@ -386,20 +422,38 @@ void statemachine_process(event_t *evt) {
                     RTC_TimerStart(h);
                 }
 {% endif %}
-{% endif %}
-{% endfor %}
-{% if state.states %}
+{% if s.states %}
                 /* 若目标也是复合状态，初始化子状态（考虑历史） */
-{% for s in region.states %}
-{% if s.name == trans.target and s.states %}
+{% if s.variables %}
+{% for var in s.variables %}
+                {{ var.name }} = {{ var.initial }};
+{% endfor %}
+{% endif %}
 {% if s.history %}
                 current_state_{{ region.name }}_{{ s.name }} = current_state_{{ region.name }}_{{ s.name }}_history;
 {% else %}
                 current_state_{{ region.name }}_{{ s.name }} = STATE_{{ region.name }}_{{ s.name }}_{{ s.initial_state or s.states[0].name }};
 {% endif %}
+                /* 执行初始子状态的进入动作并启动时间序列 */
+{% for nested in s.states %}
+{% if nested.name == (s.initial_state or s.states[0].name) %}
+{% if nested.on_entry %}
+{{ process_actions_for_region(region.name, nested.on_entry) | indent(16, true) }}
+{% endif %}
+{% if nested.after %}
+                {
+                    uint32_t period = {{ nested.after }};
+                    rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                                                           {{ region.name }}_{{ s.name }}_{{ nested.name }}_timeout_cb, NULL);
+                    {{ region.name }}_{{ s.name }}_{{ nested.name }}_timeout_handle = h;
+                    RTC_TimerStart(h);
+                }
+{% endif %}
 {% endif %}
 {% endfor %}
 {% endif %}
+{% endif %}
+{% endfor %}
             }
 {% endfor %}
             break;
@@ -420,9 +474,45 @@ void statemachine_process(event_t *evt) {
             case STATE_{{ state.name }}_{{ nested.name }}:
 {% for trans in nested.transitions %}
                 if (evt->id == EVENT_{{ trans.event | replace(' ', '_') }}) {
+{% if nested.on_exit %}
+{{ process_actions(nested.on_exit) | indent(20, true) }}
+{% endif %}
+                    /* 停止并删除当前子状态的超时定时器 */
+{% if nested.after %}
+                    if ({{ state.name }}_{{ nested.name }}_timeout_handle) {
+                        RTC_TimerStop({{ state.name }}_{{ nested.name }}_timeout_handle);
+                        RTC_TimerDelete({{ state.name }}_{{ nested.name }}_timeout_handle);
+                        {{ state.name }}_{{ nested.name }}_timeout_handle = NULL;
+                    }
+{% endif %}
+                    /* 停止并删除所有 defer 定时器 */
+{% for timer_name in defer_timer_names %}
+                    if ({{ timer_name }}_handle) {
+                        RTC_TimerStop({{ timer_name }}_handle);
+                        RTC_TimerDelete({{ timer_name }}_handle);
+                        {{ timer_name }}_handle = NULL;
+                    }
+{% endfor %}
 {{ process_actions(trans.actions) | indent(20, true) }}
 {% if trans.target %}
                     current_state_{{ state.name }} = STATE_{{ state.name }}_{{ trans.target }};
+                    /* 执行目标子状态的进入动作并启动时间序列 */
+{% for tgt in state.states %}
+{% if tgt.name == trans.target %}
+{% if tgt.on_entry %}
+{{ process_actions(tgt.on_entry) | indent(20, true) }}
+{% endif %}
+{% if tgt.after %}
+                    {
+                        uint32_t period = {{ tgt.after }};
+                        rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                                                               {{ state.name }}_{{ tgt.name }}_timeout_cb, NULL);
+                        {{ state.name }}_{{ tgt.name }}_timeout_handle = h;
+                        RTC_TimerStart(h);
+                    }
+{% endif %}
+{% endif %}
+{% endfor %}
 {% endif %}
                     handled = 1;
                     break;
@@ -484,20 +574,38 @@ void statemachine_process(event_t *evt) {
                 RTC_TimerStart(h);
             }
 {% endif %}
-{% endif %}
-{% endfor %}
-{% if state.states %}
+{% if s.states %}
             /* 若目标也是复合状态，初始化子状态（考虑历史） */
-{% for s in business_flow.states %}
-{% if s.name == trans.target and s.states %}
+{% if s.variables %}
+{% for var in s.variables %}
+            {{ var.name }} = {{ var.initial }};
+{% endfor %}
+{% endif %}
 {% if s.history %}
             current_state_{{ s.name }} = current_state_{{ s.name }}_history;
 {% else %}
             current_state_{{ s.name }} = STATE_{{ s.name }}_{{ s.initial_state or s.states[0].name }};
 {% endif %}
+            /* 执行初始子状态的进入动作并启动时间序列 */
+{% for nested in s.states %}
+{% if nested.name == (s.initial_state or s.states[0].name) %}
+{% if nested.on_entry %}
+{{ process_actions(nested.on_entry) | indent(12, true) }}
+{% endif %}
+{% if nested.after %}
+            {
+                uint32_t period = {{ nested.after }};
+                rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                                                       {{ s.name }}_{{ nested.name }}_timeout_cb, NULL);
+                {{ s.name }}_{{ nested.name }}_timeout_handle = h;
+                RTC_TimerStart(h);
+            }
+{% endif %}
 {% endif %}
 {% endfor %}
 {% endif %}
+{% endif %}
+{% endfor %}
         }
 {% endfor %}
         break;

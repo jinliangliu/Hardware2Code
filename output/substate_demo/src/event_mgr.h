@@ -24,8 +24,12 @@ typedef enum {
 
 
     EVENT_TIMER_EXPIRED_defer_0,
+    EVENT_TIMER_EXPIRED_defer_1,
+    EVENT_TIMER_EXPIRED_defer_2,
 
 /* ========== 动态发布事件（由生成器提供） ========== */
+    EVENT_STEP_NEXT,
+    EVENT_STEP_RETURN,
 
     EVENT_MAX
 } event_id_t;

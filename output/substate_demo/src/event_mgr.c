@@ -34,7 +34,11 @@ void EventMgr_Task(void *pvParameters)
     while(1) {
         if( xQueueReceive(event_queue, &evt, portMAX_DELAY) == pdTRUE ) {
 #ifndef TEST
-            statemachine_process(&evt);
+            if (evt.id == EVENT_RTC_TICK) {
+                RTC_ProcessTimers();
+            } else {
+                statemachine_process(&evt);
+            }
 #else
             /* 测试模式：仅标记事件已处理 */
             (void)evt;

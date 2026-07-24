@@ -17,4 +17,4 @@ business_flow:
           target: "SUB_IDLE"
           actions:
             - "when nested_local_counter > 2 => toggle_led"
-            - "when nested_local_counter > 4 => publish_async HIGH_COUNT"
+            - "when nested_local_counter > 4 => publish HIGH_COUNT"

@@ -96,8 +96,8 @@ def validate_hardware(hw):
         if not ('states' in bf or 'regions' in bf):
             errors.append("[ERROR] business_flow has neither 'states' nor 'regions' defined.")
 
-        valid_actions = ['toggle_led', 'return', 'start_timer', 'stop_timer']
-        valid_action_prefixes = ['set ', 'calc ', 'publish ', 'publish_async ', 'when ', 'defer ', 'timeline:', 'send_to ']
+        valid_actions = ['toggle_led', 'return', 'EVENT_NONE']
+        valid_action_prefixes = ['start_timer ', 'stop_timer ', 'set ', 'calc ', 'publish ', 'publish_async ', 'when ', 'defer ', 'timeline:', 'send_to ']
         state_names = []
 
         def validate_actions(action_list, location):

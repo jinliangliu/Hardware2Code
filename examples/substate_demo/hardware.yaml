@@ -47,12 +47,15 @@ business_flow:
         - name: "STEP1"
           on_entry:
             - "defer 3000 => toggle_led"
+            - "defer 1000 => publish STEP_NEXT"
           transitions:
-            - event: "RTC_TICK"
+            - event: "STEP_NEXT"
               target: "STEP2"
         - name: "STEP2"
+          on_entry:
+            - "defer 1000 => publish STEP_RETURN"
           transitions:
-            - event: "RTC_TICK"
+            - event: "STEP_RETURN"
               actions:
                 - "return"
       transitions:

@@ -221,6 +221,25 @@ def render_templates(env: Environment, context: dict, output_dir: str):
     else:
         print("Warning: run_tests.py not found in generator/. Tests will not be executable via make test.")
 
+    # ---------- .vscode 编辑器配置 ----------
+    vscode_dir = os.path.join(output_dir, ".vscode")
+    os.makedirs(vscode_dir, exist_ok=True)
+
+    vscode_templates = {
+        "vscode/settings.json.j2": ".vscode/settings.json",
+        "vscode/tasks.json.j2": ".vscode/tasks.json",
+        "vscode/launch.json.j2": ".vscode/launch.json",
+        "vscode/c_cpp_properties.json.j2": ".vscode/c_cpp_properties.json",
+        "vscode/extensions.json.j2": ".vscode/extensions.json",
+    }
+    for tmpl_name, rel_out in vscode_templates.items():
+        template = env.get_template(tmpl_name)
+        rendered = template.render(context)
+        out_path = os.path.join(output_dir, rel_out)
+        with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(rendered)
+        print(f"Generated: {out_path}")
+
     # ---------- 复制 HAL Timebase 文件到工程（效仿STM32Cube） ----------
     if context.get("has_rtc"):
         timebase_src = os.path.join("static", "stm32g0", "HAL", "Src", "stm32g0xx_hal_timebase_tim.c")
