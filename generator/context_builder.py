@@ -100,7 +100,6 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
             hal_sources.append('stm32g0xx_hal_i2c.c')
     if has_rtc:
         for rtc_file in ['stm32g0xx_hal_rtc.c', 'stm32g0xx_hal_rtc_ex.c',
-                          'stm32g0xx_hal_timebase_tim.c',
                           'stm32g0xx_hal_tim.c', 'stm32g0xx_hal_tim_ex.c']:
             if rtc_file not in hal_sources:
                 hal_sources.append(rtc_file)
@@ -141,27 +140,21 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
 
     # ---------- 函数：为状态和变量添加命名空间前缀 ----------
     def apply_namespace(state, namespace):
-        # 修改变量名
         if 'variables' in state:
             for var in state['variables']:
                 var['name'] = f"{namespace}_{var['name']}"
-        # 修改 initial_state
         if 'initial_state' in state:
             state['initial_state'] = f"{namespace}_{state['initial_state']}"
 
-        # 定义一个局部函数，用于扫描并替换字符串中的变量名
         def replace_in_actions(actions):
+            import re
             for i, act in enumerate(actions):
-                # 仅对 calc、set、when 等动作中的变量进行替换
-                # 简单策略：将 actions 中出现的每个变量名用前缀版本替换
-                # 这里我们遍历所有变量，全局替换
                 if 'variables' in state:
                     for var in state['variables']:
-                        # 注意：我们只替换独立的变量名，避免错误替换
-                        # 使用简单的字符串替换，因为变量名通常由字母数字和下划线组成
-                        act = act.replace(var['name'].split('_')[-1], var['name'])
+                        original_name = var['name'].replace(f"{namespace}_", "")
+                        pattern = r'\b' + re.escape(original_name) + r'\b'
+                        act = re.sub(pattern, var['name'], act)
                 actions[i] = act
-        # 处理当前状态的 on_entry/on_exit/transitions
         for trans in state.get('transitions', []):
             replace_in_actions(trans.get('actions', []))
         if 'on_entry' in state:
@@ -169,7 +162,6 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         if 'on_exit' in state:
             replace_in_actions(state['on_exit'])
 
-        # 递归子状态
         if 'states' in state:
             for substate in state['states']:
                 substate['name'] = f"{namespace}_{substate['name']}"
@@ -315,6 +307,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
     # ---------- Defer / Timeline 动作处理 ----------
     defer_actions = []
     defer_counter = 0
+    defer_timer_names = []
 
     def process_defer(action_list, defer_counter):
         new_actions = []
@@ -333,6 +326,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
                             'timer_name': timer_name,
                             'sub_action': sub_action
                         })
+                        defer_timer_names.append(timer_name)
                         defer_counter += 1
             elif act.startswith('defer '):
                 parts = act.split('=>', 1)
@@ -347,6 +341,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
                             'timer_name': timer_name,
                             'sub_action': sub_action
                         })
+                        defer_timer_names.append(timer_name)
                         defer_counter += 1
                         continue
             new_actions.append(act)
@@ -402,10 +397,6 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
             for region in business_flow['regions']:
                 collect_published_events(region['states'])
 
-    # 临时确保 HIGH_COUNT 被注册（嵌套引用演示需要）
-    if 'HIGH_COUNT' not in published_events:
-        published_events.add('HIGH_COUNT')
-
     # ---------- 静态库绝对路径 ----------
     static_dir_absolute = os.path.abspath("static/stm32g0").replace("\\", "/")
 
@@ -440,6 +431,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> dict:
         "static_dir_absolute": static_dir_absolute,
         "has_event_mgr": True,
         "defer_actions": defer_actions,
+        "defer_timer_names": defer_timer_names,
         "published_events": sorted(published_events),
     }
 

@@ -54,6 +54,7 @@ typedef struct {
 #define GPIO_MODE_IT_FALLING    2
 #define GPIO_MODE_AF_OD         3
 #define GPIO_MODE_AF_PP         4
+#define GPIO_MODE_ANALOG        5
 #define GPIO_NOPULL             0
 #define GPIO_PULLUP             1
 #define GPIO_SPEED_FREQ_LOW     2
@@ -290,5 +291,76 @@ void HAL_TIM_PWM_Init(TIM_HandleTypeDef *htim);
 void HAL_TIM_PWM_ConfigChannel(TIM_HandleTypeDef *htim, TIM_OC_InitTypeDef *sConfig, uint32_t Channel);
 void HAL_TIM_PWM_Start(TIM_HandleTypeDef *htim, uint32_t Channel);
 bool mock_HAL_TIM_PWM_Init_called(void);
+
+/* ========== ADC mock ========== */
+typedef struct {
+    uint32_t ClockPrescaler;
+    uint32_t Resolution;
+    uint32_t DataAlign;
+    uint32_t ScanConvMode;
+    uint32_t EOCSelection;
+    uint32_t LowPowerAutoWait;
+    uint32_t LowPowerAutoPowerOff;
+    uint32_t ContinuousConvMode;
+    uint32_t NbrOfConversion;
+    uint32_t DiscontinuousConvMode;
+    uint32_t ExternalTrigConv;
+    uint32_t ExternalTrigConvEdge;
+    uint32_t DMAContinuousRequests;
+    uint32_t Overrun;
+} ADC_InitTypeDef;
+
+typedef void ADC_HandleTypeDef;
+
+#define ADC_CLOCK_SYNC_PCLK_DIV2  0
+#define ADC_RESOLUTION_12B        0
+#define ADC_DATAALIGN_RIGHT       0
+#define ADC_SCAN_DISABLE          0
+#define ADC_EOC_SINGLE_CONV       0
+#define ADC_SOFTWARE_START        0
+#define ADC_EXTERNALTRIGCONVEDGE_NONE 0
+#define ADC_OVR_DATA_PRESERVED    0
+#define ADC_CHANNEL_0             0
+
+typedef struct {
+    uint32_t Channel;
+    uint32_t Rank;
+    uint32_t SamplingTime;
+} ADC_ChannelConfTypeDef;
+
+#define ADC_REGULAR_RANK_1        0
+#define ADC_SAMPLETIME_39CYCLES_5 0
+
+void HAL_ADC_Init(ADC_HandleTypeDef *hadc);
+void HAL_ADC_ConfigChannel(ADC_HandleTypeDef *hadc, ADC_ChannelConfTypeDef *sConfig);
+void HAL_ADC_Start(ADC_HandleTypeDef *hadc);
+void HAL_ADC_PollForConversion(ADC_HandleTypeDef *hadc, uint32_t Timeout);
+uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef *hadc);
+bool mock_HAL_ADC_Init_called(void);
+
+/* ========== UART mock ========== */
+typedef struct {
+    uint32_t BaudRate;
+    uint32_t WordLength;
+    uint32_t StopBits;
+    uint32_t Parity;
+    uint32_t Mode;
+    uint32_t HwFlowCtl;
+    uint32_t OverSampling;
+} UART_InitTypeDef;
+
+typedef void UART_HandleTypeDef;
+
+#define UART_WORDLENGTH_8B       0
+#define UART_STOPBITS_1          0
+#define UART_PARITY_NONE         0
+#define UART_MODE_TX_RX          0
+#define UART_HWCONTROL_NONE      0
+#define UART_OVERSAMPLING_16     0
+
+void HAL_UART_Init(UART_HandleTypeDef *huart);
+void HAL_UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+void HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+bool mock_HAL_UART_Init_called(void);
 
 #endif /* MOCK_HAL_H */

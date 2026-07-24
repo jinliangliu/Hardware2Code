@@ -1,17 +1,15 @@
 #ifndef __DRV_RTC_H
 #define __DRV_RTC_H
 
-/* 定时器句柄和回调类型 - 在所有编译模式下均需定义 */
+#ifndef TEST
+#include "stm32g0xx_hal.h"
+#endif
+
+/* 定时器句柄和回调类型 */
 typedef void * rtc_timer_handle_t;
 typedef void (*rtc_timer_cb_t)(void *arg);
 #define RTC_TIMER_MODE_ONE_SHOT     0
 #define RTC_TIMER_MODE_PERIODIC     1
-
-#ifdef TEST
-#include "mock_hal.h"
-#else
-#include "stm32g0xx_hal.h"
-#endif
 
 typedef struct {
     uint8_t hour;

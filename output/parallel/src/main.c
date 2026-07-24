@@ -2,12 +2,13 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
-#include "stm32g0xx_hal_tim.h"
 
 /* Include driver headers for each peripheral */
 
 /* Include event manager header (always present) */
 #include "event_mgr.h"
+
+#include "statemachine.h"
 
 /* GPIO initialization function */
 void MX_GPIO_Init(void);
@@ -19,6 +20,8 @@ void MX_GPIO_Init(void);
 /* ------- I2C Handles (if I2C peripherals are used) ------- */
 
 /* ------- SPI Handles (if SPI peripherals are used) ------- */
+
+/* ------- UART Handles (if UART peripherals are used) ------- */
 
 /* ------- Task handles ------- */
 TaskHandle_t led_task_handle = NULL;
@@ -55,6 +58,8 @@ void SystemClock_Config(void)
 
 /* ------- SPI initialization (if peripherals with SPI are present) ------- */
 
+/* ------- UART initialization (if UART peripherals are present) ------- */
+
 /* ------- Main ------- */
 int main(void)
 {
@@ -81,12 +86,11 @@ int main(void)
     
     /* Initialize I2C and internal peripherals */
 
-
-    
-
     /* Create application tasks (user-defined) */
     xTaskCreate( led_task, "led_task", 128, NULL, 2, &led_task_handle );
     xTaskCreate( counter_task, "counter_task", 256, NULL, 3, &counter_task_handle );
+
+
 
     /* Create the central event manager task (highest priority) */
     xTaskCreate(EventMgr_Task, "event_mgr", 512, NULL, configMAX_PRIORITIES - 1, NULL);
@@ -106,7 +110,6 @@ void led_task(void *pvParameters)
 }
 void counter_task(void *pvParameters)
 {
-    /* Default empty task */
     while(1) {
         vTaskDelay(1000);
     }

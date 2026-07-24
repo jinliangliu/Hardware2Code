@@ -60,7 +60,6 @@ $(HAL_DIR)/Src/stm32g0xx_hal_pwr_ex.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_exti.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_rtc.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_rtc_ex.c \
-$(HAL_DIR)/Src/stm32g0xx_hal_timebase_tim.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_tim.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_tim_ex.c \
 $(CMSIS_DEVICE_DIR)/Source/Templates/system_stm32g0xx.c
@@ -84,6 +83,7 @@ C_SOURCES += \
 ./src/sleep.c \
 ./src/stm32g0xx_it.c \
 ./src/event_mgr.c \
+./src/stm32g0xx_hal_timebase_tim.c \
 ./src/statemachine.c \
 ./src/drivers/drv_rtc.c \
 

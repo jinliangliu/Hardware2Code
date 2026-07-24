@@ -1,8 +1,8 @@
+{% import 'macros.j2' as macros %}
 #include "stm32g0xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
-#include "stm32g0xx_hal_tim.h"
 
 /* Include driver headers for each peripheral */
 {% for drv in drivers %}
@@ -22,8 +22,8 @@ void MX_GPIO_Init(void);
 /* ------- Auto-generated pin definitions ------- */
 {% for pin in pins %}
 {% if pin.label == 'LED' %}
-#define LED_GPIO_Port  GPIO{{ pin.id[1] }}
-#define LED_GPIO_Pin   GPIO_PIN_{{ pin.id[2:] }}
+#define LED_GPIO_Port  GPIO{{ macros.pin_port(pin.id) }}
+#define LED_GPIO_Pin   GPIO_PIN_{{ macros.pin_number(pin.id) }}
 {% endif %}
 {% endfor %}
 
@@ -69,10 +69,6 @@ void SystemClock_Config(void)
     RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
     if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) while(1);
-
-//    HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000);
-//    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-//    HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 }
 
 /* ------- I2C initialization (if peripherals with I2C are present) ------- */
@@ -110,6 +106,23 @@ static void MX_SPI{{ p.bus[-1] }}_Init(void)
 }
 {% endfor %}
 
+/* ------- UART initialization (if UART peripherals are present) ------- */
+{% for p in peripherals if p.type == 'UART_Serial' %}
+static void MX_{{ p.instance }}_UART_Init(void)
+{
+    __HAL_RCC_{{ p.instance }}_CLK_ENABLE();
+    huart_{{ p.name }}.Instance = {{ p.instance }};
+    huart_{{ p.name }}.Init.BaudRate = {{ p.extra.baudrate | default(115200) }};
+    huart_{{ p.name }}.Init.WordLength = UART_WORDLENGTH_8B;
+    huart_{{ p.name }}.Init.StopBits = UART_STOPBITS_1;
+    huart_{{ p.name }}.Init.Parity = UART_PARITY_NONE;
+    huart_{{ p.name }}.Init.Mode = UART_MODE_TX_RX;
+    huart_{{ p.name }}.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    huart_{{ p.name }}.Init.OverSampling = UART_OVERSAMPLING_16;
+    if (HAL_UART_Init(&huart_{{ p.name }}) != HAL_OK) while(1);
+}
+{% endfor %}
+
 /* ------- Main ------- */
 int main(void)
 {
@@ -118,13 +131,12 @@ int main(void)
     /* 使能调试模块在 STOP 模式下的时钟，保持 SWD 连接 */
     DBG->CR |= DBG_CR_DBG_STOP;
 
-    HAL_InitTick(TICK_INT_PRIORITY);
-    
     SystemClock_Config();
 
-    /* USER CODE BEGIN SysInit */
-    SystemCoreClockUpdate();
-    /* USER CODE END SysInit */
+    /* 系统时钟配置完成后，重新初始化 HAL 时基（TIM14），
+       确保 HAL_GetTick() 使用正确的时钟频率。
+       RTC_WakeUp_Config 内部调用 HAL_RTCEx_SetWakeUpTimer_IT 会用到 HAL_GetTick */
+    HAL_InitTick(TICK_INT_PRIORITY);
 
     /* Initialize all configured peripherals */
     MX_GPIO_Init();
@@ -146,33 +158,20 @@ int main(void)
 {{ p.name }}_init(&hspi{{ p.bus[-1] }});
 {% elif p.type == 'Internal_RTC' %}
     RTC_Init();
+{% elif p.type == 'UART_Serial' %}
+    MX_{{ p.instance }}_UART_Init();
 {% endif %}
-{% endfor %}
-{% for p in peripherals if p.type == 'UART_Serial' %}
-static void MX_{{ p.instance }}_UART_Init(void) {
-    /* 引脚已由 MX_GPIO_Init 配置 */
-    __HAL_RCC_{{ p.instance }}_CLK_ENABLE();
-    huart_{{ p.name }}.Instance = {{ p.instance }};
-    huart_{{ p.name }}.Init.BaudRate = {{ p.extra.baudrate | default(115200) }};
-    huart_{{ p.name }}.Init.WordLength = UART_WORDLENGTH_8B;
-    huart_{{ p.name }}.Init.StopBits = UART_STOPBITS_1;
-    huart_{{ p.name }}.Init.Parity = UART_PARITY_NONE;
-    huart_{{ p.name }}.Init.Mode = UART_MODE_TX_RX;
-    huart_{{ p.name }}.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-    huart_{{ p.name }}.Init.OverSampling = UART_OVERSAMPLING_16;
-    if (HAL_UART_Init(&huart_{{ p.name }}) != HAL_OK) while(1);
-}
 {% endfor %}
 {% if has_rtc %}
     RTC_Start();
 {% endif %}
 
-    
-
     /* Create application tasks (user-defined) */
 {% for task in app_tasks %}
     xTaskCreate( {{ task.name }}, "{{ task.name }}", {{ task.stack_size | default(128) }}, NULL, {{ task.priority }}, &{{ task.name }}_handle );
 {% endfor %}
+
+
 
     /* Create the central event manager task (highest priority) */
     xTaskCreate(EventMgr_Task, "event_mgr", 512, NULL, configMAX_PRIORITIES - 1, NULL);
@@ -201,8 +200,16 @@ void {{ task.name }}(void *pvParameters)
         }
         vTaskDelay(pdMS_TO_TICKS({{ peripherals[0].extra.update_interval_ms | default(1000) }}));
     }
+    {% elif task.name == 'rtc_demo_task' %}
+    rtc_time_t time;
+    while(1) {
+        RTC_GetTime(&time);
+        event_t evt = { .id = EVENT_RTC_TICK, .param = 0 };
+        xQueueSend(event_queue, &evt, 0);
+        RTC_ProcessTimers();
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
     {% else %}
-    /* Default empty task */
     while(1) {
         vTaskDelay(1000);
     }

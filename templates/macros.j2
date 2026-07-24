@@ -4,10 +4,24 @@
     Macros:
       - exti_irq_name(pin_id)  : returns NVIC IRQn name (e.g. EXTI4_15_IRQn)
       - exti_handler_name(pin_id) : returns handler function name (e.g. EXTI4_15_IRQHandler)
+      - pin_port(pin_id) : returns GPIO port letter (e.g. 'C' for PC13)
+      - pin_number(pin_id) : returns pin number as string (e.g. '13' for PC13)
+      - pin_num_int(pin_id) : returns pin number as integer
    #}
 
+{% macro pin_port(pin_id) -%}
+  {%- set port = pin_id[1] -%}
+  {{ port }}
+{%- endmacro %}
+
+{% macro pin_number(pin_id) -%}
+  {%- set num = pin_id[2:] -%}
+  {%- if num == '' %}0{% else %}{{ num }}{% endif %}
+{%- endmacro %}
+
 {% macro exti_irq_name(pin_id) -%}
-  {%- set num = pin_id[2:] | int -%}
+  {%- set num_str = pin_id[2:] -%}
+  {%- set num = 0 if num_str == '' else num_str | int -%}
   {%- if num <= 1 %}EXTI0_1_IRQn
   {%- elif num <= 3 %}EXTI2_3_IRQn
   {%- else %}EXTI4_15_IRQn
@@ -15,7 +29,8 @@
 {%- endmacro %}
 
 {% macro exti_handler_name(pin_id) -%}
-  {%- set num = pin_id[2:] | int -%}
+  {%- set num_str = pin_id[2:] -%}
+  {%- set num = 0 if num_str == '' else num_str | int -%}
   {%- if num <= 1 %}EXTI0_1_IRQHandler
   {%- elif num <= 3 %}EXTI2_3_IRQHandler
   {%- else %}EXTI4_15_IRQHandler

@@ -2,13 +2,14 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
-#include "stm32g0xx_hal_tim.h"
 
 /* Include driver headers for each peripheral */
 #include "drv_rtc.h"
 
 /* Include event manager header (always present) */
 #include "event_mgr.h"
+
+#include "statemachine.h"
 
 /* GPIO initialization function */
 void MX_GPIO_Init(void);
@@ -58,6 +59,8 @@ void SystemClock_Config(void)
 
 /* ------- SPI initialization (if peripherals with SPI are present) ------- */
 
+/* ------- UART initialization (if UART peripherals are present) ------- */
+
 /* ------- Main ------- */
 int main(void)
 {
@@ -86,11 +89,11 @@ int main(void)
     RTC_Init();
     RTC_Start();
 
-    
-
     /* Create application tasks (user-defined) */
     xTaskCreate( led_task, "led_task", 128, NULL, 2, &led_task_handle );
     xTaskCreate( rtc_demo_task, "rtc_demo_task", 512, NULL, 3, &rtc_demo_task_handle );
+
+
 
     /* Create the central event manager task (highest priority) */
     xTaskCreate(EventMgr_Task, "event_mgr", 512, NULL, configMAX_PRIORITIES - 1, NULL);
@@ -110,9 +113,13 @@ void led_task(void *pvParameters)
 }
 void rtc_demo_task(void *pvParameters)
 {
-    /* Default empty task */
+    rtc_time_t time;
     while(1) {
-        vTaskDelay(1000);
+        RTC_GetTime(&time);
+        event_t evt = { .id = EVENT_RTC_TICK, .param = 0 };
+        xQueueSend(event_queue, &evt, 0);
+        RTC_ProcessTimers();
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 

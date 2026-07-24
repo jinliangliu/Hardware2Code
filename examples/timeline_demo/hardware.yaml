@@ -28,7 +28,7 @@ peripherals:
   - name: "rtc"
     type: "Internal_RTC"
     interface: "internal"
-    clock_source: "LSE"
+    clock_source: "LSI"
     features:
       - calendar
 
@@ -42,6 +42,7 @@ business_flow:
     - name: "PLAYING"
       after: 5000   # 5 秒后自动返回 IDLE
       on_entry:
+        - "toggle_led"
         - "timeline: 1000=>toggle_led, 2000=>toggle_led, 3000=>toggle_led"
       transitions:
         - event: "TIMER_EXPIRED_PLAYING_timeout"

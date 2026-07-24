@@ -2,13 +2,14 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
-#include "stm32g0xx_hal_tim.h"
 
 /* Include driver headers for each peripheral */
 #include "drv_rtc.h"
 
 /* Include event manager header (always present) */
 #include "event_mgr.h"
+
+#include "statemachine.h"
 
 /* GPIO initialization function */
 void MX_GPIO_Init(void);
@@ -56,6 +57,8 @@ void SystemClock_Config(void)
 
 /* ------- SPI initialization (if peripherals with SPI are present) ------- */
 
+/* ------- UART initialization (if UART peripherals are present) ------- */
+
 /* ------- Main ------- */
 int main(void)
 {
@@ -84,10 +87,10 @@ int main(void)
     RTC_Init();
     RTC_Start();
 
-    
-
     /* Create application tasks (user-defined) */
     xTaskCreate( led_task, "led_task", 128, NULL, 2, &led_task_handle );
+
+
 
     /* Create the central event manager task (highest priority) */
     xTaskCreate(EventMgr_Task, "event_mgr", 512, NULL, configMAX_PRIORITIES - 1, NULL);

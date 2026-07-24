@@ -9,6 +9,8 @@
 
 #include "statemachine.h"
 
+
+
 /* ========== 全局变量 ========== */
 static uint32_t press_count = 0;
 
@@ -46,15 +48,11 @@ static void exit_timer_cb(void *arg) {
     statemachine_process(&evt);
 }
 
-/* ========== 延迟动作定时器回调（单独生成句柄和回调） ========== */
+/* ========== 延迟动作定时器回调 ========== */
 static rtc_timer_handle_t defer_0_handle = NULL;
 static void defer_0_cb(void *arg) {
-    #ifndef TEST
+        extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 }
 
@@ -63,12 +61,8 @@ void statemachine_init(void) {
     current_state = STATE_IDLE;
     press_count = 0;
     /* 执行初始状态的进入动作并启动时间序列 */
-        #ifndef TEST
+            extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
     {
@@ -89,16 +83,14 @@ void statemachine_process(event_t *evt) {
             (press_count < 3) &&
             (evt->id == EVENT_BUTTON_PRESS)
         ) {
-                #ifndef TEST
+                    extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
             /* 停止当前状态的时间序列定时器 */
             RTC_TimerStop(IDLE_timeout_handle);
+            /* 停止所有 defer 定时器 */
+            if (defer_0_handle) RTC_TimerStop(defer_0_handle);
                     {
         uint32_t period = 3000;
         rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
@@ -127,16 +119,14 @@ void statemachine_process(event_t *evt) {
         else if (
             (evt->id == EVENT_BUTTON_PRESS)
         ) {
-                #ifndef TEST
+                    extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
             /* 停止当前状态的时间序列定时器 */
             RTC_TimerStop(IDLE_timeout_handle);
+            /* 停止所有 defer 定时器 */
+            if (defer_0_handle) RTC_TimerStop(defer_0_handle);
                     {
         press_count = 0;
     }
@@ -148,16 +138,14 @@ void statemachine_process(event_t *evt) {
         else if (
             (evt->id == EVENT_TIMER_EXPIRED_IDLE_timeout)
         ) {
-                #ifndef TEST
+                    extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
             /* 停止当前状态的时间序列定时器 */
             RTC_TimerStop(IDLE_timeout_handle);
+            /* 停止所有 defer 定时器 */
+            if (defer_0_handle) RTC_TimerStop(defer_0_handle);
             
             current_state = STATE_TIMEOUT;
             /* 执行目标状态的进入动作并启动时间序列 */
@@ -171,15 +159,13 @@ void statemachine_process(event_t *evt) {
 
 
             /* 停止当前状态的时间序列定时器 */
+            /* 停止所有 defer 定时器 */
+            if (defer_0_handle) RTC_TimerStop(defer_0_handle);
             
             current_state = STATE_IDLE;
             /* 执行目标状态的进入动作并启动时间序列 */
-                #ifndef TEST
+                    extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
             {
@@ -197,15 +183,13 @@ void statemachine_process(event_t *evt) {
 
 
             /* 停止当前状态的时间序列定时器 */
+            /* 停止所有 defer 定时器 */
+            if (defer_0_handle) RTC_TimerStop(defer_0_handle);
             
             current_state = STATE_IDLE;
             /* 执行目标状态的进入动作并启动时间序列 */
-                #ifndef TEST
+                    extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
             {
@@ -222,15 +206,13 @@ void statemachine_process(event_t *evt) {
             (evt->id == EVENT_RTC_TICK)
         ) {
             /* 停止当前状态的时间序列定时器 */
+            /* 停止所有 defer 定时器 */
+            if (defer_0_handle) RTC_TimerStop(defer_0_handle);
             
             current_state = STATE_IDLE;
             /* 执行目标状态的进入动作并启动时间序列 */
-                #ifndef TEST
+                    extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
             {
@@ -247,15 +229,13 @@ void statemachine_process(event_t *evt) {
             (evt->id == EVENT_RTC_TICK)
         ) {
             /* 停止当前状态的时间序列定时器 */
+            /* 停止所有 defer 定时器 */
+            if (defer_0_handle) RTC_TimerStop(defer_0_handle);
             
             current_state = STATE_IDLE;
             /* 执行目标状态的进入动作并启动时间序列 */
-                #ifndef TEST
+                    extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
             {

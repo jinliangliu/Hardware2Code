@@ -16,8 +16,9 @@ typedef enum {
     EVENT_BUTTON_PRESS,
     EVENT_RTC_ALARM,
     EVENT_RTC_TICK,
+    EVENT_RETURN,   /* 子状态返回事件 */
 
-/* ========== 动态定时器事件（从 start_timer 和 after 生成） ========== */
+/* ========== 动态定时器事件（由模板自动收集） ========== */
 
 
 
@@ -25,10 +26,7 @@ typedef enum {
     EVENT_TIMER_EXPIRED_IDLE_timeout,
     EVENT_TIMER_EXPIRED_exit_timer,
 
-/* ========== 动态发布事件（从 publish 和 publish_async 动作生成） ========== */
-
-
-
+/* ========== 动态发布事件（由生成器提供） ========== */
 
     EVENT_MAX
 } event_id_t;

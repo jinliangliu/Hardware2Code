@@ -9,6 +9,8 @@
 
 #include "statemachine.h"
 
+
+
 /* ========== 全局变量 ========== */
 
 /* ========== 区域级变量 ========== */
@@ -40,12 +42,8 @@ static uint32_t current_state_PROCESS;
 /* ========== 延迟动作定时器回调 ========== */
 static rtc_timer_handle_t defer_0_handle = NULL;
 static void defer_0_cb(void *arg) {
-    #ifndef TEST
+        extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 }
 
@@ -65,12 +63,10 @@ void statemachine_process(event_t *evt) {
             (evt->id == EVENT_BUTTON_PRESS)
         ) {
             /* 停止当前状态的时间序列定时器 */
-                #ifndef TEST
+            /* 停止所有 defer 定时器 */
+            if (defer_0_handle) RTC_TimerStop(defer_0_handle);
+                    extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
             current_state = STATE_PROCESS;
@@ -91,9 +87,12 @@ void statemachine_process(event_t *evt) {
                 break;
             case STATE_PROCESS_STEP2:
                 if (evt->id == EVENT_RTC_TICK) {
-                        
+                            {
+        event_t evt_pub = { .id = EVENT_RETURN, .param = 0 };
+        statemachine_process(&evt_pub);
+    }
 
-                    current_state_PROCESS = STATE_PROCESS_;
+
                     handled = 1;
                     break;
                 }
@@ -105,12 +104,10 @@ void statemachine_process(event_t *evt) {
             (evt->id == EVENT_RETURN)
         ) {
             /* 停止当前状态的时间序列定时器 */
-                #ifndef TEST
+            /* 停止所有 defer 定时器 */
+            if (defer_0_handle) RTC_TimerStop(defer_0_handle);
+                    extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
             current_state = STATE_IDLE;

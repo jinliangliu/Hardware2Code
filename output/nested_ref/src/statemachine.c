@@ -9,6 +9,8 @@
 
 #include "statemachine.h"
 
+
+
 /* ========== 全局变量 ========== */
 static uint32_t nested_local_counter = 0;
 
@@ -25,10 +27,6 @@ static uint32_t current_state;
 static uint32_t current_state_DEEP;
 
 /* ========== 历史状态变量 ========== */
-
-#ifndef TEST
-extern void led_task_notify(void);
-#endif
 
 /* ========== 动作实现宏 ========== */
 
@@ -61,6 +59,7 @@ void statemachine_process(event_t *evt) {
             (evt->id == EVENT_BUTTON_PRESS)
         ) {
             /* 停止当前状态的时间序列定时器 */
+            /* 停止所有 defer 定时器 */
             
             current_state = STATE_DEEP;
             /* 执行目标状态的进入动作并启动时间序列 */
@@ -86,12 +85,8 @@ void statemachine_process(event_t *evt) {
                 if (evt->id == EVENT_RTC_TICK) {
                             {
         if (nested_local_counter > 2 ) {
-            #ifndef TEST
+                extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
         }
     }
@@ -119,12 +114,9 @@ void statemachine_process(event_t *evt) {
             (evt->id == EVENT_HIGH_COUNT)
         ) {
             /* 停止当前状态的时间序列定时器 */
-                #ifndef TEST
+            /* 停止所有 defer 定时器 */
+                    extern void led_task_notify(void);
     led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
 
 
             current_state = STATE_MAIN_IDLE;

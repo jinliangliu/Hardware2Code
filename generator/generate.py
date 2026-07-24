@@ -18,8 +18,15 @@ from validator import validate_hardware
 
 def load_yaml(file_path: str) -> dict:
     """加载硬件描述 YAML 文件"""
-    with open(file_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"YAML file not found: '{file_path}'")
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise ValueError(f"YAML parsing error in '{file_path}': {e}")
+    except Exception as e:
+        raise RuntimeError(f"Error loading YAML file '{file_path}': {e}")
 
 
 def render_hil_project(env: Environment, context: dict, output_dir: str):
@@ -214,30 +221,102 @@ def render_templates(env: Environment, context: dict, output_dir: str):
     else:
         print("Warning: run_tests.py not found in generator/. Tests will not be executable via make test.")
 
+    # ---------- 复制 HAL Timebase 文件到工程（效仿STM32Cube） ----------
+    if context.get("has_rtc"):
+        timebase_src = os.path.join("static", "stm32g0", "HAL", "Src", "stm32g0xx_hal_timebase_tim.c")
+        timebase_dst = os.path.join(output_dir, "src", "stm32g0xx_hal_timebase_tim.c")
+        if os.path.exists(timebase_src):
+            shutil.copy2(timebase_src, timebase_dst)
+            print(f"Copied stm32g0xx_hal_timebase_tim.c to src/")
+        else:
+            print(f"Warning: {timebase_src} not found")
+
 
 def generate(hardware_yaml: str, output_dir: str, hil_mode: bool = False):
+    print(f"\n{'='*60}")
+    print(f"Hardware2Code Generator v1.0")
+    print(f"{'='*60}")
+    print(f"Input file:  {hardware_yaml}")
+    print(f"Output dir:  {output_dir}")
+    print(f"HIL mode:    {'Yes' if hil_mode else 'No'}")
+    print(f"{'='*60}\n")
+
     try:
         hw = load_yaml(hardware_yaml)
+        print("[OK] YAML file loaded successfully")
+    except FileNotFoundError as e:
+        print(f"[CRITICAL] {e}")
+        print("\nPlease check the input file path and try again.")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"[CRITICAL] {e}")
+        print("\nPlease check your YAML syntax and try again.")
+        sys.exit(1)
     except Exception as e:
-        print(f"Error loading YAML file: {e}")
+        print(f"[ERROR] {e}")
         sys.exit(1)
 
     errors = validate_hardware(hw)
     if errors:
-        print("Errors in hardware YAML:")
-        for err in errors:
-            print(f"  - {err}")
-        print("Please fix the errors and try again.")
-        sys.exit(1)
+        print(f"\n{'='*60}")
+        print(f"VALIDATION RESULTS")
+        print(f"{'='*60}")
+        
+        critical_errors = [e for e in errors if e.startswith('[CRITICAL]')]
+        regular_errors = [e for e in errors if e.startswith('[ERROR]')]
+        warnings = [e for e in errors if e.startswith('[WARNING]')]
+        infos = [e for e in errors if e.startswith('[INFO]')]
+
+        if critical_errors:
+            print("\n[CRITICAL] Fatal errors (cannot continue):")
+            for err in critical_errors:
+                print(f"  {err}")
+        
+        if regular_errors:
+            print("\n[ERROR] Errors (recommended to fix):")
+            for err in regular_errors:
+                print(f"  {err}")
+        
+        if warnings:
+            print("\n[WARNING] Warnings (may cause unexpected behavior):")
+            for warn in warnings:
+                print(f"  {warn}")
+        
+        if infos:
+            print("\n[INFO] Information:")
+            for info in infos:
+                print(f"  {info}")
+
+        if critical_errors or regular_errors:
+            print(f"\n{'='*60}")
+            print(f"Found {len(critical_errors)} critical errors, {len(regular_errors)} errors, {len(warnings)} warnings")
+            print("Please fix the errors and try again.")
+            print(f"{'='*60}")
+            sys.exit(1)
+        else:
+            print(f"\n[OK] Validation passed with {len(warnings)} warnings")
 
     project_name = os.path.basename(output_dir) or "hw2code"
-    context = build_context(hw, project_name, hil_mode)
+    
+    try:
+        context = build_context(hw, project_name, hil_mode)
+        print("[OK] Context built successfully")
+    except Exception as e:
+        print(f"[ERROR] Error building context: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
-    env = Environment(
-        loader=FileSystemLoader("templates", encoding='utf-8'),
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
+    try:
+        env = Environment(
+            loader=FileSystemLoader("templates", encoding='utf-8'),
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        print("[OK] Template environment initialized")
+    except Exception as e:
+        print(f"[ERROR] Error initializing template environment: {e}")
+        sys.exit(1)
 
     try:
         if hil_mode:
@@ -245,10 +324,25 @@ def generate(hardware_yaml: str, output_dir: str, hil_mode: bool = False):
         else:
             render_templates(env, context, output_dir)
     except Exception as e:
-        print(f"Error during template rendering: {e}")
+        print(f"\n[ERROR] Error during template rendering: {e}")
+        import traceback
+        traceback.print_exc()
+        print("\nPossible causes:")
+        print("  - Missing template file")
+        print("  - Invalid context variable")
+        print("  - Jinja2 template syntax error")
         sys.exit(1)
 
-    print(f"\nProject '{project_name}' generated successfully in '{output_dir}'")
+    print(f"\n{'='*60}")
+    print(f"SUCCESS! Project '{project_name}' generated in '{output_dir}'")
+    print(f"{'='*60}")
+    print("\nNext steps:")
+    print(f"  1. cd {output_dir}")
+    print(f"  2. make")
+    print(f"  3. make flash")
+    print(f"\nTo run tests:")
+    print(f"  cd {output_dir}/test")
+    print(f"  python run_tests.py")
 
 
 def main():

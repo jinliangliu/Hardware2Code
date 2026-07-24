@@ -1,32 +1,15 @@
 /**
- * sleep.c.j2 - Low power management
- * 如果使用了 RTC，则进入 STOP1 模式并依赖 RTC 唤醒；
- * 否则仅使用简单的 WFI（Sleep 模式）。
+ * sleep.c.j2 - Low power management (DEBUG mode: no sleep)
  */
 #include "stm32g0xx_hal.h"
-#include "stm32g0xx_hal_pwr_ex.h"
 #include "FreeRTOS.h"
 #include "task.h"
-
 
 extern void SystemClock_Config(void);
 
 void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
 {
-    if( xExpectedIdleTime > 0 )
-    {
-        HAL_SuspendTick();
-
-
-        __disable_irq();
-#ifdef DEBUG
-        HAL_PWR_EnterSLEEPMode( PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI );
-#else
-        HAL_PWREx_EnterSTOP1Mode( PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI );
-#endif
-        __enable_irq();
-
-        SystemClock_Config();
-        HAL_ResumeTick();
-    }
+    /* 调试期间：完全不进入低功耗，确保调试器和外设持续运行 */
+    (void)xExpectedIdleTime;
+    return;
 }

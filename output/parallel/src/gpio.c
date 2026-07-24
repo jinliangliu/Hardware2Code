@@ -1,4 +1,3 @@
-
 #ifdef TEST
 #include "mock_hal.h"
 #else

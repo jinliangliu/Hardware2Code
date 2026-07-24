@@ -1,6 +1,8 @@
 #ifdef TEST
 #include "mock_hal.h"
+{% if has_rtc %}
 #include "drv_rtc.h"
+{% endif %}
 #else
 #include "FreeRTOS.h"
 #include "task.h"
@@ -10,6 +12,8 @@
 #endif
 
 #include "statemachine.h"
+
+
 
 /* ========== 全局变量 ========== */
 {% for var in business_flow.get('variables', []) %}
@@ -84,85 +88,92 @@ static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_
 {% endfor %}
 {% endif %}
 
-{% if has_led_task %}
-#ifndef TEST
-extern void led_task_notify(void);
-#endif
-{% endif %}
-
 /* ========== 动作实现宏 ========== */
 {% macro action_impl(action, region_name='') -%}
 {% if action == 'toggle_led' %}
-#ifndef TEST
-    led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
+extern void led_task_notify(void);
+led_task_notify();
 {% elif 'start_timer' in action %}
-    {
-        uint32_t period = {{ action.split(' ')[2] }};
-        rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
-                                               {{ action.split(' ')[1] }}_cb, NULL);
-        {{ action.split(' ')[1] }}_handle = h;
-        RTC_TimerStart(h);
+{
+    uint32_t period = {{ action.split(' ')[2] }};
+    {% set timer_name = action.split(' ')[1] %}
+    if ({{ timer_name }}_handle) {
+        RTC_TimerDelete({{ timer_name }}_handle);
+        {{ timer_name }}_handle = NULL;
     }
+    rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                                           {{ timer_name }}_cb, NULL);
+    {{ timer_name }}_handle = h;
+    RTC_TimerStart(h);
+}
 {% elif 'stop_timer' in action %}
-    RTC_TimerStop({{ action.split(' ')[1] }}_handle);
+{
+    {% set timer_name = action.split(' ')[1] %}
+    if ({{ timer_name }}_handle) {
+        RTC_TimerStop({{ timer_name }}_handle);
+        RTC_TimerDelete({{ timer_name }}_handle);
+        {{ timer_name }}_handle = NULL;
+    }
+}
 {% elif action.startswith('set ') %}
-    {
+{
 {% set parts = action.split(' ') %}
 {% if parts[2] == 'inc' %}
-        {{ region_name }}{{ parts[1] }}++;
+    {{ region_name }}{{ parts[1] }}++;
 {% elif parts[2] == 'dec' %}
-        {{ region_name }}{{ parts[1] }}--;
+    {{ region_name }}{{ parts[1] }}--;
 {% else %}
-        {{ region_name }}{{ parts[1] }} = {{ parts[2] }};
+    {{ region_name }}{{ parts[1] }} = {{ parts[2] }};
 {% endif %}
-    }
+}
 {% elif action.startswith('calc ') %}
-    {
-        {{ action.split(' ',1)[1] }};
-    }
+{
+    {{ action.split(' ',1)[1] }};
+}
 {% elif action.startswith('publish_async ') %}
-    {
-        event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | replace(' ', '_') }}, .param = 0 };
-        xQueueSend(event_queue, &evt_pub, 0);
-    }
+{
+    event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | replace(' ', '_') }}, .param = 0 };
+    xQueueSend(event_queue, &evt_pub, 0);
+}
 {% elif action.startswith('publish ') %}
-    {
-        event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | replace(' ', '_') }}, .param = 0 };
-        statemachine_process(&evt_pub);
-    }
+{
+    event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | replace(' ', '_') }}, .param = 0 };
+    statemachine_process(&evt_pub);
+}
 {% elif action.startswith('when ') %}
-    {
-        {% set parts = action.split('=>', 1) %}
-        {% if parts|length == 2 %}
-        if ({{ parts[0].replace('when ', '') }}) {
-            {{ action_impl(parts[1].strip(), region_name) }}
-        }
-        {% endif %}
+{
+    {% set parts = action.split('=>', 1) %}
+    {% if parts|length == 2 %}
+    if ({{ parts[0].replace('when ', '') }}) {
+        {{ action_impl(parts[1].strip(), region_name) }}
     }
+    {% endif %}
+}
 {% elif action.startswith('send_to ') %}
-    {
-        {% set parts = action.split(' ', 2) %}
-        event_t evt_pub = { .id = EVENT_{{ parts[2] | replace(' ', '_') }}, .param = 0 };
-        xQueueSend(event_queue, &evt_pub, 0);
-    }
+{
+    {% set parts = action.split(' ', 2) %}
+    event_t evt_pub = { .id = EVENT_{{ parts[2] | replace(' ', '_') }}, .param = 0 };
+    xQueueSend(event_queue, &evt_pub, 0);
+}
+{% elif action == 'return' %}
+{
+    event_t evt_pub = { .id = EVENT_RETURN, .param = 0 };
+    statemachine_process(&evt_pub);
+}
 {% endif %}
 {%- endmacro %}
 
 /* ========== 动作列表处理宏 ========== */
 {% macro process_actions(actions) %}
 {% for action in actions %}
-    {{ action_impl(action, '') }}
-{% endfor %}
+{{ action_impl(action, '') }}
+{%- endfor %}
 {% endmacro %}
 
 {% macro process_actions_for_region(region_name, actions) %}
 {% for action in actions %}
-    {{ action_impl(action, region_name + '_') }}
-{% endfor %}
+{{ action_impl(action, region_name + '_') }}
+{%- endfor %}
 {% endmacro %}
 
 /* ========== 定时器收集宏（排除 defer 生成的定时器） ========== */
@@ -217,7 +228,7 @@ static void {{ action.split(' ')[1] }}_cb(void *arg) {
 {% for d in defer_actions %}
 static rtc_timer_handle_t {{ d.timer_name }}_handle = NULL;
 static void {{ d.timer_name }}_cb(void *arg) {
-    {{ action_impl(d.sub_action, '') }}
+{{ action_impl(d.sub_action, '') | indent(4, true) }}
 }
 {% endfor %}
 
@@ -242,7 +253,7 @@ void statemachine_init(void) {
 {% for state in region.states %}
 {% if state.name == region.initial_state %}
 {% if state.on_entry %}
-    {{ process_actions_for_region(region.name, state.on_entry) }}
+{{ process_actions_for_region(region.name, state.on_entry) | indent(4, true) }}
 {% endif %}
 {% if state.after %}
     {
@@ -274,7 +285,7 @@ void statemachine_init(void) {
 {% for state in business_flow.states %}
 {% if state.name == business_flow.initial_state %}
 {% if state.on_entry %}
-    {{ process_actions(state.on_entry) }}
+{{ process_actions(state.on_entry) | indent(4, true) }}
 {% endif %}
 {% if state.after %}
     {
@@ -310,8 +321,10 @@ void statemachine_process(event_t *evt) {
                 case STATE_{{ region.name }}_{{ state.name }}_{{ nested.name }}:
 {% for trans in nested.transitions %}
                     if (evt->id == EVENT_{{ trans.event | replace(' ', '_') }}) {
-                        {{ process_actions_for_region(region.name, trans.actions) }}
+{{ process_actions_for_region(region.name, trans.actions) | indent(24, true) }}
+{% if trans.target %}
                         *p_nested = STATE_{{ region.name }}_{{ state.name }}_{{ trans.target }};
+{% endif %}
                         handled = 1;
                         break;
                     }
@@ -335,22 +348,34 @@ void statemachine_process(event_t *evt) {
                 (evt->id == EVENT_{{ trans.event | replace(' ', '_') }})
             ) {
 {% if state.on_exit %}
-                {{ process_actions_for_region(region.name, state.on_exit) }}
+{{ process_actions_for_region(region.name, state.on_exit) | indent(16, true) }}
 {% endif %}
 {% if state.states and state.history %}
                 current_state_{{ region.name }}_{{ state.name }}_history = current_state_{{ region.name }}_{{ state.name }};
 {% endif %}
-                /* 停止当前状态的时间序列定时器 */
+                /* 停止并删除当前状态的超时定时器 */
 {% if state.after %}
-                RTC_TimerStop({{ region.name }}_{{ state.name }}_timeout_handle);
+                if ({{ region.name }}_{{ state.name }}_timeout_handle) {
+                    RTC_TimerStop({{ region.name }}_{{ state.name }}_timeout_handle);
+                    RTC_TimerDelete({{ region.name }}_{{ state.name }}_timeout_handle);
+                    {{ region.name }}_{{ state.name }}_timeout_handle = NULL;
+                }
 {% endif %}
-                {{ process_actions_for_region(region.name, trans.actions) }}
+                /* 停止并删除所有 defer 定时器 */
+{% for timer_name in defer_timer_names %}
+                if ({{ timer_name }}_handle) {
+                    RTC_TimerStop({{ timer_name }}_handle);
+                    RTC_TimerDelete({{ timer_name }}_handle);
+                    {{ timer_name }}_handle = NULL;
+                }
+{% endfor %}
+{{ process_actions_for_region(region.name, trans.actions) | indent(16, true) }}
                 *p_curr = STATE_{{ region.name }}_{{ trans.target }};
                 /* 执行目标状态的进入动作并启动时间序列 */
 {% for s in region.states %}
 {% if s.name == trans.target %}
 {% if s.on_entry %}
-                {{ process_actions_for_region(region.name, s.on_entry) }}
+{{ process_actions_for_region(region.name, s.on_entry) | indent(16, true) }}
 {% endif %}
 {% if s.after %}
                 {
@@ -395,8 +420,10 @@ void statemachine_process(event_t *evt) {
             case STATE_{{ state.name }}_{{ nested.name }}:
 {% for trans in nested.transitions %}
                 if (evt->id == EVENT_{{ trans.event | replace(' ', '_') }}) {
-                    {{ process_actions(trans.actions) }}
+{{ process_actions(trans.actions) | indent(20, true) }}
+{% if trans.target %}
                     current_state_{{ state.name }} = STATE_{{ state.name }}_{{ trans.target }};
+{% endif %}
                     handled = 1;
                     break;
                 }
@@ -419,22 +446,34 @@ void statemachine_process(event_t *evt) {
             (evt->id == EVENT_{{ trans.event | replace(' ', '_') }})
         ) {
 {% if state.on_exit %}
-            {{ process_actions(state.on_exit) }}
+{{ process_actions(state.on_exit) | indent(12, true) }}
 {% endif %}
 {% if state.states and state.history %}
             current_state_{{ state.name }}_history = current_state_{{ state.name }};
 {% endif %}
-            /* 停止当前状态的时间序列定时器 */
+            /* 停止并删除当前状态的超时定时器 */
 {% if state.after %}
-            RTC_TimerStop({{ state.name }}_timeout_handle);
+            if ({{ state.name }}_timeout_handle) {
+                RTC_TimerStop({{ state.name }}_timeout_handle);
+                RTC_TimerDelete({{ state.name }}_timeout_handle);
+                {{ state.name }}_timeout_handle = NULL;
+            }
 {% endif %}
-            {{ process_actions(trans.actions) }}
+            /* 停止并删除所有 defer 定时器 */
+{% for timer_name in defer_timer_names %}
+            if ({{ timer_name }}_handle) {
+                RTC_TimerStop({{ timer_name }}_handle);
+                RTC_TimerDelete({{ timer_name }}_handle);
+                {{ timer_name }}_handle = NULL;
+            }
+{% endfor %}
+{{ process_actions(trans.actions) | indent(12, true) }}
             current_state = STATE_{{ trans.target }};
             /* 执行目标状态的进入动作并启动时间序列 */
 {% for s in business_flow.states %}
 {% if s.name == trans.target %}
 {% if s.on_entry %}
-            {{ process_actions(s.on_entry) }}
+{{ process_actions(s.on_entry) | indent(12, true) }}
 {% endif %}
 {% if s.after %}
             {

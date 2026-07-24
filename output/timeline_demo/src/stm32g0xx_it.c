@@ -27,3 +27,12 @@ void EXTI4_15_IRQHandler(void)
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
 }
+
+/* TIM14 用作 HAL 时基，中断内调用 HAL_TIM_IRQHandler，
+   最终触发 HAL_TIM_PeriodElapsedCallback → HAL_IncTick() */
+extern TIM_HandleTypeDef TimHandle;
+
+void TIM14_IRQHandler(void)
+{
+    HAL_TIM_IRQHandler(&TimHandle);
+}

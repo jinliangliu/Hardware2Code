@@ -28,7 +28,6 @@ typedef enum {
     EVENT_TIMER_EXPIRED_PLAYING_timeout,
 
 /* ========== 动态发布事件（由生成器提供） ========== */
-    EVENT_HIGH_COUNT,
 
     EVENT_MAX
 } event_id_t;
