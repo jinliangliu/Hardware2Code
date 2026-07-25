@@ -62,6 +62,8 @@ $(HAL_DIR)/Src/stm32g0xx_hal_rtc.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_rtc_ex.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_tim.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_tim_ex.c \
+$(HAL_DIR)/Src/stm32g0xx_hal_uart.c \
+$(HAL_DIR)/Src/stm32g0xx_hal_uart_ex.c \
 $(CMSIS_DEVICE_DIR)/Source/Templates/system_stm32g0xx.c
 
 # FreeRTOS Kernel sources
@@ -86,6 +88,7 @@ C_SOURCES += \
 ./src/stm32g0xx_hal_timebase_tim.c \
 ./src/statemachine.c \
 ./src/drivers/drv_rtc.c \
+./src/drivers/drv_log.c \
 
 # Assembly startup
 ASM_SOURCES = $(STARTUP_DIR)/startup_stm32g0b1xx.s
@@ -103,9 +106,8 @@ INCLUDES  = \
 
 # Compiler / Linker flags
 CFLAGS   = $(MCU_FLAGS) $(CPU_DEFINE) $(CLOCK_DEFINE) \
-           -Og -g3 -Wall -fdata-sections -ffunction-sections \
+           -Os -g3 -Wall -fdata-sections -ffunction-sections \
            $(INCLUDES) -DSTM32G0B1xx -DUSE_HAL_DRIVER
-
 
 # ---------------------------------------------------------------------------
 # Linker flags (common)
@@ -201,3 +203,4 @@ test:
 
 coverage:
 	python test/run_tests.py --coverage
+
