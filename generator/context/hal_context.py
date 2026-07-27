@@ -13,7 +13,9 @@ BASE_HAL_SOURCES = [
     'stm32g0xx_hal_rcc_ex.c',
     'stm32g0xx_hal_pwr.c',
     'stm32g0xx_hal_pwr_ex.c',
-    'stm32g0xx_hal_exti.c'
+    'stm32g0xx_hal_exti.c',
+    'stm32g0xx_hal_tim.c',
+    'stm32g0xx_hal_tim_ex.c'
 ]
 
 

@@ -9,6 +9,9 @@
 
 #include "event_mgr.h"
 
+#ifndef TEST
+#include "drv_log.h"
+#endif
 
 
 

@@ -13,6 +13,8 @@ dependencies = [
     "jinja2>=3.1",
     "pyyaml>=6.0",
     "pydantic>=2.0",
+    "libcst>=1.0.0",
+    "click>=8.1.0",
 ]
 
 [project.scripts]
@@ -29,3 +31,6 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["generator*", "parser*"]
+
+[project.entry-points."hardware2code.backends"]
+stm32 = "generator.backends.stm32.backend:STM32Backend"

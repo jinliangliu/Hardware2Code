@@ -120,9 +120,7 @@ C_SOURCES += \
 ./src/sleep.c \
 ./src/stm32g0xx_it.c \
 ./src/event_mgr.c \
-{% if has_rtc %}
 ./src/stm32g0xx_hal_timebase_tim.c \
-{% endif %}
 {% if has_business_flow %}
 ./src/statemachine.c \
 {% endif %}

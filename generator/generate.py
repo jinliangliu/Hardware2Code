@@ -6,11 +6,15 @@ Hardware2Code Generator
 
 import argparse
 import difflib
+import json
 import logging
 import os
+import subprocess
 import sys
 import shutil
 import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable, Optional
 
 import jinja2
@@ -20,10 +24,22 @@ from jinja2 import Environment, FileSystemLoader
 from .context.builder import build_context
 from .validator import validate_hardware
 from .jinja_filters import register_filters
+from .merger import CSTCodeMerger
 from .models import HardwareModel
+from .mcu_database import MCUDatabase
 from .paths import STATIC_UNITY_DIR, HIL_RUNNER_PATH, RUN_TESTS_PATH, PATCH_CRC_PATH, TIMEBASE_SRC, TEMPLATES_DIR
+from .registry import load_backend, get_default_backend
+from .validators.pin_conflict_validator import validate_pin_conflicts
+from .allocators.pin_allocator import PinAllocator
+from .schemas.hardware import PinConfig
 
 logger = logging.getLogger("hw2c")
+
+# Global merger instance for preserving USER CODE blocks
+_code_merger = CSTCodeMerger()
+
+# File extensions that support USER CODE block merging
+_MERGE_EXTENSIONS = {".c", ".h"}
 
 
 def _setup_logging(verbose: bool = False):
@@ -37,11 +53,24 @@ def _setup_logging(verbose: bool = False):
     logger.setLevel(level)
 
 
-def _write_file(out_path: str, content: str, dry_run: bool, show_diff: bool):
+def _write_file(out_path: str, content: str, dry_run: bool, show_diff: bool,
+                merge_user_code: bool = True):
     """Write rendered content to file. In dry-run mode, skip writing.
     In diff mode, show unified diff against existing file.
+    When merge_user_code is True and target exists, preserves USER CODE blocks.
     """
     rel_path = out_path
+
+    # ---------- USER CODE merging ----------
+    ext = os.path.splitext(out_path)[1]
+    if merge_user_code and ext in _MERGE_EXTENSIONS:
+        try:
+            original = content
+            content = _code_merger.merge(out_path, content)
+            if content != original:
+                logger.debug(f"Merged USER CODE blocks in: {rel_path}")
+        except Exception as e:
+            logger.warning(f"USER CODE merge failed for {rel_path}: {e}")
 
     if dry_run:
         logger.info(f"[DRY-RUN] Would generate: {rel_path}")
@@ -325,15 +354,15 @@ def render_templates(env: Environment, context: dict, output_dir: str,
         _write_file(out_path, rendered, dry_run, show_diff)
 
     # ---------- 复制 HAL Timebase 文件到工程 ----------
-    if context.get("has_rtc"):
-        timebase_src = TIMEBASE_SRC
-        timebase_dst = os.path.join(output_dir, "src", "stm32g0xx_hal_timebase_tim.c")
-        if os.path.exists(timebase_src):
-            if not dry_run:
-                shutil.copy2(timebase_src, timebase_dst)
-            logger.info("Copied stm32g0xx_hal_timebase_tim.c to src/")
-        else:
-            logger.warning(f"{timebase_src} not found")
+    # ALWAYS needed: HAL_InitTick() uses TIM14 unconditionally in main.c
+    timebase_src = TIMEBASE_SRC
+    timebase_dst = os.path.join(output_dir, "src", "stm32g0xx_hal_timebase_tim.c")
+    if os.path.exists(timebase_src):
+        if not dry_run:
+            shutil.copy2(timebase_src, timebase_dst)
+        logger.info("Copied stm32g0xx_hal_timebase_tim.c to src/")
+    else:
+        logger.warning(f"{timebase_src} not found")
 
     # ---------- Bootloader ----------
     if context.get("has_bootloader"):
@@ -395,12 +424,105 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             logger.info("Copied patch_crc.py")
 
 
+def _run_compile_check(staging_dir: str, verbose: bool = False) -> tuple[bool, str]:
+    """Run `make` in staging directory to verify generated code compiles.
+
+    Returns:
+        (success: bool, output: str) - combined stdout+stderr from make.
+    """
+    logger.info("Running compile check: make -j8 ...")
+    try:
+        result = subprocess.run(
+            ["make", "-j8"],
+            cwd=staging_dir,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        output = result.stdout + result.stderr
+        success = result.returncode == 0
+
+        if verbose or not success:
+            # In verbose mode, stream the output; on failure, always show
+            for line in output.splitlines():
+                if verbose:
+                    logger.debug(f"[make] {line}")
+                elif not success:
+                    logger.error(f"[make] {line}")
+
+        if success:
+            logger.info("Compile check PASSED")
+        else:
+            logger.error(f"Compile check FAILED (exit code {result.returncode})")
+
+        return success, output
+    except FileNotFoundError:
+        logger.warning("Skipping compile check: 'make' not found in PATH")
+        return True, ""  # skip check if make not available
+    except subprocess.TimeoutExpired:
+        logger.error("Compile check timed out after 120s")
+        return False, "TIMEOUT"
+    except Exception as e:
+        logger.error(f"Compile check error: {e}")
+        return False, str(e)
+
+
+def _write_generation_log(staging_dir: str, context: dict, yaml_path: str,
+                          generated_files: list[str]) -> None:
+    """Write generation.log into the staging directory for debugging."""
+    log_path = os.path.join(staging_dir, "generation.log")
+    summary = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "yaml_input": yaml_path,
+        "context_keys": sorted(context.keys()),
+        "generated_files": sorted(generated_files),
+    }
+    try:
+        with open(log_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2, ensure_ascii=False)
+        logger.debug(f"Generation log written to {log_path}")
+    except OSError as e:
+        logger.warning(f"Failed to write generation.log: {e}")
+
+
+def _collect_staging_files(staging_dir: str) -> list[str]:
+    """Walk staging directory and return relative paths of all generated files."""
+    files = []
+    for root, _, filenames in os.walk(staging_dir):
+        for fn in filenames:
+            full = os.path.join(root, fn)
+            rel = os.path.relpath(full, staging_dir)
+            files.append(rel)
+    return files
+
+
+def _atomic_commit(staging_dir: str, target_dir: str) -> None:
+    """Move staging directory content to target directory atomically.
+
+    Creates a .bak backup of the existing target before overwriting.
+    """
+    if os.path.exists(target_dir):
+        backup_dir = target_dir + ".bak"
+        if os.path.exists(backup_dir):
+            shutil.rmtree(backup_dir)
+        shutil.move(target_dir, backup_dir)
+        logger.info(f"Backed up existing to {backup_dir}")
+
+    shutil.copytree(staging_dir, target_dir, dirs_exist_ok=True)
+    logger.info(f"Atomic commit: {staging_dir} -> {target_dir}")
+
+
 def generate_project(
     yaml_path: str,
     output_dir: str,
     hil_mode: bool = False,
     dry_run: bool = False,
     show_diff: bool = False,
+    force: bool = False,
+    target: str = "stm32",
+    validate_pins: bool = True,
+    allocate_pins: bool = True,
+    pin_db: Optional[str] = None,
     validate_fn: Callable[[dict], list] = validate_hardware,
     build_context_fn: Callable[[dict, str, bool], dict] = build_context,
     load_yaml_fn: Callable[[str], dict] = load_yaml,
@@ -411,11 +533,23 @@ def generate_project(
     logger.info(banner)
     logger.info(f"Input file:  {yaml_path}")
     logger.info(f"Output dir:  {output_dir}")
+    logger.info(f"Target MCU:  {target}")
     logger.info(f"HIL mode:    {'Yes' if hil_mode else 'No'}")
     logger.info(f"Dry run:     {'Yes' if dry_run else 'No'}")
     if show_diff:
         logger.info(f"Diff mode:   Yes")
+    if force:
+        logger.info(f"Force mode:  Yes (skip compile check)")
     logger.info(f"{banner}")
+
+    # ---------- Load target backend ----------
+    try:
+        backend = load_backend(target)
+    except ValueError as e:
+        logger.critical(str(e))
+        sys.exit(1)
+
+    logger.info(f"Backend:     {backend.get_mcu_family()} ({target})")
 
     # ---------- Atomic write: generate to temp dir first ----------
     actual_output = output_dir
@@ -447,14 +581,63 @@ def generate_project(
         else:
             logger.info("[OK] Hardware validation passed")
 
+        # ---------- MCU database loading ----------
+        mcu_db = None
+        if hasattr(hw_model, 'mcu') and hw_model.mcu:
+            try:
+                if pin_db:
+                    mcu_db = MCUDatabase.from_mcu_name(hw_model.mcu.part, data_dir=pin_db)
+                else:
+                    mcu_db = MCUDatabase.from_mcu_name(hw_model.mcu.part)
+            except FileNotFoundError:
+                logger.warning(
+                    "MCU database not found for %s. Pin validation/allocation skipped. "
+                    "Use --pin-db to specify a custom database path.",
+                    hw_model.mcu.part,
+                )
+
+        # ---------- MCU pin conflict validation ----------
+        if validate_pins and mcu_db is not None:
+            pin_errors = validate_pin_conflicts(hw_model, mcu_db)
+            if pin_errors:
+                logger.warning("")
+                for err in pin_errors:
+                    logger.warning("  %s", err)
+                logger.error(
+                    "Pin validation found %d error(s). "
+                    "Use --no-validate-pins to bypass.", len(pin_errors)
+                )
+                sys.exit(1)
+            else:
+                logger.info("[OK] Pin conflict validation passed")
+        elif not validate_pins:
+            logger.info("Pin validation skipped (--no-validate-pins)")
+
+        # ---------- MCU pin auto-allocation ----------
+        if allocate_pins and mcu_db is not None:
+            allocator = PinAllocator(mcu_db)
+            allocated = allocator.allocate_all(hw_model)
+            if allocated:
+                for pin_dict in allocated:
+                    hw_model.pins.append(PinConfig(**pin_dict))
+                # Re-dump hw dict with newly allocated pins
+                hw = hw_model.model_dump(exclude_none=True)
+                logger.info("[OK] Pin auto-allocation assigned %d pin(s)", len(allocated))
+            else:
+                logger.info("Pin auto-allocation: nothing to allocate")
+        elif not allocate_pins:
+            logger.info("Pin allocation skipped (--no-allocate-pins)")
+
         # Context building
         project_name = os.path.basename(actual_output) or "hw2code"
         context = build_context_fn(hw, project_name, hil_mode)
         logger.info("[OK] Context built successfully")
 
-        # Template environment
+        # Template environment - use backend's template dirs for multi-level override
+        template_dirs = backend.get_template_dirs()
+        logger.debug(f"Template search paths: {template_dirs}")
         env = Environment(
-            loader=FileSystemLoader(TEMPLATES_DIR, encoding='utf-8'),
+            loader=FileSystemLoader(template_dirs, encoding='utf-8'),
             trim_blocks=True,
             lstrip_blocks=True,
         )
@@ -467,19 +650,33 @@ def generate_project(
         else:
             render_templates(env, context, output_dir, dry_run, show_diff)
 
+        # ---------- Write generation.log to staging ----------
+        if tmp_build_dir and not dry_run:
+            generated_files = _collect_staging_files(tmp_build_dir)
+            _write_generation_log(tmp_build_dir, context, yaml_path, generated_files)
+
+        # ---------- Compile check ----------
+        if tmp_build_dir and not dry_run and not force:
+            compile_ok, compile_output = _run_compile_check(
+                tmp_build_dir, verbose=logger.isEnabledFor(logging.DEBUG)
+            )
+            if not compile_ok:
+                logger.critical("Compile check failed. Staging directory preserved for inspection.")
+                logger.critical(f"Temp dir: {tmp_build_dir}")
+                # Do NOT cleanup temp dir on compile failure - preserve for debugging
+                sys.exit(1)
+
+        # ---------- Print dry-run file tree ----------
+        if dry_run and not show_diff:
+            staging_files = _collect_staging_files(output_dir)
+            logger.info(f"\nGenerated file tree ({len(staging_files)} files):")
+            for f in sorted(staging_files):
+                logger.info(f"  {f}")
+
         # ---------- Atomic commit: copy temp to target ----------
         if tmp_build_dir:
             logger.info("Committing atomic build...")
-            if os.path.exists(actual_output):
-                # Backup existing before overwriting
-                backup_dir = actual_output + ".bak"
-                if os.path.exists(backup_dir):
-                    shutil.rmtree(backup_dir)
-                shutil.move(actual_output, backup_dir)
-                logger.info(f"Backed up existing to {backup_dir}")
-
-            shutil.copytree(tmp_build_dir, actual_output)
-            logger.info(f"Atomic commit: {tmp_build_dir} -> {actual_output}")
+            _atomic_commit(tmp_build_dir, actual_output)
 
     except FileNotFoundError as e:
         logger.critical(str(e))
@@ -568,9 +765,14 @@ def _report_validation_errors(errors: list) -> None:
 
 
 def generate(hardware_yaml: str, output_dir: str, hil_mode: bool = False,
-             dry_run: bool = False, show_diff: bool = False):
+             dry_run: bool = False, show_diff: bool = False, force: bool = False,
+             target: str = "stm32", validate_pins: bool = True,
+             allocate_pins: bool = True, pin_db: Optional[str] = None):
     """Backward-compatible wrapper around generate_project with default deps."""
-    return generate_project(hardware_yaml, output_dir, hil_mode, dry_run, show_diff)
+    return generate_project(hardware_yaml, output_dir, hil_mode, dry_run,
+                            show_diff, force, target=target,
+                            validate_pins=validate_pins,
+                            allocate_pins=allocate_pins, pin_db=pin_db)
 
 
 def main():
@@ -581,9 +783,19 @@ def main():
     parser.add_argument("-o", "--output", required=True, help="Output directory for generated project")
     parser.add_argument("--hil", action="store_true", help="Generate HIL test firmware")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Generate to temp dir, show what would be created (no disk write)")
+                        help="Generate to temp dir, show file tree (no disk write to target)")
     parser.add_argument("--diff", action="store_true",
-                        help="Show unified diff against existing files")
+                        help="Show unified diff against existing target files")
+    parser.add_argument("--force", action="store_true",
+                        help="Skip compile check, force overwrite target directory")
+    parser.add_argument("--target", type=str, default="stm32",
+                        help="Target MCU backend (default: stm32)")
+    parser.add_argument("--no-validate-pins", action="store_true",
+                        help="Disable pin conflict validation")
+    parser.add_argument("--no-allocate-pins", action="store_true",
+                        help="Disable automatic pin allocation")
+    parser.add_argument("--pin-db", type=str, default=None,
+                        help="Path to custom MCU pin database directory")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Enable debug-level logging")
     args = parser.parse_args()
@@ -591,7 +803,9 @@ def main():
     _setup_logging(verbose=args.verbose)
 
     generate(args.input, args.output, args.hil,
-             dry_run=args.dry_run, show_diff=args.diff)
+             dry_run=args.dry_run, show_diff=args.diff, force=args.force,
+             target=args.target, validate_pins=not args.no_validate_pins,
+             allocate_pins=not args.no_allocate_pins, pin_db=args.pin_db)
 
 
 if __name__ == "__main__":

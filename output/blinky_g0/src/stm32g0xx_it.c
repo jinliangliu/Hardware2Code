@@ -2,6 +2,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "event_mgr.h"
+#include "drv_log.h"
 
 /* External task handles for notifications */
 extern TaskHandle_t button_led_task_handle;
@@ -15,7 +16,6 @@ void HardFault_Handler(void) {
 }
 
 /* EXTI interrupt handlers */
-
 void EXTI4_15_IRQHandler(void)
 {
     HAL_GPIO_EXTI_IRQHandler( GPIO_PIN_13 );
@@ -24,8 +24,24 @@ void EXTI4_15_IRQHandler(void)
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
         event_t evt = { .id = EVENT_BUTTON_PRESS, .param = 0 };
         xQueueSendFromISR(event_queue, &evt, &xHigherPriorityTaskWoken);
+        log_info("BUTTON pressed (PC13)");
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
 }
 
+/* TIM14 used as HAL timebase — HAL_TIM_IRQHandler →
+   HAL_TIM_PeriodElapsedCallback → HAL_IncTick() */
+extern TIM_HandleTypeDef TimHandle;
 
+void TIM14_IRQHandler(void)
+{
+    HAL_TIM_IRQHandler(&TimHandle);
+}
+
+/* USART2 日志输出中断 — 转发到 drv_log.c 中的处理函数 */
+extern void log_uart_irq_handler(void);
+
+void USART2_LPUART2_IRQHandler(void)
+{
+    log_uart_irq_handler();
+}

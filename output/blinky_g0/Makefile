@@ -3,7 +3,8 @@
 # Core Clock: 64 MHz
 # FreeRTOS Kernel: included from static
 
-SHELL = cmd
+# Made by Hardware2Code — POSIX-compatible, works on Linux/macOS/Git-Bash/WSL
+
 PROJECT_NAME = blinky_g0
 
 # ---------------------------------------------------------------------------
@@ -17,8 +18,13 @@ GDB     = arm-none-eabi-gdb
 
 # ---------------------------------------------------------------------------
 # Flash programming tools
+#   Set STM32_PROG_CLI to the full path of STM32_Programmer_CLI for your platform.
+#   Examples:
+#     Windows:  STM32_PROG_CLI ?= "C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe"
+#     Linux:    STM32_PROG_CLI ?= /opt/stm32cubeprog/bin/STM32_Programmer_CLI
+#     macOS:    STM32_PROG_CLI ?= /Applications/STMicroelectronics/STM32Cube/STM32CubeProgrammer.app/Contents/MacOs/bin/STM32_Programmer_CLI
 # ---------------------------------------------------------------------------
-ST_PROG ?= C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe
+STM32_PROG_CLI ?= STM32_Programmer_CLI
 OPENOCD ?= openocd
 OPENOCD_IFACE_CFG ?= -f interface/cmsis-dap.cfg
 OPENOCD_TARGET_CFG ?= -f target/stm32g0x.cfg
@@ -58,6 +64,10 @@ $(HAL_DIR)/Src/stm32g0xx_hal_rcc_ex.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_pwr.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_pwr_ex.c \
 $(HAL_DIR)/Src/stm32g0xx_hal_exti.c \
+$(HAL_DIR)/Src/stm32g0xx_hal_tim.c \
+$(HAL_DIR)/Src/stm32g0xx_hal_tim_ex.c \
+$(HAL_DIR)/Src/stm32g0xx_hal_uart.c \
+$(HAL_DIR)/Src/stm32g0xx_hal_uart_ex.c \
 $(CMSIS_DEVICE_DIR)/Source/Templates/system_stm32g0xx.c
 
 # FreeRTOS Kernel sources
@@ -79,6 +89,8 @@ C_SOURCES += \
 ./src/sleep.c \
 ./src/stm32g0xx_it.c \
 ./src/event_mgr.c \
+./src/stm32g0xx_hal_timebase_tim.c \
+./src/drivers/drv_log.c \
 
 # Assembly startup
 ASM_SOURCES = $(STARTUP_DIR)/startup_stm32g0b1xx.s
@@ -119,47 +131,42 @@ OBJS        = $(C_OBJS) $(ASM_OBJS)
 .PHONY: all flash flash-daplink clean test coverage
 all: $(BUILD_DIR)/$(PROJECT_NAME).elf $(BUILD_DIR)/$(PROJECT_NAME).bin $(BUILD_DIR)/$(PROJECT_NAME).hex
 
+# ----- Build directory (order-only, cross-platform) -----
+$(BUILD_DIR):
+	@mkdir $@ 2>nul || mkdir $@ 2>/dev/null || true
+
 # ----- User source files -----
-$(BUILD_DIR)/%.o: ./src/%.c
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/%.o: ./src/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ----- HAL source files -----
-$(BUILD_DIR)/%.o: $(HAL_DIR)/Src/%.c
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/%.o: $(HAL_DIR)/Src/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ----- CMSIS Device system file -----
-$(BUILD_DIR)/system_stm32g0xx.o: $(CMSIS_DEVICE_DIR)/Source/Templates/system_stm32g0xx.c
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/system_stm32g0xx.o: $(CMSIS_DEVICE_DIR)/Source/Templates/system_stm32g0xx.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ----- FreeRTOS Kernel source files -----
-$(BUILD_DIR)/%.o: $(FREERTOS_DIR)/%.c
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/%.o: $(FREERTOS_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/port.o: $(FREERTOS_DIR)/portable/GCC/ARM_CM0/port.c
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/port.o: $(FREERTOS_DIR)/portable/GCC/ARM_CM0/port.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/portasm.o: $(FREERTOS_DIR)/portable/GCC/ARM_CM0/portasm.c
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/portasm.o: $(FREERTOS_DIR)/portable/GCC/ARM_CM0/portasm.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/heap_4.o: $(FREERTOS_DIR)/portable/MemMang/heap_4.c
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/heap_4.o: $(FREERTOS_DIR)/portable/MemMang/heap_4.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ----- Driver source files -----
-$(BUILD_DIR)/%.o: ./src/drivers/%.c
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/%.o: ./src/drivers/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 
 # ----- Startup assembly -----
-$(BUILD_DIR)/%.o: $(STARTUP_DIR)/%.s
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/%.o: $(STARTUP_DIR)/%.s | $(BUILD_DIR)
 	$(AS) $(MCU_FLAGS) -c $< -o $@
 
 # ----- Link -----
@@ -176,7 +183,7 @@ $(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf
 
 # ----- Flash (ST-Link) -----
 flash: $(BUILD_DIR)/$(PROJECT_NAME).bin
-	"$(ST_PROG)" -c port=SWD -w $< 0x08000000 -rst
+	"$(STM32_PROG_CLI)" -c port=SWD -w $< 0x08000000 -rst
 
 # ----- Flash (DAP-Link) -----
 flash-daplink: $(BUILD_DIR)/$(PROJECT_NAME).bin
@@ -185,7 +192,7 @@ flash-daplink: $(BUILD_DIR)/$(PROJECT_NAME).bin
 
 # ----- Clean -----
 clean:
-	@if exist $(BUILD_DIR) rmdir /S /Q $(BUILD_DIR)
+	-rm -rf $(BUILD_DIR)
 
 # ----- Unit tests -----
 test:

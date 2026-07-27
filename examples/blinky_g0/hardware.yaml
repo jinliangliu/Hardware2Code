@@ -15,6 +15,14 @@ pins:
       enable: true
       trigger: falling
     notify_task: "button_led_task"
+  - id: PA2
+    function: USART2_TX
+    af: 1
+  - id: PA3
+    function: USART2_RX
+    af: 1
+log:
+  enable: true
 sleep:
   mode: STOP1
 app_tasks:
