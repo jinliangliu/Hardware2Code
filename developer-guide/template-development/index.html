@@ -1,0 +1,3850 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="从 YAML 硬件描述与业务 DSL 自动生成 STM32 + FreeRTOS 低功耗固件工程">
+      
+      
+      
+      
+        <link rel="prev" href="../../user-guide/examples/">
+      
+      
+        <link rel="next" href="../architecture-overview/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Template Development - hw2c</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#hw2c-template-development-guide" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../.." title="hw2c" class="md-header__button md-logo" aria-label="hw2c" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            hw2c
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Template Development
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/jinliangliu/hw2c" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jinliangliu/hw2c
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../user-guide/hardware-yaml/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Developer Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/milestones/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../about/CONTRIBUTING/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  About
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="hw2c" class="md-nav__button md-logo" aria-label="hw2c" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    hw2c
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/jinliangliu/hw2c" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jinliangliu/hw2c
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/hardware-yaml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware YAML Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/cli-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Developer Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Template Development
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Template Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#directory-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#template-rendering-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template Rendering Context
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Template Rendering Context">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#core-context-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Context Variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#condition-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Condition Flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#boot-config-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Boot Config Object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pin-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pin Object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#peripheral-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Peripheral Object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driver-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver Object
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#macrosj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macros.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcmaincj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/main.c.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcgpiocj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/gpio.c.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcsleepcj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/sleep.c.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcstm32g0xx_itcj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/stm32g0xx_it.c.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcevent_mgrcj2-srcevent_mgrhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/event_mgr.c.j2 / src/event_mgr.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#app-templates-state-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        App Templates (State Machine)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="App Templates (State Machine)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#appstatemachinecj2-appstatemachinehj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        app/statemachine.c.j2 / app/statemachine.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driver-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Driver Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_rtccj2-driversdrv_rtchj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_rtc.c.j2 / drivers/drv_rtc.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_logcj2-driversdrv_loghj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_log.c.j2 / drivers/drv_log.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_iwdgcj2-driversdrv_iwdghj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_iwdg.c.j2 / drivers/drv_iwdg.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_adccj2-driversdrv_adchj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_adc.c.j2 / drivers/drv_adc.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_pwmcj2-driversdrv_pwmhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_pwm.c.j2 / drivers/drv_pwm.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_uartcj2-driversdrv_uarthj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_uart.c.j2 / drivers/drv_uart.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_spi_flashcj2-driversdrv_spi_flashhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_spi_flash.c.j2 / drivers/drv_spi_flash.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_i2c_mpu6050cj2-driversdrv_i2c_mpu6050hj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_i2c_mpu6050.c.j2 / drivers/drv_i2c_mpu6050.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_eepromcj2-driversdrv_eepromhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_eeprom.c.j2 / drivers/drv_eeprom.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_rs485cj2-driversdrv_rs485hj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_rs485.c.j2 / drivers/drv_rs485.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_cellularcj2-driversdrv_cellularhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_cellular.c.j2 / drivers/drv_cellular.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_ircj2-driversdrv_irhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_ir.c.j2 / drivers/drv_ir.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_modbuscj2-driversdrv_modbushj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_modbus.c.j2 / drivers/drv_modbus.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_mqttcj2-driversdrv_mqtthj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_mqtt.c.j2 / drivers/drv_mqtt.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_clicj2-driversdrv_clihj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_cli.c.j2 / drivers/drv_cli.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_fotacj2-driversdrv_fotahj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_fota.c.j2 / drivers/drv_fota.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversfota_bspatchcj2-driversfota_bspatchhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/fota_bspatch.c.j2 / drivers/fota_bspatch.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bootloader-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bootloader Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bootloader Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bootloaderboot_maincj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bootloader/boot_main.c.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bootloaderboot_nvmcj2-bootloaderboot_nvmhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bootloader/boot_nvm.c.j2 / bootloader/boot_nvm.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bootloaderboot_crccj2-bootloaderboot_crchj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bootloader/boot_crc.c.j2 / bootloader/boot_crc.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bootloaderboot_jumpcj2-bootloaderboot_jumphj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bootloader/boot_jump.c.j2 / bootloader/boot_jump.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bootloaderboot_appcj2-bootloaderboot_apphj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bootloader/boot_app.c.j2 / bootloader/boot_app.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#linker-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linker Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Linker Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#linkerstm32g0b1retx_flashldj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        linker/STM32G0B1RETx_FLASH.ld.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linkerbootloaderldj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        linker/bootloader.ld.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linkerapp_slot_aldj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        linker/app_slot_a.ld.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linkerapp_slot_bldj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        linker/app_slot_b.ld.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Project Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Project Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#projectmakefilej2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        project/Makefile.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projectbootloader_makefilej2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        project/bootloader_makefile.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#config-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Config Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configfreertosconfighj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        config/FreeRTOSConfig.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configstm32g0xx_hal_confhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        config/stm32g0xx_hal_conf.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Test Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#testmock_halcj2-testmock_halhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        test/mock_hal.c.j2 / test/mock_hal.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unit-test-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unit Test Templates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hil-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HIL Test
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vscode-integration-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VSCode Integration Templates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#business-logic-dsl-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Business Logic DSL Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Business Logic DSL Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#flat-state-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flat State Machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#substate-composite-state-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Substate (Composite) State Machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parallel-regions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parallel Regions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ref-reusable-substate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ref (Reusable Substate)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#available-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available Events
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-new-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a New Template
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#macros-and-variable-expansion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Macros and Variable Expansion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#debugging-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debugging Tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture-overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adding-new-mcu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding New MCU
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugin-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/milestones/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    About
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/CONTRIBUTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../vision/full-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vision
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#directory-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#template-rendering-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template Rendering Context
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Template Rendering Context">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#core-context-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Context Variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#condition-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Condition Flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#boot-config-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Boot Config Object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pin-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pin Object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#peripheral-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Peripheral Object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driver-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver Object
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#macrosj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macros.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcmaincj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/main.c.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcgpiocj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/gpio.c.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcsleepcj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/sleep.c.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcstm32g0xx_itcj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/stm32g0xx_it.c.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcevent_mgrcj2-srcevent_mgrhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/event_mgr.c.j2 / src/event_mgr.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#app-templates-state-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        App Templates (State Machine)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="App Templates (State Machine)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#appstatemachinecj2-appstatemachinehj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        app/statemachine.c.j2 / app/statemachine.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driver-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Driver Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_rtccj2-driversdrv_rtchj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_rtc.c.j2 / drivers/drv_rtc.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_logcj2-driversdrv_loghj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_log.c.j2 / drivers/drv_log.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_iwdgcj2-driversdrv_iwdghj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_iwdg.c.j2 / drivers/drv_iwdg.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_adccj2-driversdrv_adchj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_adc.c.j2 / drivers/drv_adc.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_pwmcj2-driversdrv_pwmhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_pwm.c.j2 / drivers/drv_pwm.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_uartcj2-driversdrv_uarthj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_uart.c.j2 / drivers/drv_uart.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_spi_flashcj2-driversdrv_spi_flashhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_spi_flash.c.j2 / drivers/drv_spi_flash.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_i2c_mpu6050cj2-driversdrv_i2c_mpu6050hj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_i2c_mpu6050.c.j2 / drivers/drv_i2c_mpu6050.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_eepromcj2-driversdrv_eepromhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_eeprom.c.j2 / drivers/drv_eeprom.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_rs485cj2-driversdrv_rs485hj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_rs485.c.j2 / drivers/drv_rs485.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_cellularcj2-driversdrv_cellularhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_cellular.c.j2 / drivers/drv_cellular.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_ircj2-driversdrv_irhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_ir.c.j2 / drivers/drv_ir.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_modbuscj2-driversdrv_modbushj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_modbus.c.j2 / drivers/drv_modbus.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_mqttcj2-driversdrv_mqtthj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_mqtt.c.j2 / drivers/drv_mqtt.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_clicj2-driversdrv_clihj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_cli.c.j2 / drivers/drv_cli.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversdrv_fotacj2-driversdrv_fotahj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/drv_fota.c.j2 / drivers/drv_fota.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driversfota_bspatchcj2-driversfota_bspatchhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drivers/fota_bspatch.c.j2 / drivers/fota_bspatch.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bootloader-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bootloader Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bootloader Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bootloaderboot_maincj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bootloader/boot_main.c.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bootloaderboot_nvmcj2-bootloaderboot_nvmhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bootloader/boot_nvm.c.j2 / bootloader/boot_nvm.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bootloaderboot_crccj2-bootloaderboot_crchj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bootloader/boot_crc.c.j2 / bootloader/boot_crc.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bootloaderboot_jumpcj2-bootloaderboot_jumphj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bootloader/boot_jump.c.j2 / bootloader/boot_jump.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bootloaderboot_appcj2-bootloaderboot_apphj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bootloader/boot_app.c.j2 / bootloader/boot_app.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#linker-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linker Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Linker Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#linkerstm32g0b1retx_flashldj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        linker/STM32G0B1RETx_FLASH.ld.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linkerbootloaderldj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        linker/bootloader.ld.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linkerapp_slot_aldj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        linker/app_slot_a.ld.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linkerapp_slot_bldj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        linker/app_slot_b.ld.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Project Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Project Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#projectmakefilej2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        project/Makefile.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projectbootloader_makefilej2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        project/bootloader_makefile.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#config-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Config Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configfreertosconfighj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        config/FreeRTOSConfig.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configstm32g0xx_hal_confhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        config/stm32g0xx_hal_conf.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Templates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Test Templates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#testmock_halcj2-testmock_halhj2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        test/mock_hal.c.j2 / test/mock_hal.h.j2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unit-test-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unit Test Templates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hil-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HIL Test
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vscode-integration-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VSCode Integration Templates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#business-logic-dsl-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Business Logic DSL Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Business Logic DSL Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#flat-state-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flat State Machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#substate-composite-state-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Substate (Composite) State Machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parallel-regions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parallel Regions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ref-reusable-substate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ref (Reusable Substate)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#available-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available Events
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-new-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a New Template
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#macros-and-variable-expansion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Macros and Variable Expansion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#debugging-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debugging Tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="hw2c-template-development-guide">hw2c Template Development Guide<a class="headerlink" href="#hw2c-template-development-guide" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>hw2c uses the <strong>Jinja2</strong> template engine to generate complete embedded C projects from hardware description files (<code>hardware.yaml</code>). Templates are located in the <code>templates/</code> directory and rendered by the Python generator into the target output directory.</p>
+<h2 id="directory-structure">Directory Structure<a class="headerlink" href="#directory-structure" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>templates/
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── macros.j2                     # Reusable Jinja2 macros (EXTI mapping helpers)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── src/
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   ├── main.c.j2                 # App entry point + FreeRTOS task creation
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   ├── gpio.c.j2                 # GPIO + EXTI initialization
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   ├── sleep.c.j2                # Low-power idle hook
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│   ├── stm32g0xx_it.c.j2         # Interrupt handlers (EXTI, RTC)
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   ├── event_mgr.c.j2            # Event manager (queue-based dispatcher)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   └── event_mgr.h.j2            # Event manager header (event IDs, queue API)
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>├── app/
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   ├── statemachine.c.j2         # State machine engine (flat / substate / parallel)
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│   └── statemachine.h.j2         # State machine header
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>├── drivers/
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│   ├── drv_rtc.c.j2 + .h.j2      # RTC driver (calendar + software timer manager)
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│   ├── drv_log.c.j2 + .h.j2      # USART2 log subsystem (ring buffer, TXE IRQ)
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│   ├── drv_iwdg.c.j2 + .h.j2     # Independent watchdog (HAL_IWDG)
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│   ├── drv_adc.c.j2 + .h.j2      # ADC driver
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│   ├── drv_pwm.c.j2 + .h.j2      # PWM output driver
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│   ├── drv_uart.c.j2 + .h.j2     # UART serial driver
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│   ├── drv_spi_flash.c.j2 + .h.j2 # SPI Flash (W25Q32) driver
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   ├── drv_i2c_mpu6050.c.j2 + .h.j2 # I2C MPU6050 sensor driver
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   ├── drv_eeprom.c.j2 + .h.j2   # I2C EEPROM storage driver
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   ├── drv_rs485.c.j2 + .h.j2    # RS485 half-duplex transceiver driver
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   ├── drv_cellular.c.j2 + .h.j2 # Cellular 4G Cat.1 modem driver
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   ├── drv_ir.c.j2 + .h.j2       # Infrared NEC/SIR communication driver
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│   ├── drv_modbus.c.j2 + .h.j2   # Modbus RTU protocol driver
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│   ├── drv_mqtt.c.j2 + .h.j2     # MQTT 3.1.1 client driver
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>│   ├── drv_cli.c.j2 + .h.j2      # UART CLI debug shell driver
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>│   ├── drv_fota.c.j2 + .h.j2     # FOTA firmware update manager
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>│   └── fota_bspatch.c.j2 + .h.j2 # BSDIFF patch application engine
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>├── bootloader/
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>│   ├── boot_main.c.j2            # Bootloader entry point
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>│   ├── boot_nvm.c.j2 + .h.j2     # Non-volatile storage (TAMP backup registers)
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>│   ├── boot_crc.c.j2 + .h.j2     # Hardware CRC32 verification
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>│   ├── boot_jump.c.j2 + .h.j2    # App jump logic (SP/MSP validation, VTOR)
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>│   └── boot_app.c.j2 + .h.j2     # App-side boot flag helpers
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>├── linker/
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>│   ├── STM32G0B1RETx_FLASH.ld.j2  # Standard app linker script
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>│   ├── bootloader.ld.j2           # Bootloader linker script (8KB)
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>│   ├── app_slot_a.ld.j2           # App Slot A linker script
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>│   └── app_slot_b.ld.j2           # App Slot B linker script
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>├── project/
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>│   ├── Makefile.j2                # App Makefile
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>│   └── bootloader_makefile.j2     # Bootloader standalone Makefile
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>├── config/
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>│   ├── FreeRTOSConfig.h.j2        # FreeRTOS kernel config
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>│   └── stm32g0xx_hal_conf.h.j2    # HAL module enable/disable
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>├── test/
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>│   ├── mock_hal.c.j2 + .h.j2      # Mock HAL for unit tests (PC-native)
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>│   ├── test_gpio.c.j2             # GPIO unit test
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>│   ├── test_rtc.c.j2              # RTC unit test
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>│   ├── test_rtc_timers.c.j2       # RTC software timer unit test
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>│   ├── test_event_mgr.c.j2        # Event manager unit test
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>│   ├── test_statemachine.c.j2     # Flat state machine unit test
+<a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>│   ├── test_substate.c.j2         # Nested substate unit test
+<a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>│   ├── test_parallel.c.j2         # Parallel region unit test
+<a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>│   ├── test_adc.c.j2              # ADC unit test
+<a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>│   ├── test_pwm.c.j2              # PWM unit test
+<a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>│   ├── test_uart.c.j2             # UART unit test
+<a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>│   ├── test_spi_flash.c.j2        # SPI Flash unit test
+<a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a>│   ├── test_mpu6050.c.j2          # MPU6050 unit test
+<a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>│   ├── hil_test.c.j2              # HIL (Hardware-in-Loop) test
+<a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a>│   └── Makefile.j2                # Test Makefile
+<a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>└── vscode/
+<a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>    ├── settings.json.j2           # VSCode C/C++ settings
+<a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>    ├── tasks.json.j2              # VSCode build tasks
+<a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a>    ├── launch.json.j2             # VSCode debug launch config
+<a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a>    ├── c_cpp_properties.json.j2   # VSCode IntelliSense config
+<a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a>    └── extensions.json.j2         # VSCode recommended extensions
+</code></pre></div>
+<h2 id="template-rendering-context">Template Rendering Context<a class="headerlink" href="#template-rendering-context" title="Permanent link">&para;</a></h2>
+<p>The generator parses <code>hardware.yaml</code> and builds a <strong>context dictionary</strong> passed to every template. All templates share the same context but use only the variables they need.</p>
+<h3 id="core-context-variables">Core Context Variables<a class="headerlink" href="#core-context-variables" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mcu</code></td>
+<td>object</td>
+<td>MCU info (<code>part</code>, <code>core_clock_mhz</code>, <code>hse_freq</code>)</td>
+<td><code>{"part": "STM32G0B1RET6", "core_clock_mhz": 64}</code></td>
+</tr>
+<tr>
+<td><code>pins</code></td>
+<td>list[object]</td>
+<td>Pin list with <code>id</code>, <code>function</code>, <code>label</code>, <code>pull</code>, <code>exti</code>, <code>notify_task</code>, <code>af</code></td>
+<td>See <a href="#pin-object">Pin Object</a></td>
+</tr>
+<tr>
+<td><code>app_tasks</code></td>
+<td>list[object]</td>
+<td>FreeRTOS tasks (<code>name</code>, <code>priority</code>, <code>stack_size</code>)</td>
+<td><code>[{"name": "led_task", "priority": 2, "stack_size": 128}]</code></td>
+</tr>
+<tr>
+<td><code>sleep</code></td>
+<td>object</td>
+<td>Low-power config (<code>mode</code>)</td>
+<td><code>{"mode": "STOP1"}</code></td>
+</tr>
+<tr>
+<td><code>project_name</code></td>
+<td>string</td>
+<td>Project name (default <code>hw2code</code>)</td>
+<td><code>"blinky_g0"</code></td>
+</tr>
+<tr>
+<td><code>heap_size</code> / <code>stack_size</code></td>
+<td>string</td>
+<td>Heap/stack sizes in hex</td>
+<td><code>"0x200"</code></td>
+</tr>
+<tr>
+<td><code>peripherals</code></td>
+<td>list[object]</td>
+<td>All configured peripherals with loaded <code>model</code></td>
+<td>See <a href="#peripheral-object">Peripheral Object</a></td>
+</tr>
+<tr>
+<td><code>drivers</code></td>
+<td>list[object]</td>
+<td>All driver entries (name, template, header_template, model, peripheral)</td>
+<td>See <a href="#driver-object">Driver Object</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="condition-flags">Condition Flags<a class="headerlink" href="#condition-flags" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>When True</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>has_rtc</code></td>
+<td>bool</td>
+<td>RTC peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_log</code></td>
+<td>bool</td>
+<td>UART peripheral configured (auto-enables USART2 logging)</td>
+</tr>
+<tr>
+<td><code>has_bootloader</code></td>
+<td>bool</td>
+<td><code>bootloader.enabled: true</code> in YAML</td>
+</tr>
+<tr>
+<td><code>has_business_flow</code></td>
+<td>bool</td>
+<td><code>business_flow</code> node exists in YAML</td>
+</tr>
+<tr>
+<td><code>has_substate</code></td>
+<td>bool</td>
+<td>Business flow contains composite (nested) states</td>
+</tr>
+<tr>
+<td><code>has_led</code></td>
+<td>bool</td>
+<td>A pin with <code>label: "LED"</code> exists</td>
+</tr>
+<tr>
+<td><code>has_led_task</code></td>
+<td>bool</td>
+<td>A task named <code>led_task</code> is in <code>app_tasks</code></td>
+</tr>
+<tr>
+<td><code>has_i2c</code></td>
+<td>bool</td>
+<td>Any I2C peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_spi</code></td>
+<td>bool</td>
+<td>Any SPI peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_spi_flash</code></td>
+<td>bool</td>
+<td><code>SPI_Flash_W25Q32</code> peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_mpu6050</code></td>
+<td>bool</td>
+<td><code>I2C_Sensor_MPU6050</code> peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_pwm</code></td>
+<td>bool</td>
+<td>Any PWM peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_adc</code></td>
+<td>bool</td>
+<td>Any ADC peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_uart</code></td>
+<td>bool</td>
+<td>Any UART peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_iwdg</code></td>
+<td>bool</td>
+<td>IWDG peripheral or bootloader enabled</td>
+</tr>
+<tr>
+<td><code>has_eeprom</code></td>
+<td>bool</td>
+<td><code>I2C_EEPROM</code> peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_rs485</code></td>
+<td>bool</td>
+<td><code>RS485</code> peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_cellular</code></td>
+<td>bool</td>
+<td><code>Cellular_4G</code> peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_ir</code></td>
+<td>bool</td>
+<td><code>Internal_IR</code> peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_modbus</code></td>
+<td>bool</td>
+<td><code>Protocol_Modbus</code> peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_mqtt</code></td>
+<td>bool</td>
+<td><code>Protocol_MQTT</code> peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_cli</code></td>
+<td>bool</td>
+<td><code>Internal_CLI</code> peripheral configured</td>
+</tr>
+<tr>
+<td><code>has_fota</code></td>
+<td>bool</td>
+<td>FOTA peripheral configured</td>
+</tr>
+</tbody>
+</table>
+<h3 id="boot-config-object">Boot Config Object<a class="headerlink" href="#boot-config-object" title="Permanent link">&para;</a></h3>
+<p>Available when <code>has_bootloader</code> is true:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable dual-slot bootloader</td>
+</tr>
+<tr>
+<td><code>size_kb</code></td>
+<td>int</td>
+<td><code>8</code></td>
+<td>Bootloader flash size in KB</td>
+</tr>
+<tr>
+<td><code>app_a_offset</code></td>
+<td>hex</td>
+<td><code>0x2000</code></td>
+<td>App Slot A base offset</td>
+</tr>
+<tr>
+<td><code>app_b_offset</code></td>
+<td>hex</td>
+<td><code>0x40000</code></td>
+<td>App Slot B base offset</td>
+</tr>
+<tr>
+<td><code>crc_method</code></td>
+<td>string</td>
+<td><code>"crc32_hw"</code></td>
+<td>CRC method (<code>crc32_hw</code> = STM32G0 hardware CRC)</td>
+</tr>
+<tr>
+<td><code>boot_flag_src</code></td>
+<td>string</td>
+<td><code>"tamp_bkp"</code></td>
+<td>Boot flag storage (<code>tamp_bkp</code> = TAMP backup registers)</td>
+</tr>
+<tr>
+<td><code>max_retries</code></td>
+<td>int</td>
+<td><code>3</code></td>
+<td>Max boot retries before fallback</td>
+</tr>
+<tr>
+<td><code>wdg_timeout_ms</code></td>
+<td>int</td>
+<td><code>5000</code></td>
+<td>IWDG timeout in milliseconds</td>
+</tr>
+<tr>
+<td><code>boot_magic</code></td>
+<td>string</td>
+<td><code>"H2Ck"</code></td>
+<td>4-byte magic for firmware metadata header</td>
+</tr>
+</tbody>
+</table>
+<h3 id="pin-object">Pin Object<a class="headerlink" href="#pin-object" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PC13&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">&quot;label&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;BUTTON&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">&quot;function&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;GPIO_Input&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">&quot;pull&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;up&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nt">&quot;exti&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;enable&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;trigger&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;falling&quot;</span><span class="p">},</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">&quot;notify_task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;button_led_task&quot;</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="peripheral-object">Peripheral Object<a class="headerlink" href="#peripheral-object" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rtc&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Internal_RTC&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Internal_RTC&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">        </span><span class="nt">&quot;interface&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;internal&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">        </span><span class="nt">&quot;driver_template&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;drivers/drv_rtc.c.j2&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">        </span><span class="nt">&quot;header_template&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;drivers/drv_rtc.h.j2&quot;</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="driver-object">Driver Object<a class="headerlink" href="#driver-object" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rtc&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">&quot;template&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;drivers/drv_rtc.c.j2&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">&quot;header_template&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;drivers/drv_rtc.h.j2&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Internal_RTC&quot;</span><span class="p">,</span><span class="w"> </span><span class="err">...</span><span class="p">},</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">&quot;peripheral&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rtc&quot;</span><span class="p">,</span><span class="w"> </span><span class="err">...</span><span class="p">}</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="p">}</span>
+</code></pre></div>
+<hr />
+<h2 id="core-templates">Core Templates<a class="headerlink" href="#core-templates" title="Permanent link">&para;</a></h2>
+<h3 id="macrosj2"><code>macros.j2</code><a class="headerlink" href="#macrosj2" title="Permanent link">&para;</a></h3>
+<p>Reusable helper macros.</p>
+<table>
+<thead>
+<tr>
+<th>Macro</th>
+<th>Input</th>
+<th>Output</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>exti_irq_name(pin_id)</code></td>
+<td><code>"PC13"</code></td>
+<td><code>EXTI4_15_IRQn</code></td>
+<td>NVIC IRQ number for the EXTI line</td>
+</tr>
+<tr>
+<td><code>exti_handler_name(pin_id)</code></td>
+<td><code>"PC13"</code></td>
+<td><code>EXTI4_15_IRQHandler</code></td>
+<td>ISR function name for the EXTI line</td>
+</tr>
+<tr>
+<td><code>pin_port(pin_id)</code></td>
+<td><code>"PC13"</code></td>
+<td><code>C</code></td>
+<td>Extract GPIO port letter</td>
+</tr>
+<tr>
+<td><code>pin_number(pin_id)</code></td>
+<td><code>"PC13"</code></td>
+<td><code>13</code></td>
+<td>Extract pin number</td>
+</tr>
+</tbody>
+</table>
+<h3 id="srcmaincj2"><code>src/main.c.j2</code><a class="headerlink" href="#srcmaincj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>src/main.c</code></p>
+<p><strong>Responsibilities:</strong>
+- Generates <code>LED_GPIO_Port</code> / <code>LED_GPIO_Pin</code> macros from <code>pins</code> with <code>label == 'LED'</code>
+- Provides <code>SystemClock_Config()</code> (HSI 16 MHz default)
+- Includes all driver headers via <code>{% for drv in drivers %}</code> loop
+- Creates all FreeRTOS tasks from <code>app_tasks</code>
+- Integration points for bootloader, logging, state machine
+- LED heartbeat pattern when bootloader is enabled (2 quick blinks)</p>
+<p><strong>Key logic:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>{% if has_bootloader %}
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    IWDG_Init();
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    boot_app_mark_ok();
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>{% endif %}
+</code></pre></div></p>
+<h3 id="srcgpiocj2"><code>src/gpio.c.j2</code><a class="headerlink" href="#srcgpiocj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>src/gpio.c</code></p>
+<p><strong>Responsibilities:</strong>
+- Enables SYSCFG clock for EXTI mapping (<code>__HAL_RCC_SYSCFG_CLK_ENABLE()</code>)
+- Iterates <code>pins</code> and generates <code>HAL_GPIO_Init()</code> for each
+- Supports: GPIO_Output, GPIO_Input (EXTI), I2C (AF_OD), SPI (AF_PP), UART (AF_PP), ADC (Analog)
+- Enables NVIC IRQ for pins with <code>exti.enable == true</code></p>
+<h3 id="srcsleepcj2"><code>src/sleep.c.j2</code><a class="headerlink" href="#srcsleepcj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>src/sleep.c</code></p>
+<p><strong>Responsibilities:</strong>
+- Implements <code>vApplicationIdleHook()</code> → <code>__WFI()</code> for Tickless Idle
+- Puts MCU into low-power mode when no tasks are ready</p>
+<h3 id="srcstm32g0xx_itcj2"><code>src/stm32g0xx_it.c.j2</code><a class="headerlink" href="#srcstm32g0xx_itcj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>src/stm32g0xx_it.c</code></p>
+<p><strong>Responsibilities:</strong>
+- Generates EXTI IRQ handlers for each pin with EXTI configured
+- Calls <code>xTaskNotifyFromISR()</code> if pin has <code>notify_task</code>
+- Includes <code>RTC_TAMP_IRQHandler</code> for RTC wakeup timer
+- Preserves FreeRTOS-required handlers (<code>SysTick_Handler</code>, <code>PendSV_Handler</code>, <code>SVC_Handler</code>)</p>
+<h3 id="srcevent_mgrcj2-srcevent_mgrhj2"><code>src/event_mgr.c.j2</code> / <code>src/event_mgr.h.j2</code><a class="headerlink" href="#srcevent_mgrcj2-srcevent_mgrhj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>src/event_mgr.c</code> / <code>src/event_mgr.h</code></p>
+<p><strong>Responsibilities:</strong>
+- Defines all event IDs (<code>EVENT_BUTTON_PRESS</code>, <code>EVENT_RTC_TICK</code>, etc.)
+- Event manager task (<code>EventMgr_Task</code>) reads from <code>event_queue</code> and dispatches
+- Routes events to <code>statemachine_process()</code> if business flow is defined
+- Calls <code>RTC_ProcessTimers()</code> for <code>EVENT_RTC_TICK</code></p>
+<hr />
+<h2 id="app-templates-state-machine">App Templates (State Machine)<a class="headerlink" href="#app-templates-state-machine" title="Permanent link">&para;</a></h2>
+<h3 id="appstatemachinecj2-appstatemachinehj2"><code>app/statemachine.c.j2</code> / <code>app/statemachine.h.j2</code><a class="headerlink" href="#appstatemachinecj2-appstatemachinehj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>src/statemachine.c</code> / <code>src/statemachine.h</code></p>
+<p><strong>Responsibilities:</strong>
+- Generates the complete state machine engine from <code>business_flow</code> DSL
+- Supports three modes controlled by <code>has_substate</code> and <code>regions</code> presence:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Condition</th>
+<th>Features</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Flat</td>
+<td>No <code>regions</code>, no nested <code>states</code></td>
+<td>Simple state transitions with actions</td>
+</tr>
+<tr>
+<td>Substate</td>
+<td><code>states</code> contains nested <code>states</code></td>
+<td>Composite states, <code>return</code> action</td>
+</tr>
+<tr>
+<td>Parallel</td>
+<td><code>regions</code> node present</td>
+<td>Multiple concurrent regions, <code>send_to</code> cross-region communication</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Generated artifacts:</strong>
+- State enum constants (<code>STATE_IDLE</code>, <code>STATE_ACTIVE</code>, etc.)
+- <code>statemachine_init()</code> — enters initial state
+- <code>statemachine_process(event_t *evt)</code> — event dispatch switch
+- Software timer callbacks for <code>defer</code> and state timeout
+- Action implementations: <code>toggle_led</code>, variable <code>set</code>, etc.</p>
+<hr />
+<h2 id="driver-templates">Driver Templates<a class="headerlink" href="#driver-templates" title="Permanent link">&para;</a></h2>
+<p>All driver templates follow a consistent pattern:
+- <code>#ifdef TEST</code> / <code>#else</code> / <code>#endif</code> for mock vs. real HAL includes
+- Header guard <code>#ifndef __DRV_XXX_H</code>
+- Function naming: <code>{Peripheral}_Init()</code>, <code>{Peripheral}_{Action}()</code></p>
+<h3 id="driversdrv_rtccj2-driversdrv_rtchj2"><code>drivers/drv_rtc.c.j2</code> / <code>drivers/drv_rtc.h.j2</code><a class="headerlink" href="#driversdrv_rtccj2-driversdrv_rtchj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_rtc</code> is true.</p>
+<p><strong>API:</strong>
+| Function | Description |
+|----------|-------------|
+| <code>RTC_Init()</code> | Initialize RTC with LSE clock source and wakeup timer |
+| <code>RTC_Start()</code> | Start RTC wakeup timer interrupts |
+| <code>RTC_GetTime(rtc_time_t *)</code> | Read current calendar time |
+| <code>RTC_SetTime(rtc_time_t *)</code> | Set calendar time |
+| <code>RTC_AdjustDrift(int16_t ppm)</code> | Hardware smooth calibration |
+| <code>RTC_TimerCreate(period_ms, mode, cb, arg)</code> | Create a software timer |
+| <code>RTC_TimerStart(handle)</code> | Start a software timer |
+| <code>RTC_TimerStop(handle)</code> | Stop a software timer |
+| <code>RTC_TimerDelete(handle)</code> | Delete a software timer |
+| <code>RTC_ProcessTimers()</code> | Process expired timers (called from EventMgr) |</p>
+<p><strong>Design notes:</strong>
+- RTC init uses <code>HAL_RTC_Init()</code> + <code>HAL_RCCEx_PeriphCLKConfig()</code>, not direct register writes.
+- Software timer manager uses a linked list. Timers are checked when <code>RTC_ProcessTimers()</code> is called.</p>
+<h3 id="driversdrv_logcj2-driversdrv_loghj2"><code>drivers/drv_log.c.j2</code> / <code>drivers/drv_log.h.j2</code><a class="headerlink" href="#driversdrv_logcj2-driversdrv_loghj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_uart</code> is true (auto-attaches to USART2 at PA2/PA3).</p>
+<p><strong>API:</strong>
+| Function | Description |
+|----------|-------------|
+| <code>log_init()</code> | Initialize USART2 with TXE interrupt-driven ring buffer |
+| <code>log_trace(fmt, ...)</code> | TRACE level log |
+| <code>log_debug(fmt, ...)</code> | DEBUG level log |
+| <code>log_info(fmt, ...)</code> | INFO level log |
+| <code>log_warn(fmt, ...)</code> | WARN level log |
+| <code>log_error(fmt, ...)</code> | ERROR level log |
+| <code>log_fatal(fmt, ...)</code> | FATAL level log |
+| <code>log_flush()</code> | Block until ring buffer is drained (for crash-safe logging) |
+| <code>log_system_info()</code> | Print system banner (MCU, clock, RTOS version) |</p>
+<p><strong>Design notes:</strong>
+- Ring buffer + TXE interrupt = ISR-safe, no blocking in normal operation.
+- Based on rxi/log.c design patterns.
+- <code>log_flush()</code> ensures pending logs are output before potentially crashing operations (e.g., TAMP register writes).</p>
+<h3 id="driversdrv_iwdgcj2-driversdrv_iwdghj2"><code>drivers/drv_iwdg.c.j2</code> / <code>drivers/drv_iwdg.h.j2</code><a class="headerlink" href="#driversdrv_iwdgcj2-driversdrv_iwdghj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Auto-injected when <code>has_bootloader</code> is true.</p>
+<p><strong>API:</strong>
+| Function | Description |
+|----------|-------------|
+| <code>IWDG_Init()</code> | Initialize IWDG with <code>HAL_IWDG_Init()</code>, prescaler /256, timeout from <code>wdg_timeout_ms</code> |
+| <code>IWDG_Refresh()</code> | Feed the watchdog via <code>HAL_IWDG_Refresh()</code> |</p>
+<p><strong>Macro:</strong>
+| Macro | Source | Description |
+|-------|--------|-------------|
+| <code>IWDG_TIMEOUT_MS</code> | <code>peripheral.wdg_timeout_ms</code> | Watchdog timeout in milliseconds (default 5000) |</p>
+<p><strong>Design notes:</strong>
+- Uses <code>HAL_IWDG_Init()</code> instead of direct register manipulation.
+- Timeout calculation: <code>reload = IWDG_TIMEOUT_MS / 8</code> (LSI ~32 kHz, prescaler /256 → 8 ms per tick).
+- Init is placed after <code>boot_app_mark_ok()</code> in <code>main()</code> so Bootloader can detect failed boots.</p>
+<h3 id="driversdrv_adccj2-driversdrv_adchj2"><code>drivers/drv_adc.c.j2</code> / <code>drivers/drv_adc.h.j2</code><a class="headerlink" href="#driversdrv_adccj2-driversdrv_adchj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_adc</code> is true (peripheral type <code>Internal_ADC</code>).</p>
+<h3 id="driversdrv_pwmcj2-driversdrv_pwmhj2"><code>drivers/drv_pwm.c.j2</code> / <code>drivers/drv_pwm.h.j2</code><a class="headerlink" href="#driversdrv_pwmcj2-driversdrv_pwmhj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_pwm</code> is true (peripheral type <code>Internal_PWM</code>).</p>
+<h3 id="driversdrv_uartcj2-driversdrv_uarthj2"><code>drivers/drv_uart.c.j2</code> / <code>drivers/drv_uart.h.j2</code><a class="headerlink" href="#driversdrv_uartcj2-driversdrv_uarthj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_uart</code> is true (peripheral type <code>UART_Serial</code>).</p>
+<h3 id="driversdrv_spi_flashcj2-driversdrv_spi_flashhj2"><code>drivers/drv_spi_flash.c.j2</code> / <code>drivers/drv_spi_flash.h.j2</code><a class="headerlink" href="#driversdrv_spi_flashcj2-driversdrv_spi_flashhj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_spi_flash</code> is true (peripheral type <code>SPI_Flash_W25Q32</code>).</p>
+<h3 id="driversdrv_i2c_mpu6050cj2-driversdrv_i2c_mpu6050hj2"><code>drivers/drv_i2c_mpu6050.c.j2</code> / <code>drivers/drv_i2c_mpu6050.h.j2</code><a class="headerlink" href="#driversdrv_i2c_mpu6050cj2-driversdrv_i2c_mpu6050hj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_mpu6050</code> is true (peripheral type <code>I2C_Sensor_MPU6050</code>).</p>
+<h3 id="driversdrv_eepromcj2-driversdrv_eepromhj2"><code>drivers/drv_eeprom.c.j2</code> / <code>drivers/drv_eeprom.h.j2</code><a class="headerlink" href="#driversdrv_eepromcj2-driversdrv_eepromhj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_eeprom</code> is true (peripheral type <code>I2C_EEPROM</code>).</p>
+<p>I2C EEPROM storage driver. Supports page-aligned read/write, configurable I2C address, page size, and total storage size.</p>
+<h3 id="driversdrv_rs485cj2-driversdrv_rs485hj2"><code>drivers/drv_rs485.c.j2</code> / <code>drivers/drv_rs485.h.j2</code><a class="headerlink" href="#driversdrv_rs485cj2-driversdrv_rs485hj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_rs485</code> is true (peripheral type <code>RS485</code>).</p>
+<p>RS485 half-duplex transceiver driver with automatic DE/RE direction control.</p>
+<h3 id="driversdrv_cellularcj2-driversdrv_cellularhj2"><code>drivers/drv_cellular.c.j2</code> / <code>drivers/drv_cellular.h.j2</code><a class="headerlink" href="#driversdrv_cellularcj2-driversdrv_cellularhj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_cellular</code> is true (peripheral type <code>Cellular_4G</code>).</p>
+<p>Cellular 4G Cat.1 modem driver. Manages AT command interaction, PDP activation, and network registration.</p>
+<h3 id="driversdrv_ircj2-driversdrv_irhj2"><code>drivers/drv_ir.c.j2</code> / <code>drivers/drv_ir.h.j2</code><a class="headerlink" href="#driversdrv_ircj2-driversdrv_irhj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_ir</code> is true (peripheral type <code>Internal_IR</code>).</p>
+<p>Infrared communication driver supporting NEC and SIR protocols for both transmit and receive.</p>
+<h3 id="driversdrv_modbuscj2-driversdrv_modbushj2"><code>drivers/drv_modbus.c.j2</code> / <code>drivers/drv_modbus.h.j2</code><a class="headerlink" href="#driversdrv_modbuscj2-driversdrv_modbushj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_modbus</code> is true (peripheral type <code>Protocol_Modbus</code>).</p>
+<p>Modbus RTU protocol driver. Supports master and slave roles, with configurable slave ID. Typically used with RS485 or UART as the underlying bearer.</p>
+<h3 id="driversdrv_mqttcj2-driversdrv_mqtthj2"><code>drivers/drv_mqtt.c.j2</code> / <code>drivers/drv_mqtt.h.j2</code><a class="headerlink" href="#driversdrv_mqttcj2-driversdrv_mqtthj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_mqtt</code> is true (peripheral type <code>Protocol_MQTT</code>).</p>
+<p>MQTT 3.1.1 client driver. Supports connect/publish/subscribe with configurable broker, client ID, and keep-alive. Typically used with Cellular_4G as the underlying bearer.</p>
+<h3 id="driversdrv_clicj2-driversdrv_clihj2"><code>drivers/drv_cli.c.j2</code> / <code>drivers/drv_cli.h.j2</code><a class="headerlink" href="#driversdrv_clicj2-driversdrv_clihj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_cli</code> is true (peripheral type <code>Internal_CLI</code>).</p>
+<p>UART-based interactive debug shell. Provides commands including <code>help</code>, <code>version</code>, <code>uptime</code>, <code>free</code>, <code>tasks</code>, <code>reset</code>, <code>gpio read/write</code>, <code>led on/off/toggle</code>, <code>rtc time/set</code>, and peripheral-specific commands (Modbus, Cellular, MQTT, FOTA).</p>
+<p><strong>Configuration:</strong>
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| <code>prompt</code> | <code>"&gt; "</code> | Shell prompt string |
+| <code>stack_size</code> | <code>512</code> | CLI task stack size in words |
+| <code>priority</code> | <code>4</code> | CLI task priority |
+| <code>max_cmd_len</code> | <code>64</code> | Maximum command line length |</p>
+<h3 id="driversdrv_fotacj2-driversdrv_fotahj2"><code>drivers/drv_fota.c.j2</code> / <code>drivers/drv_fota.h.j2</code><a class="headerlink" href="#driversdrv_fotacj2-driversdrv_fotahj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated when <code>has_fota</code> is true.</p>
+<p>Firmware Over-The-Air (FOTA) update manager. Orchestrates the firmware update lifecycle: receiving patch data, triggering BSDIFF patch application, CRC verification, and slot switching.</p>
+<h3 id="driversfota_bspatchcj2-driversfota_bspatchhj2"><code>drivers/fota_bspatch.c.j2</code> / <code>drivers/fota_bspatch.h.j2</code><a class="headerlink" href="#driversfota_bspatchcj2-driversfota_bspatchhj2" title="Permanent link">&para;</a></h3>
+<p><strong>Condition:</strong> Generated together with <code>drv_fota</code> when <code>has_fota</code> is true.</p>
+<p>BSDIFF patch application engine. Applies binary diffs to firmware images in-place, minimizing OTA data transfer size. Works with the dual-slot bootloader to safely update firmware with rollback capability.</p>
+<hr />
+<h2 id="bootloader-templates">Bootloader Templates<a class="headerlink" href="#bootloader-templates" title="Permanent link">&para;</a></h2>
+<p><strong>Condition:</strong> Generated when <code>has_bootloader</code> is true.</p>
+<h3 id="bootloaderboot_maincj2"><code>bootloader/boot_main.c.j2</code><a class="headerlink" href="#bootloaderboot_maincj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>bootloader/main.c</code></p>
+<p>Bootloader entry point. Logic flow:
+1. Check IWDG reset flag (<code>RCC-&gt;CSR &amp; RCC_CSR_IWDGRSTF</code>) → count as boot failure
+2. Read TAMP backup registers for boot state (active slot, fail count)
+3. If fail count exceeds <code>max_retries</code>, fall back to alternate slot
+4. Validate App header: search for <code>boot_magic</code> in vector table region
+5. Verify CRC32 over firmware payload
+6. If valid, jump to App via <code>boot_jump_to_app()</code>
+7. If invalid, enter fail loop (diagnostic LED blink)</p>
+<h3 id="bootloaderboot_nvmcj2-bootloaderboot_nvmhj2"><code>bootloader/boot_nvm.c.j2</code> / <code>bootloader/boot_nvm.h.j2</code><a class="headerlink" href="#bootloaderboot_nvmcj2-bootloaderboot_nvmhj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>bootloader/boot_nvm.c</code> / <code>bootloader/boot_nvm.h</code></p>
+<p>Non-volatile storage using TAMP backup registers (survives most resets).</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>boot_nvm_read(uint32_t reg)</code></td>
+<td>Read a TAMP BKP register</td>
+</tr>
+<tr>
+<td><code>boot_nvm_write(uint32_t reg, uint32_t val)</code></td>
+<td>Write a TAMP BKP register (with DBP sync)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="bootloaderboot_crccj2-bootloaderboot_crchj2"><code>bootloader/boot_crc.c.j2</code> / <code>bootloader/boot_crc.h.j2</code><a class="headerlink" href="#bootloaderboot_crccj2-bootloaderboot_crchj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>bootloader/boot_crc.c</code> / <code>bootloader/boot_crc.h</code></p>
+<p>Hardware CRC32 verification using STM32G0 CRC unit.</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>boot_crc32_compute(uint32_t *data, uint32_t words)</code></td>
+<td>Compute CRC32 over word-aligned data</td>
+</tr>
+<tr>
+<td><code>boot_crc_verify(uint32_t flash_addr, uint32_t size, uint32_t expected)</code></td>
+<td>Verify CRC32 of flash region</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Design notes:</strong>
+- Hardware CRC is configured with <code>CRC_CR_REV_IN_0 | CRC_CR_REV_OUT</code> to match CRC-32/MPEG-2 algorithm.
+- Metadata header is located by searching for magic <code>"H2Ck"</code> in the vector table region, not at a fixed offset.</p>
+<h3 id="bootloaderboot_jumpcj2-bootloaderboot_jumphj2"><code>bootloader/boot_jump.c.j2</code> / <code>bootloader/boot_jump.h.j2</code><a class="headerlink" href="#bootloaderboot_jumpcj2-bootloaderboot_jumphj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>bootloader/boot_jump.c</code> / <code>bootloader/boot_jump.h</code></p>
+<p>App jump logic.</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>boot_jump_to_app(uint32_t app_addr)</code></td>
+<td>Validate SP/MSP, set VTOR, jump to App reset vector</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Safety checks:</strong>
+- SP must be within SRAM range (<code>0x20000000</code> to <code>0x20024000</code> for 144KB SRAM)
+- MSP initial value must be word-aligned
+- Reset vector (PC) must be in flash range and thumb-mode (bit 0 set)</p>
+<h3 id="bootloaderboot_appcj2-bootloaderboot_apphj2"><code>bootloader/boot_app.c.j2</code> / <code>bootloader/boot_app.h.j2</code><a class="headerlink" href="#bootloaderboot_appcj2-bootloaderboot_apphj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>src/boot_app.c</code> / <code>src/boot_app.h</code> (compiled into App, not Bootloader)</p>
+<p>App-side helpers for marking boot status.</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>boot_app_mark_ok()</code></td>
+<td>Write boot success flag to TAMP BKP register</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="linker-templates">Linker Templates<a class="headerlink" href="#linker-templates" title="Permanent link">&para;</a></h2>
+<h3 id="linkerstm32g0b1retx_flashldj2"><code>linker/STM32G0B1RETx_FLASH.ld.j2</code><a class="headerlink" href="#linkerstm32g0b1retx_flashldj2" title="Permanent link">&para;</a></h3>
+<p>Standard App linker script (0x08000000 start, full 512KB flash).</p>
+<h3 id="linkerbootloaderldj2"><code>linker/bootloader.ld.j2</code><a class="headerlink" href="#linkerbootloaderldj2" title="Permanent link">&para;</a></h3>
+<p>Bootloader linker script (first 8KB of flash, 0x08000000 to 0x08002000).</p>
+<h3 id="linkerapp_slot_aldj2"><code>linker/app_slot_a.ld.j2</code><a class="headerlink" href="#linkerapp_slot_aldj2" title="Permanent link">&para;</a></h3>
+<p>App Slot A linker script (0x08002000 to 0x08040000).</p>
+<h3 id="linkerapp_slot_bldj2"><code>linker/app_slot_b.ld.j2</code><a class="headerlink" href="#linkerapp_slot_bldj2" title="Permanent link">&para;</a></h3>
+<p>App Slot B linker script (0x08040000 to 0x08080000).</p>
+<hr />
+<h2 id="project-templates">Project Templates<a class="headerlink" href="#project-templates" title="Permanent link">&para;</a></h2>
+<h3 id="projectmakefilej2"><code>project/Makefile.j2</code><a class="headerlink" href="#projectmakefilej2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>Makefile</code></p>
+<p>App Makefile with targets:
+- <code>make</code> / <code>make all</code> — build firmware
+- <code>make flash</code> — ST-Link flash
+- <code>make flash-daplink</code> — OpenOCD DAP-Link flash
+- <code>make clean</code> — clean build artifacts</p>
+<p>Uses <code>HARDWARE2CODE_STATIC</code> to reference HAL/CMSIS/FreeRTOS from <code>static/</code> directory.</p>
+<h3 id="projectbootloader_makefilej2"><code>project/bootloader_makefile.j2</code><a class="headerlink" href="#projectbootloader_makefilej2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>bootloader/Makefile</code></p>
+<p>Standalone Makefile for building the Bootloader independently.</p>
+<hr />
+<h2 id="config-templates">Config Templates<a class="headerlink" href="#config-templates" title="Permanent link">&para;</a></h2>
+<h3 id="configfreertosconfighj2"><code>config/FreeRTOSConfig.h.j2</code><a class="headerlink" href="#configfreertosconfighj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>config/FreeRTOSConfig.h</code></p>
+<ul>
+<li><code>configCPU_CLOCK_HZ</code> derived from <code>mcu.core_clock_mhz</code> (default 16 MHz)</li>
+<li><code>configENABLE_MPU</code> = 0 (Cortex-M0+)</li>
+<li><code>configTICK_RATE_HZ</code> = 1000</li>
+<li>Tickless Idle disabled (<code>configUSE_TICKLESS_IDLE</code> = 0)</li>
+</ul>
+<h3 id="configstm32g0xx_hal_confhj2"><code>config/stm32g0xx_hal_conf.h.j2</code><a class="headerlink" href="#configstm32g0xx_hal_confhj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>config/stm32g0xx_hal_conf.h</code></p>
+<p>Standard HAL configuration with all modules enabled (conditional deactivation per project needs).</p>
+<hr />
+<h2 id="test-templates">Test Templates<a class="headerlink" href="#test-templates" title="Permanent link">&para;</a></h2>
+<p><strong>Condition:</strong> Always generated. Tests are PC-native (compiled with <code>gcc -DTEST</code>), running against Mock HAL.</p>
+<h3 id="testmock_halcj2-testmock_halhj2"><code>test/mock_hal.c.j2</code> / <code>test/mock_hal.h.j2</code><a class="headerlink" href="#testmock_halcj2-testmock_halhj2" title="Permanent link">&para;</a></h3>
+<p><strong>Output:</strong> <code>test/mock_hal.c</code> / <code>test/mock_hal.h</code></p>
+<p>Complete mock layer for all HAL peripherals:
+- GPIO (history-based: records all <code>HAL_GPIO_Init()</code> calls for verification)
+- RTC, I2C, SPI, UART, ADC, PWM, TIM, IWDG
+- FreeRTOS stubs (queues, tasks, notifications)
+- CMSIS/Cortex stubs (NVIC, RCC, GPIO registers)
+- Verification helpers (<code>mock_HAL_XXX_Init_called()</code>, <code>mock_HAL_XXX_reset()</code>)</p>
+<h3 id="unit-test-templates">Unit Test Templates<a class="headerlink" href="#unit-test-templates" title="Permanent link">&para;</a></h3>
+<p>Each test file includes <code>unity.h</code> and <code>mock_hal.h</code>, then <code>#include</code>s the source under test directly (<code>#include "../src/xxx.c"</code>). This allows white-box testing.</p>
+<table>
+<thead>
+<tr>
+<th>Template</th>
+<th>Tests</th>
+<th>Compile-time include</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_gpio.c.j2</code></td>
+<td>Pin init call count, pin config verification</td>
+<td><code>../src/gpio.c</code></td>
+</tr>
+<tr>
+<td><code>test_rtc.c.j2</code></td>
+<td>RTC_Init call, timer create/start</td>
+<td><code>../src/drivers/drv_rtc.c</code></td>
+</tr>
+<tr>
+<td><code>test_rtc_timers.c.j2</code></td>
+<td>Multi-timer create, periodic trigger</td>
+<td><code>../src/drivers/drv_rtc.c</code></td>
+</tr>
+<tr>
+<td><code>test_event_mgr.c.j2</code></td>
+<td>Queue create, event send/receive, dispatch</td>
+<td><code>../src/event_mgr.c</code></td>
+</tr>
+<tr>
+<td><code>test_statemachine.c.j2</code></td>
+<td>Flat state transitions (IDLE ↔ ACTIVE)</td>
+<td><code>../src/statemachine.c</code></td>
+</tr>
+<tr>
+<td><code>test_substate.c.j2</code></td>
+<td>Nested substate entry, switch, return</td>
+<td><code>../src/statemachine.c</code></td>
+</tr>
+<tr>
+<td><code>test_parallel.c.j2</code></td>
+<td>Parallel region independent transitions</td>
+<td><code>../src/statemachine.c</code></td>
+</tr>
+<tr>
+<td><code>test_adc.c.j2</code></td>
+<td>ADC init call verification</td>
+<td><code>../src/drivers/drv_adc.c</code></td>
+</tr>
+<tr>
+<td><code>test_pwm.c.j2</code></td>
+<td>PWM init call verification</td>
+<td><code>../src/drivers/drv_pwm.c</code></td>
+</tr>
+<tr>
+<td><code>test_uart.c.j2</code></td>
+<td>UART init call verification</td>
+<td><code>../src/drivers/drv_uart.c</code></td>
+</tr>
+<tr>
+<td><code>test_spi_flash.c.j2</code></td>
+<td>SPI Flash init/read/write</td>
+<td><code>../src/drivers/drv_spi_flash.c</code></td>
+</tr>
+<tr>
+<td><code>test_mpu6050.c.j2</code></td>
+<td>MPU6050 init/read</td>
+<td><code>../src/drivers/drv_i2c_mpu6050.c</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="hil-test">HIL Test<a class="headerlink" href="#hil-test" title="Permanent link">&para;</a></h3>
+<p><strong><code>test/hil_test.c.j2</code></strong> — Hardware-in-Loop test firmware that flashes to the target board and reports results via UART. Only generated when <code>hil_mode</code> is active.</p>
+<hr />
+<h2 id="vscode-integration-templates">VSCode Integration Templates<a class="headerlink" href="#vscode-integration-templates" title="Permanent link">&para;</a></h2>
+<p>All <code>.vscode/</code> templates generate IDE configuration for:
+- <strong>IntelliSense:</strong> Include paths for HAL, CMSIS, FreeRTOS, and generated source
+- <strong>Build tasks:</strong> <code>make</code> integration
+- <strong>Debug launch:</strong> OpenOCD + Cortex-Debug for DAP-Link
+- <strong>Recommended extensions:</strong> C/C++, Cortex-Debug, arm assembly syntax</p>
+<hr />
+<h2 id="business-logic-dsl-reference">Business Logic DSL Reference<a class="headerlink" href="#business-logic-dsl-reference" title="Permanent link">&para;</a></h2>
+<p>Defined via <code>business_flow</code> in YAML. Generates <code>statemachine.c/h</code>.</p>
+<h3 id="flat-state-machine">Flat State Machine<a class="headerlink" href="#flat-state-machine" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">business_flow</span><span class="p">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">initial_state</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;IDLE&quot;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;IDLE&quot;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">      </span><span class="nt">transitions</span><span class="p">:</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;BUTTON_PRESS&quot;</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">          </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;ACTIVE&quot;</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">          </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;toggle_led&quot;</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;start_timer</span><span class="nv"> </span><span class="s">delay_timer</span><span class="nv"> </span><span class="s">5000&quot;</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;ACTIVE&quot;</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">      </span><span class="nt">on_entry</span><span class="p">:</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;defer</span><span class="nv"> </span><span class="s">100</span><span class="nv"> </span><span class="s">=&gt;</span><span class="nv"> </span><span class="s">publish</span><span class="nv"> </span><span class="s">COUNTER_TICK&quot;</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">      </span><span class="nt">transitions</span><span class="p">:</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;TIMER_EXPIRED_delay_timer&quot;</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">          </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;IDLE&quot;</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="w">          </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;toggle_led&quot;</span>
+</code></pre></div>
+<h3 id="substate-composite-state-machine">Substate (Composite) State Machine<a class="headerlink" href="#substate-composite-state-machine" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">business_flow</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">initial_state</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;IDLE&quot;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;IDLE&quot;</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">      </span><span class="nt">transitions</span><span class="p">:</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;BUTTON_PRESS&quot;</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">          </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;PLAYING&quot;</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">          </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;toggle_led&quot;</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;PLAYING&quot;</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">      </span><span class="nt">initial_state</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;step1&quot;</span><span class="w">          </span><span class="c1"># nested initial state</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">      </span><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;step1&quot;</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">          </span><span class="nt">on_entry</span><span class="p">:</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;defer</span><span class="nv"> </span><span class="s">1000</span><span class="nv"> </span><span class="s">=&gt;</span><span class="nv"> </span><span class="s">publish</span><span class="nv"> </span><span class="s">STEP_DONE&quot;</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">          </span><span class="nt">transitions</span><span class="p">:</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;STEP_DONE&quot;</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">              </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;step2&quot;</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;step2&quot;</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">          </span><span class="nt">transitions</span><span class="p">:</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;STEP_DONE&quot;</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">              </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;step1&quot;</span><span class="w">          </span><span class="c1"># loop within substate</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;RETURN_NOW&quot;</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="w">              </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="w">                </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;return&quot;</span><span class="w">              </span><span class="c1"># pop substate, go to parent&#39;s exit transition</span>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="w">      </span><span class="nt">transitions</span><span class="p">:</span><span class="w">                      </span><span class="c1"># parent-level transitions (on exit from substate via return)</span>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&quot;</span>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a><span class="w">          </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;IDLE&quot;</span><span class="w">                </span><span class="c1"># implicit: any return → IDLE</span>
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="w">          </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;toggle_led&quot;</span>
+</code></pre></div>
+<h3 id="parallel-regions">Parallel Regions<a class="headerlink" href="#parallel-regions" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">business_flow</span><span class="p">:</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">initial_state</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;ACTIVE&quot;</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">regions</span><span class="p">:</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;led_region&quot;</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">      </span><span class="nt">initial_state</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;LED_OFF&quot;</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">      </span><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;LED_OFF&quot;</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">          </span><span class="nt">transitions</span><span class="p">:</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;BUTTON_PRESS&quot;</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">              </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;LED_ON&quot;</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">              </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">                </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;toggle_led&quot;</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;LED_ON&quot;</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="w">          </span><span class="nt">transitions</span><span class="p">:</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;BUTTON_PRESS&quot;</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="w">              </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;LED_OFF&quot;</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="w">              </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="w">                </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;toggle_led&quot;</span>
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;counter_region&quot;</span>
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="w">      </span><span class="nt">initial_state</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;COUNTING&quot;</span>
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="w">      </span><span class="nt">variables</span><span class="p">:</span>
+<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="w">        </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;uint32_t&quot;</span>
+<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a><span class="w">      </span><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;COUNTING&quot;</span>
+<a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a><span class="w">          </span><span class="nt">transitions</span><span class="p">:</span>
+<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;BUTTON_PRESS&quot;</span>
+<a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a><span class="w">              </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;COUNTING&quot;</span><span class="w">        </span><span class="c1"># self-loop</span>
+<a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a><span class="w">              </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a><span class="w">                </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;set</span><span class="nv"> </span><span class="s">count</span><span class="nv"> </span><span class="s">inc&quot;</span>
+</code></pre></div>
+<h3 id="ref-reusable-substate">Ref (Reusable Substate)<a class="headerlink" href="#ref-reusable-substate" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">business_flow</span><span class="p">:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">initial_state</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;MAIN&quot;</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;MAIN&quot;</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">      </span><span class="nt">transitions</span><span class="p">:</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;BUTTON_PRESS&quot;</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">          </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;SUB&quot;</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;SUB&quot;</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">      </span><span class="nt">ref</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;common_subflow&quot;</span><span class="w">             </span><span class="c1"># load from external YAML file</span>
+</code></pre></div>
+<h3 id="timeline">Timeline<a class="headerlink" href="#timeline" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">business_flow</span><span class="p">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">initial_state</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;IDLE&quot;</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">states</span><span class="p">:</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;IDLE&quot;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">      </span><span class="nt">on_entry</span><span class="p">:</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;timeline</span><span class="nv"> </span><span class="s">led_sequence&quot;</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">      </span><span class="nt">transitions</span><span class="p">:</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">event</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;BUTTON_PRESS&quot;</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">          </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;TIMELINE_RUNNING&quot;</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">      </span><span class="nt">timelines</span><span class="p">:</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;led_sequence&quot;</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">          </span><span class="nt">steps</span><span class="p">:</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">delay_ms</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">500</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="w">              </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="w">                </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;toggle_led&quot;</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">delay_ms</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a><span class="w">              </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="w">                </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;toggle_led&quot;</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">delay_ms</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="w">              </span><span class="nt">actions</span><span class="p">:</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="w">                </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;publish</span><span class="nv"> </span><span class="s">SEQUENCE_DONE&quot;</span>
+</code></pre></div>
+<h3 id="supported-actions">Supported Actions<a class="headerlink" href="#supported-actions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Syntax</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>toggle_led</code></td>
+<td><code>- "toggle_led"</code></td>
+<td>Toggle LED via <code>led_task_notify()</code></td>
+</tr>
+<tr>
+<td><code>start_timer</code></td>
+<td><code>- "start_timer &lt;name&gt; &lt;period_ms&gt;"</code></td>
+<td>Start one-shot software timer</td>
+</tr>
+<tr>
+<td><code>stop_timer</code></td>
+<td><code>- "stop_timer &lt;name&gt;"</code></td>
+<td>Stop a running software timer</td>
+</tr>
+<tr>
+<td><code>defer</code></td>
+<td><code>- "defer &lt;ms&gt; =&gt; &lt;action&gt;"</code></td>
+<td>Delay an action by N milliseconds</td>
+</tr>
+<tr>
+<td><code>publish</code></td>
+<td><code>- "publish &lt;EVENT&gt;"</code></td>
+<td>Publish an event to the event queue</td>
+</tr>
+<tr>
+<td><code>set</code></td>
+<td><code>- "set &lt;var&gt; inc"</code> / <code>- "set &lt;var&gt; &lt;value&gt;"</code></td>
+<td>Modify a region variable</td>
+</tr>
+<tr>
+<td><code>send_to</code></td>
+<td><code>- "send_to &lt;region&gt; &lt;EVENT&gt;"</code></td>
+<td>Send event to another parallel region</td>
+</tr>
+<tr>
+<td><code>return</code></td>
+<td><code>- "return"</code></td>
+<td>Exit current substate, return to parent</td>
+</tr>
+<tr>
+<td><code>timeline</code></td>
+<td><code>- "timeline &lt;name&gt;"</code></td>
+<td>Start a timeline sequence</td>
+</tr>
+</tbody>
+</table>
+<h3 id="available-events">Available Events<a class="headerlink" href="#available-events" title="Permanent link">&para;</a></h3>
+<ul>
+<li>All events defined in <code>event_mgr.h</code> (e.g., <code>EVENT_BUTTON_PRESS</code>, <code>EVENT_RTC_TICK</code>)</li>
+<li>Dynamically generated: <code>EVENT_TIMER_EXPIRED_&lt;name&gt;</code> (from <code>start_timer</code>)</li>
+<li>Dynamically generated: <code>EVENT_&lt;name&gt;</code> for <code>defer</code> callback completion</li>
+<li>User-defined events from <code>publish</code> action</li>
+</ul>
+<hr />
+<h2 id="adding-a-new-template">Adding a New Template<a class="headerlink" href="#adding-a-new-template" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Create the <code>.j2</code> file in the appropriate <code>templates/</code> subdirectory.</li>
+<li>Add a Jinja2 comment at the top describing the output file, required context variables, and purpose.</li>
+<li>Register the template in <code>generator/generate.py</code> → <code>render_templates()</code>:</li>
+<li>Standard templates: add to <code>standard_templates</code> dict</li>
+<li>Driver templates: ensure the peripheral model YAML has <code>driver_template</code> / <code>header_template</code> fields</li>
+<li>Test templates: add to <code>test_templates</code> dict with condition check</li>
+<li>If the template needs new context variables, add them in <code>generator/context_builder.py</code>.</li>
+<li>Add mock support in <code>templates/test/mock_hal.c.j2</code> / <code>mock_hal.h.j2</code> for unit tests.</li>
+</ol>
+<h2 id="macros-and-variable-expansion">Macros and Variable Expansion<a class="headerlink" href="#macros-and-variable-expansion" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Complex calculations should live in <code>macros.j2</code> or <code>context_builder.py</code>, keeping templates clean.</li>
+<li>When template logic becomes complex, move preprocessing to Python (e.g., building <code>handlers</code> dicts) instead of writing complex Jinja2 code.</li>
+</ul>
+<h2 id="debugging-tips">Debugging Tips<a class="headerlink" href="#debugging-tips" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Print the <code>context</code> dict in <code>generate.py</code> to inspect the actual data passed to templates.</li>
+<li>Jinja2 syntax errors include tracebacks pointing to the template file and line number.</li>
+<li>Compilation errors in generated code usually indicate missing context variables or incorrect macro output.</li>
+<li>Run <code>python output/&lt;project&gt;/test/run_tests.py</code> to verify unit tests pass after template changes.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 hw2c
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/jinliangliu/hw2c" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,2052 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="从 YAML 硬件描述与业务 DSL 自动生成 STM32 + FreeRTOS 低功耗固件工程">
+      
+      
+      
+      
+        <link rel="prev" href="../cli-commands/">
+      
+      
+        <link rel="next" href="../../developer-guide/template-development/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Examples - hw2c</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../.." title="hw2c" class="md-header__button md-logo" aria-label="hw2c" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            hw2c
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Examples
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/jinliangliu/hw2c" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jinliangliu/hw2c
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../hardware-yaml/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../developer-guide/template-development/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Developer Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/milestones/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../about/CONTRIBUTING/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  About
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="hw2c" class="md-nav__button md-logo" aria-label="hw2c" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    hw2c
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/jinliangliu/hw2c" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jinliangliu/hw2c
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hardware-yaml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware YAML Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        基础外设类
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="基础外设类">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-blinky_g0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. blinky_g0
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-adc_uart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. adc_uart
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-mpu6050" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. mpu6050
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-spi_flash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. spi_flash
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-pwm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. pwm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-rtc_advanced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. rtc_advanced
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-i2c_spi_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. i2c_spi_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-low_power_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. low_power_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        状态机类
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="状态机类">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#9-substate_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. substate_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-parallel_states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. parallel_states
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-parallel_comm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. parallel_comm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-ref_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. ref_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-nested_ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. nested_ref
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-timeline_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. timeline_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bootloader-fota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bootloader 与 FOTA
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bootloader 与 FOTA">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#15-bootloader_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        15. bootloader_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-fota_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        16. fota_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-fota_flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        17. fota_flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        通信协议类
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="通信协议类">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#18-cli_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        18. cli_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#19-modbus_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        19. modbus_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#20-cellular_mqtt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        20. cellular_mqtt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#21-cellular_test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        21. cellular_test
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Developer Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/template-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Template Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/architecture-overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/adding-new-mcu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding New MCU
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/plugin-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/milestones/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    About
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/CONTRIBUTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../vision/full-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vision
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        基础外设类
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="基础外设类">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-blinky_g0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. blinky_g0
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-adc_uart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. adc_uart
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-mpu6050" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. mpu6050
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-spi_flash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. spi_flash
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-pwm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. pwm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-rtc_advanced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. rtc_advanced
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-i2c_spi_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. i2c_spi_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-low_power_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. low_power_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        状态机类
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="状态机类">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#9-substate_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. substate_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-parallel_states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. parallel_states
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-parallel_comm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. parallel_comm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-ref_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. ref_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-nested_ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. nested_ref
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-timeline_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. timeline_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bootloader-fota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bootloader 与 FOTA
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bootloader 与 FOTA">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#15-bootloader_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        15. bootloader_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-fota_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        16. fota_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-fota_flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        17. fota_flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        通信协议类
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="通信协议类">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#18-cli_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        18. cli_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#19-modbus_demo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        19. modbus_demo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#20-cellular_mqtt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        20. cellular_mqtt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#21-cellular_test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        21. cellular_test
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="_1">示例工程索引<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<table>
+<thead>
+<tr>
+<th>工程名</th>
+<th>功能</th>
+<th>主要外设</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>blinky_g0</code></td>
+<td>按键控制 LED 翻转</td>
+<td>GPIO 输入/输出</td>
+</tr>
+<tr>
+<td><code>adc_uart</code></td>
+<td>ADC + USART 采样通信</td>
+<td>ADC, USART, GPIO</td>
+</tr>
+<tr>
+<td><code>mpu6050</code></td>
+<td>加速度传感器报警</td>
+<td>I2C (MPU6050), GPIO</td>
+</tr>
+<tr>
+<td><code>spi_flash</code></td>
+<td>SPI Flash 读写</td>
+<td>SPI (W25Q32), GPIO</td>
+</tr>
+<tr>
+<td><code>pwm</code></td>
+<td>PWM 输出控制</td>
+<td>内部定时器 PWM, GPIO</td>
+</tr>
+<tr>
+<td><code>rtc_advanced</code></td>
+<td>RTC 日历、低功耗、状态机全特性</td>
+<td>内部 RTC, GPIO</td>
+</tr>
+<tr>
+<td><code>substate_demo</code></td>
+<td>复合子状态演示</td>
+<td>GPIO, RTC</td>
+</tr>
+<tr>
+<td><code>parallel_states</code></td>
+<td>并行区域演示</td>
+<td>GPIO, RTC</td>
+</tr>
+<tr>
+<td><code>parallel_comm</code></td>
+<td>并行区域跨区域通信</td>
+<td>GPIO, RTC</td>
+</tr>
+<tr>
+<td><code>nested_ref</code></td>
+<td>ref 引用 + namespace 命名空间</td>
+<td>GPIO, RTC</td>
+</tr>
+<tr>
+<td><code>ref_demo</code></td>
+<td>ref 基础用法演示</td>
+<td>GPIO, RTC</td>
+</tr>
+<tr>
+<td><code>timeline_demo</code></td>
+<td>timeline 时间序列动作</td>
+<td>GPIO</td>
+</tr>
+<tr>
+<td><code>bootloader_demo</code></td>
+<td>双槽位 Bootloader</td>
+<td>Bootloader, GPIO</td>
+</tr>
+<tr>
+<td><code>cli_demo</code></td>
+<td>CLI 调试终端</td>
+<td>USART2, CLI, GPIO</td>
+</tr>
+<tr>
+<td><code>modbus_demo</code></td>
+<td>Modbus RTU 从机通信</td>
+<td>RS485, Modbus RTU, GPIO</td>
+</tr>
+<tr>
+<td><code>cellular_mqtt</code></td>
+<td>4G Cat.1 + MQTT 上云</td>
+<td>Cellular_4G, MQTT, GPIO</td>
+</tr>
+<tr>
+<td><code>cellular_test</code></td>
+<td>4G Cat.1 基础测试</td>
+<td>Cellular_4G, MQTT, GPIO</td>
+</tr>
+<tr>
+<td><code>fota_demo</code></td>
+<td>BSDIFF 差分升级</td>
+<td>Bootloader, CLI, RTC, GPIO</td>
+</tr>
+<tr>
+<td><code>fota_flow</code></td>
+<td>FOTA 完整状态机流程</td>
+<td>Bootloader, RTC, GPIO</td>
+</tr>
+<tr>
+<td><code>i2c_spi_demo</code></td>
+<td>I2C EEPROM + SPI 综合</td>
+<td>I2C, SPI, GPIO</td>
+</tr>
+<tr>
+<td><code>low_power_demo</code></td>
+<td>STOP0 低功耗管理</td>
+<td>RTC, GPIO (EXTI 唤醒)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>通用硬件连接：</strong>
+- LED：PC0 或 PA0/PA5（低电平有效）
+- 按键：PC13（上拉，下降沿触发）</p>
+<p>各工程的详细 YAML 文件位于 <code>examples/&lt;工程名&gt;/hardware.yaml</code>。
+生成命令均为：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python generator/generate.py -i examples/&lt;工程名&gt;/hardware.yaml -o output/&lt;工程名&gt;
+</code></pre></div>
+<hr />
+<h2 id="_2">基础外设类<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h3 id="1-blinky_g0">1. blinky_g0<a class="headerlink" href="#1-blinky_g0" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：LED 翻转，按键中断。</li>
+<li><strong>硬件连接</strong>：LED → PC0，按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/blinky_g0/hardware.yaml -o output/blinky_g0</code></li>
+</ul>
+<h3 id="2-adc_uart">2. adc_uart<a class="headerlink" href="#2-adc_uart" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：ADC 采样通过 USART 输出。</li>
+<li><strong>硬件连接</strong>：ADC 输入 → 对应引脚，USART → PA2(TX)/PA3(RX)。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/adc_uart/hardware.yaml -o output/adc_uart</code></li>
+</ul>
+<h3 id="3-mpu6050">3. mpu6050<a class="headerlink" href="#3-mpu6050" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：读取加速度，检测倾斜报警，通过事件管理器控制 LED。</li>
+<li><strong>硬件连接</strong>：I2C1 → PB6(SCL)/PB7(SDA)；LED → PC0；按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/mpu6050/hardware.yaml -o output/mpu6050</code></li>
+</ul>
+<h3 id="4-spi_flash">4. spi_flash<a class="headerlink" href="#4-spi_flash" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：SPI Flash ID 读取、扇区擦除、数据写入。</li>
+<li><strong>硬件连接</strong>：SPI1 → PA5(SCK)/PA6(MISO)/PA7(MOSI)/PC4(NSS)；LED → PC0。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/spi_flash/hardware.yaml -o output/spi_flash</code></li>
+</ul>
+<h3 id="5-pwm">5. pwm<a class="headerlink" href="#5-pwm" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：PWM 输出，可调频率和占空比。</li>
+<li><strong>硬件连接</strong>：PWM → PA8 (TIM1_CH1)；LED → PC0。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/pwm/hardware.yaml -o output/pwm</code></li>
+</ul>
+<h3 id="6-rtc_advanced">6. rtc_advanced<a class="headerlink" href="#6-rtc_advanced" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：RTC 日历、WakeUp 定时器、软件定时器、Tickless 低功耗、业务状态机（按键→LED 翻转，RTC 超时回退）。</li>
+<li><strong>硬件连接</strong>：LED → PC0，按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/rtc_advanced/hardware.yaml -o output/rtc_advanced</code></li>
+<li><strong>调试</strong>：Debug 版本（<code>make debug</code>）使用 SLEEP 模式，保持调试连接。</li>
+</ul>
+<h3 id="7-i2c_spi_demo">7. i2c_spi_demo<a class="headerlink" href="#7-i2c_spi_demo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：I2C 传感器 (MPU6050) + SPI Flash 综合读写，按键触发传感器数据采集和存储。</li>
+<li><strong>硬件连接</strong>：I2C1 → PB6(SCL)/PB7(SDA)；SPI1 → PA5(SCK)/PA6(MISO)/PA7(MOSI)/PC4(NSS)；LED → PA0；按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/i2c_spi_demo/hardware.yaml -o output/i2c_spi_demo</code></li>
+</ul>
+<h3 id="8-low_power_demo">8. low_power_demo<a class="headerlink" href="#8-low_power_demo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：STOP0 低功耗模式演示，通过 RTC 和按键 EXTI 唤醒。</li>
+<li><strong>硬件连接</strong>：LED → PA5，按键 → PC13（EXTI 下降沿唤醒）。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/low_power_demo/hardware.yaml -o output/low_power_demo</code></li>
+</ul>
+<hr />
+<h2 id="_3">状态机类<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h3 id="9-substate_demo">9. substate_demo<a class="headerlink" href="#9-substate_demo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：复合子状态（compound/substate）演示，支持状态层级和入口/出口动作。</li>
+<li><strong>硬件连接</strong>：LED → PC0，按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/substate_demo/hardware.yaml -o output/substate_demo</code></li>
+</ul>
+<h3 id="10-parallel_states">10. parallel_states<a class="headerlink" href="#10-parallel_states" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：并行区域（parallel regions）演示，多个独立状态机同时运行。</li>
+<li><strong>硬件连接</strong>：LED → PC0，按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/parallel_states/hardware.yaml -o output/parallel_states</code></li>
+</ul>
+<h3 id="11-parallel_comm">11. parallel_comm<a class="headerlink" href="#11-parallel_comm" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：并行区域之间的跨区域通信（send_to）。</li>
+<li><strong>硬件连接</strong>：LED → PC0，按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/parallel_comm/hardware.yaml -o output/parallel_comm</code></li>
+</ul>
+<h3 id="12-ref_demo">12. ref_demo<a class="headerlink" href="#12-ref_demo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：状态机 ref 引用基础用法，复用子状态机定义。</li>
+<li><strong>硬件连接</strong>：LED → PC0，按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/ref_demo/hardware.yaml -o output/ref_demo</code></li>
+</ul>
+<h3 id="13-nested_ref">13. nested_ref<a class="headerlink" href="#13-nested_ref" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：ref 引用 + namespace 命名空间隔离，支持多层嵌套状态机复用。</li>
+<li><strong>硬件连接</strong>：LED → PC0，按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/nested_ref/hardware.yaml -o output/nested_ref</code></li>
+</ul>
+<h3 id="14-timeline_demo">14. timeline_demo<a class="headerlink" href="#14-timeline_demo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：timeline 时间序列动作，按时间轴依次执行多个延迟动作。</li>
+<li><strong>硬件连接</strong>：LED → PC0，按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/timeline_demo/hardware.yaml -o output/timeline_demo</code></li>
+</ul>
+<hr />
+<h2 id="bootloader-fota">Bootloader 与 FOTA<a class="headerlink" href="#bootloader-fota" title="Permanent link">&para;</a></h2>
+<h3 id="15-bootloader_demo">15. bootloader_demo<a class="headerlink" href="#15-bootloader_demo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：双槽位 (A/B) Bootloader，硬件 CRC32 校验，TAMP 备份寄存器持久化，启动失败自动回退。</li>
+<li><strong>硬件连接</strong>：LED → PC0，按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/bootloader_demo/hardware.yaml -o output/bootloader_demo</code></li>
+</ul>
+<h3 id="16-fota_demo">16. fota_demo<a class="headerlink" href="#16-fota_demo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：BSDIFF 差分固件升级基础框架，含 Bootloader + CLI 触发 + 双分区 A/B 镜像管理。</li>
+<li><strong>硬件连接</strong>：LED → PA5；USART2 → PA2(TX)/PA3(RX)。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/fota_demo/hardware.yaml -o output/fota_demo</code></li>
+</ul>
+<h3 id="17-fota_flow">17. fota_flow<a class="headerlink" href="#17-fota_flow" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：FOTA 升级完整状态机（空闲/等待补丁/校验/应用/重试/成功/错误 7 状态），含补丁超时和校验失败重试。</li>
+<li><strong>硬件连接</strong>：LED → PC0，按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/fota_flow/hardware.yaml -o output/fota_flow</code></li>
+</ul>
+<hr />
+<h2 id="_4">通信协议类<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<h3 id="18-cli_demo">18. cli_demo<a class="headerlink" href="#18-cli_demo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：UART 命令行调试终端，支持 help/version/uptime/free/tasks/reset/gpio/led/rtc 等调试命令。</li>
+<li><strong>硬件连接</strong>：USART2 → PA2(TX)/PA3(RX) (115200bps)；LED → PC0；按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/cli_demo/hardware.yaml -o output/cli_demo</code></li>
+</ul>
+<h3 id="19-modbus_demo">19. modbus_demo<a class="headerlink" href="#19-modbus_demo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：Modbus RTU 从机通信，基于 RS485 物理层。</li>
+<li><strong>硬件连接</strong>：USART1 → PB6(TX)/PB7(RX) (9600bps)；RS485 DE → PA1；LED → PC0；按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/modbus_demo/hardware.yaml -o output/modbus_demo</code></li>
+</ul>
+<h3 id="20-cellular_mqtt">20. cellular_mqtt<a class="headerlink" href="#20-cellular_mqtt" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：4G Cat.1 蜂窝网络拨号 + MQTT 上云，含三态业务状态机（断连/连接中/已连接）。</li>
+<li><strong>硬件连接</strong>：USART2 → PA2(TX)/PA3(RX) (115200bps)；LED → PC0；按键 → PC13。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/cellular_mqtt/hardware.yaml -o output/cellular_mqtt</code></li>
+</ul>
+<h3 id="21-cellular_test">21. cellular_test<a class="headerlink" href="#21-cellular_test" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>功能</strong>：最精简的 4G Cat.1 通信基础测试，仅验证 AT 指令交互和 MQTT 连接能力。</li>
+<li><strong>硬件连接</strong>：USART2 → PA2(TX)/PA3(RX) (115200bps)；LED → PC0。</li>
+<li><strong>生成命令</strong>：<code>python generator/generate.py -i examples/cellular_test/hardware.yaml -o output/cellular_test</code></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 hw2c
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/jinliangliu/hw2c" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
