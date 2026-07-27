@@ -95,7 +95,11 @@ void SystemClock_Config(void)
 static void MX_I2C{{ p.bus[-1] }}_Init(void)
 {
     hi2c{{ p.bus[-1] }}.Instance = {{ p.bus }};
-    hi2c{{ p.bus[-1] }}.Init.Timing = 0x2000090E;  // 100kHz standard mode (adjust if needed)
+{% if p.i2c and p.i2c.timing_r %}
+    hi2c{{ p.bus[-1] }}.Init.Timing = {{ p.i2c.timing_r | i2c_timing_hex }};
+{% else %}
+    hi2c{{ p.bus[-1] }}.Init.Timing = 0x00000F13;  /* 100kHz @ 16MHz (default) */
+{% endif %}
     hi2c{{ p.bus[-1] }}.Init.OwnAddress1 = 0;
     hi2c{{ p.bus[-1] }}.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
     hi2c{{ p.bus[-1] }}.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -117,7 +121,11 @@ static void MX_SPI{{ p.bus[-1] }}_Init(void)
     hspi{{ p.bus[-1] }}.Init.CLKPolarity = SPI_POLARITY_LOW;
     hspi{{ p.bus[-1] }}.Init.CLKPhase = SPI_PHASE_1EDGE;
     hspi{{ p.bus[-1] }}.Init.NSS = SPI_NSS_SOFT;
+{% if p.spi and p.spi.prescaler %}
+    hspi{{ p.bus[-1] }}.Init.BaudRatePrescaler = {{ p.spi.prescaler | spi_prescaler_code }};
+{% else %}
     hspi{{ p.bus[-1] }}.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+{% endif %}
     hspi{{ p.bus[-1] }}.Init.FirstBit = SPI_FIRSTBIT_MSB;
     hspi{{ p.bus[-1] }}.Init.TIMode = SPI_TIMODE_DISABLE;
     hspi{{ p.bus[-1] }}.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -155,6 +163,14 @@ int main(void)
     /* 系统时钟配置完成后，重新初始化 HAL 时基（TIM14），
        确保 HAL_GetTick() 使用正确的时钟频率。
        RTC_WakeUp_Config 内部调用 HAL_RTCEx_SetWakeUpTimer_IT 会用到 HAL_GetTick */
+{% if has_log %}
+    /* Clear all NVIC interrupt enables to prevent stale IRQs from
+     * previous runs (NVIC ISER persists across system reset).
+     * Must be done BEFORE HAL_InitTick() so TIM14 NVIC gets re-enabled. */
+    for (int irq = 0; irq < 8; irq++) {
+        NVIC->ICER[irq] = 0xFFFFFFFF;
+    }
+{% endif %}
     HAL_InitTick(TICK_INT_PRIORITY);
 
 {% if has_log %}
@@ -183,7 +199,10 @@ int main(void)
 {% endif %}
     /* Initialize logging subsystem — USART2 @ 115200, ring buffer, TXE IRQ */
     log_init();
+    log_flush();  /* Ensure banner is fully transmitted before proceeding */
     log_info("App main() entry, initialization starting...");
+    log_flush();  /* Drain ring buffer completely */
+    HAL_Delay(500);  /* Let UART finish all pending transmissions */
 {% endif %}
 
     /* Initialize all configured peripherals */
@@ -236,7 +255,12 @@ int main(void)
 {% elif p.type == 'Internal_RTC' %}
     RTC_Init();
 {% elif p.type == 'UART_Serial' %}
+{% if not (has_log and p.instance == 'USART2') %}
     MX_{{ p.instance }}_UART_Init();
+{% else %}
+    /* USART2 already initialized by log system (drv_log.c),
+     * skip duplicate HAL_UART_Init to avoid clearing TXEIE. */
+{% endif %}
 {% endif %}
 {% endfor %}
 

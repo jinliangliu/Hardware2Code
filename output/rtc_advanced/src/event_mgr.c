@@ -18,6 +18,7 @@
 #endif
 
 #include "drv_rtc.h"
+#include "drv_uart_debug.h"
 
 extern TaskHandle_t led_task_handle;
 
@@ -34,11 +35,14 @@ void EventMgr_Init(void)
 
 void EventMgr_Task(void *pvParameters)
 {
+#ifndef TEST
+    log_info("EventMgr: task started, waiting for events...");
+#endif
     event_t evt;
     while(1) {
         if( xQueueReceive(event_queue, &evt, portMAX_DELAY) == pdTRUE ) {
 #ifndef TEST
-            log_debug("EventMgr: dispatching event #%d", (int)evt.id);
+            log_info("EventMgr: dispatching event #%d", (int)evt.id);
             if (evt.id == EVENT_RTC_TICK) {
                 RTC_ProcessTimers();
             }

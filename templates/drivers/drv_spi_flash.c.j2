@@ -14,14 +14,8 @@
 {% set cs_pin_val = peripheral.get('extra', {}).get('chip_select_pin', peripheral.get('cs_pin', '')) %}
 {% if cs_pin_val %}
 /* CS pin: {{ cs_pin_val }} */
-{% set port_letter = cs_pin_val[0:1] %}
-{% set pin_num_str = cs_pin_val[1:] %}
-{% if port_letter == 'P' %}
-{%   set port_letter = cs_pin_val[1:2] %}
-{%   set pin_num_str = cs_pin_val[2:] %}
-{% endif %}
-#define SPI_FLASH_CS_PORT                {{ 'GPIO' + port_letter if port_letter != 'P' else cs_pin_val[:2] }}
-#define SPI_FLASH_CS_PIN                 GPIO_PIN_{{ pin_num_str }}
+#define SPI_FLASH_CS_PORT                GPIO{{ cs_pin_val | pin_port }}
+#define SPI_FLASH_CS_PIN                 GPIO_PIN_{{ cs_pin_val | pin_number }}
 {% endif %}
 
 /* Private variables */

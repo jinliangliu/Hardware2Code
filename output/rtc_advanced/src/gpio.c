@@ -35,4 +35,28 @@ void MX_GPIO_Init(void)
 
     /* Enable NVIC if EXTI is configured */
     HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
+    /* UART2_TX (PA2) */
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    GPIO_InitStruct.Pin = GPIO_PIN_2;
+
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    GPIO_InitStruct.Alternate = 1;
+
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    /* Enable NVIC if EXTI is configured */
+    /* UART2_RX (PA3) */
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    GPIO_InitStruct.Pin = GPIO_PIN_3;
+
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    GPIO_InitStruct.Alternate = 1;
+
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    /* Enable NVIC if EXTI is configured */
 }

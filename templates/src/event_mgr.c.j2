@@ -28,8 +28,8 @@ event_mgr.c.j2 - Central event manager task
 #include "drv_{{ drv.name }}.h"
 {% endfor %}
 
-{% if has_led_task %}
-extern TaskHandle_t led_task_handle;
+{% if has_led_task and led_task_name %}
+extern TaskHandle_t {{ led_task_name }}_handle;
 {% endif %}
 
 /* event_queue 在真实环境和测试环境中都由此定义 */
@@ -114,21 +114,21 @@ static void handle_minute_tick(void) {
     if (++min_count >= 30) {
         min_count = 0;
         {% if has_led_task %}
-        if (led_task_handle) xTaskNotify(led_task_handle, 0, eSetBits);
+        if ({{ led_task_name }}_handle) xTaskNotify({{ led_task_name }}_handle, 0, eSetBits);
         {% endif %}
     }
 }
 static void handle_hour_tick(void) {}
 static void handle_button_press(void) {
     {% if has_led_task %}
-    if (led_task_handle) xTaskNotify(led_task_handle, 0, eSetBits);
+    if ({{ led_task_name }}_handle) xTaskNotify({{ led_task_name }}_handle, 0, eSetBits);
     {% endif %}
 }
 {% for p in peripherals %}
 {% if p.type == 'I2C_Sensor_MPU6050' %}
 static void handle_mpu6050_alert(void) {
     {% if has_led_task %}
-    if (led_task_handle) xTaskNotify(led_task_handle, 0, eSetBits);
+    if ({{ led_task_name }}_handle) xTaskNotify({{ led_task_name }}_handle, 0, eSetBits);
     {% endif %}
 }
 {% endif %}

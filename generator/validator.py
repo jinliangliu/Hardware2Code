@@ -2,7 +2,7 @@ import re
 import os
 import importlib.util
 
-from paths import MODELS_DIR, EXAMPLES_DIR
+from .paths import MODELS_DIR, EXAMPLES_DIR
 
 # Load generator/types.py with explicit module name to avoid collision
 # with Python's stdlib 'types' module which is frozen at interpreter startup.

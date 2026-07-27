@@ -156,7 +156,11 @@ void log_uart_irq_handler(void)
         if (ring_get(&byte)) {
             LOG_USART->TDR = byte;
         } else {
-            /* Ring empty — disable TXE interrupt until next log_output() */
+            /* Ring empty — disable TXEIT to stop IRQ storm.
+             * log_output() will re-enable TXEIT when new data is pushed.
+             * On Cortex-M0+ the ISR runs atomically (no same-priority
+             * preemption), so there is no race between ring_put+enable
+             * in task context and ring_get+disable in ISR. */
             __HAL_UART_DISABLE_IT(&log_huart, UART_IT_TXE);
         }
     }
@@ -223,7 +227,9 @@ void log_output(int level, const char *file, int line, const char *fmt, ...)
         pushed++;
     }
 
-    /* Re-enable TXE interrupt to kick off transmission */
+    /* Ensure TXE interrupt is enabled so the ISR drains the ring.
+     * TXEIT is never disabled, so the ISR will pick up new data
+     * automatically — no manual first-byte priming needed. */
     if (pushed > 0) {
         __HAL_UART_ENABLE_IT(&log_huart, UART_IT_TXE);
     }

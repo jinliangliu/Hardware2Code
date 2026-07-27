@@ -2,7 +2,6 @@
 # MCU: {{ mcu.part }} (Cortex-M0+)
 # Size: {{ boot_config.size_kb }}KB, bare-metal (no FreeRTOS)
 
-SHELL = cmd
 BOOT_NAME = bootloader
 
 # ---------------------------------------------------------------------------
@@ -72,19 +71,20 @@ OBJS        = $(C_OBJS) $(ASM_OBJS)
 
 all: $(BUILD_DIR)/$(BOOT_NAME).elf $(BUILD_DIR)/$(BOOT_NAME).bin
 
+# ----- Build directory (order-only, cross-platform) -----
+$(BUILD_DIR):
+	@mkdir $@ 2>nul || mkdir $@ 2>/dev/null || true
+
 # ----- Bootloader source files -----
-$(BUILD_DIR)/%.o: %.c
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ----- CMSIS system file -----
-$(BUILD_DIR)/system_stm32g0xx.o: $(CMSIS_DEVICE_DIR)/Source/Templates/system_stm32g0xx.c
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/system_stm32g0xx.o: $(CMSIS_DEVICE_DIR)/Source/Templates/system_stm32g0xx.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ----- Startup assembly -----
-$(BUILD_DIR)/%.o: $(STARTUP_DIR)/%.s
-	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
+$(BUILD_DIR)/%.o: $(STARTUP_DIR)/%.s | $(BUILD_DIR)
 	$(AS) $(MCU_FLAGS) -c $< -o $@
 
 # ----- Link -----
@@ -96,11 +96,19 @@ $(BUILD_DIR)/$(BOOT_NAME).elf: $(OBJS)
 $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf
 	$(CP) -O binary $< $@
 
-# ----- Flash (ST-Link) -----
-ST_PROG ?= C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe
+# ---------------------------------------------------------------------------
+# Flash programming tools
+#   Same conventions as main project Makefile — override via env for your platform.
+# ---------------------------------------------------------------------------
+STM32_PROG_CLI ?= STM32_Programmer_CLI
+OPENOCD ?= openocd
+OPENOCD_IFACE_CFG ?= -f interface/cmsis-dap.cfg
+OPENOCD_TARGET_CFG ?= -f target/stm32g0x.cfg
+OPENOCD_EXTRA ?=
 
+# ----- Flash (ST-Link) -----
 flash: $(BUILD_DIR)/$(BOOT_NAME).bin
-	"$(ST_PROG)" -c port=SWD -w $< 0x08000000 -rst
+	"$(STM32_PROG_CLI)" -c port=SWD -w $< 0x08000000 -rst
 
 # ----- Flash (DAP-Link) -----
 flash-daplink: $(BUILD_DIR)/$(BOOT_NAME).bin
@@ -108,4 +116,4 @@ flash-daplink: $(BUILD_DIR)/$(BOOT_NAME).bin
 
 # ----- Clean -----
 clean:
-	@if exist $(BUILD_DIR) rmdir /S /Q $(BUILD_DIR)
+	-rm -rf $(BUILD_DIR)

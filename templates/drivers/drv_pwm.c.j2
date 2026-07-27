@@ -6,8 +6,8 @@ static uint32_t pwm_channel;
 void PWM_Init(void) {
     __HAL_RCC_TIM2_CLK_ENABLE();
     htim.Instance = TIM2;
-    htim.Init.Prescaler = 15999; // 1MHz
-    htim.Init.Period = 999;      // 1kHz
+    htim.Init.Prescaler = {{ pwm_tim_prescaler }};
+    htim.Init.Period = {{ pwm_tim_period }};
     htim.Init.CounterMode = TIM_COUNTERMODE_UP;
     HAL_TIM_PWM_Init(&htim);
 

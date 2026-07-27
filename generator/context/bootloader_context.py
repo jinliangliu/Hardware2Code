@@ -1,15 +1,53 @@
 """
 bootloader_context.py
-Bootloader / FOTA / IWDG configuration helpers.
+Bootloader / FOTA / IWDG / LED pin configuration helpers.
 """
 
 
-def build_boot_config(bootloader_raw: dict) -> tuple:
+def get_boot_led_pin(pins: list) -> dict:
     """
-    Parse bootloader raw config and set defaults.
+    Extract LED pin info from YAML pins list.
+
+    Searches for pin with label == "LED".  Falls back to GPIOC / pin 0 if
+    no LED pin is declared in the hardware YAML.
+
+    Args:
+        pins: list of pin dicts, each with 'id', 'label', 'function'.
+
+    Returns:
+        dict with keys: boot_led_port, boot_led_pin_num, boot_led_rcc_enable.
+    """
+    led_pin = None
+    for p in pins:
+        if p.get('label') == 'LED':
+            led_pin = p
+            break
+
+    if led_pin:
+        pin_id = led_pin['id']          # e.g. "PA5"
+        port_letter = pin_id[1]          # 'A'
+        pin_num = int(pin_id[2:])        # 5
+    else:
+        port_letter = 'C'
+        pin_num = 0
+
+    return {
+        'boot_led_port': f'GPIO{port_letter}',
+        'boot_led_pin_num': pin_num,
+        'boot_led_rcc_enable': f'RCC_IOPENR_GPIO{port_letter}EN',
+    }
+
+
+def build_boot_config(bootloader_raw: dict,
+                      mcu_flash_kb: int = 512) -> tuple:
+    """
+    Parse bootloader raw config, set defaults, and compute linker-level
+    slot addresses.
 
     Args:
         bootloader_raw: raw bootloader dict from hardware YAML.
+        mcu_flash_kb:  total on-chip Flash size in KiB (default 512 for
+                       STM32G0B1RE).
 
     Returns:
         (boot_config, has_bootloader) tuple.
@@ -29,6 +67,22 @@ def build_boot_config(bootloader_raw: dict) -> tuple:
         # Clamp to 12-bit range [1, 0xFFF]
         wdg_timeout_ms = boot_config['wdg_timeout_ms']
         boot_config['iwdg_reload_value'] = max(1, min(int(wdg_timeout_ms / 8), 0xFFF))
+
+        # ---- Compute linker-script slot addresses (all derived from config) ----
+        flash_base = 0x08000000
+        ao = boot_config['app_a_offset']
+        bo = boot_config['app_b_offset']
+        flash_bytes = mcu_flash_kb * 1024
+
+        boot_config['_app_a_start'] = flash_base + ao
+        boot_config['_app_a_end']   = flash_base + bo
+        boot_config['_app_b_start'] = flash_base + bo
+        boot_config['_app_b_end']   = flash_base + flash_bytes
+
+        # Convenience: slot sizes for C code
+        boot_config['_app_a_size'] = bo - ao
+        boot_config['_app_b_size'] = flash_bytes - bo
+
     return (boot_config, has_bootloader)
 
 

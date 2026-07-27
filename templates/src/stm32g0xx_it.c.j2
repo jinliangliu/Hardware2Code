@@ -20,14 +20,7 @@ void HardFault_Handler(void) {
 }
 
 /* EXTI interrupt handlers */
-{% set handlers = {} %}
-{% for pin in pins if pin.exti and pin.exti.enable %}
-  {% set handler = pin.id | exti_handler_name %}
-  {% if handler not in handlers %}{% set _ = handlers.update({handler: []}) %}{% endif %}
-  {% set _ = handlers[handler].append(pin) %}
-{% endfor %}
-
-{% for handler, pin_list in handlers.items() %}
+{% for handler, pin_list in exti_handler_groups.items() %}
 void {{ handler }}(void)
 {
     {% for pin in pin_list %}

@@ -33,20 +33,20 @@ static {{ var.type }} {{ region.name }}_{{ var.name }} = {{ var.initial }};
 {% if business_flow.regions %}
 {% for region in business_flow.regions %}
 {% for state in region.states %}
-#define STATE_{{ region.name }}_{{ state.name }} {{ loop.index0 }}
+#define STATE_{{ region.name }}_{{ state.name }} {{ state._enum }}
 {% if state.states %}
 {% for nested in state.states %}
-#define STATE_{{ region.name }}_{{ state.name }}_{{ nested.name }} {{ loop.index0 }}
+#define STATE_{{ region.name }}_{{ state.name }}_{{ nested.name }} {{ nested._enum }}
 {% endfor %}
 {% endif %}
 {% endfor %}
 {% endfor %}
 {% else %}
 {% for state in business_flow.states %}
-#define STATE_{{ state.name }} {{ loop.index0 }}
+#define STATE_{{ state.name }} {{ state._enum }}
 {% if state.states %}
 {% for nested in state.states %}
-#define STATE_{{ state.name }}_{{ nested.name }} {{ loop.index0 }}
+#define STATE_{{ state.name }}_{{ nested.name }} {{ nested._enum }}
 {% endfor %}
 {% endif %}
 {% endfor %}
@@ -144,8 +144,50 @@ led_task_notify();
 {
     {% set parts = action.split('=>', 1) %}
     {% if parts|length == 2 %}
+    {% set sub = parts[1].strip() %}
     if ({{ parts[0].replace('when ', '') }}) {
-        {{ action_impl(parts[1].strip(), region_name) }}
+        {% if sub == 'toggle_led' %}
+        extern void led_task_notify(void);
+        led_task_notify();
+        {% elif sub.startswith('publish_async ') %}
+        {
+            event_t evt_pub = { .id = EVENT_{{ sub.split(' ',1)[1] | event_name }}, .param = 0 };
+            xQueueSend(event_queue, &evt_pub, 0);
+        }
+        {% elif sub.startswith('publish ') %}
+        {
+            event_t evt_pub = { .id = EVENT_{{ sub.split(' ',1)[1] | event_name }}, .param = 0 };
+            statemachine_process(&evt_pub);
+        }
+        {% elif sub.startswith('set ') %}
+        {
+            {% set setparts = sub.split(' ') %}
+            {% if setparts[2] == 'inc' %}
+            {{ region_name }}{{ setparts[1] }}++;
+            {% elif setparts[2] == 'dec' %}
+            {{ region_name }}{{ setparts[1] }}--;
+            {% else %}
+            {{ region_name }}{{ setparts[1] }} = {{ setparts[2] }};
+            {% endif %}
+        }
+        {% elif sub.startswith('calc ') %}
+        {
+            {{ sub.split(' ',1)[1] }};
+        }
+        {% elif sub.startswith('send_to ') %}
+        {
+            {% set sendparts = sub.split(' ', 2) %}
+            event_t evt_pub = { .id = EVENT_{{ sendparts[2] | event_name }}, .param = 0 };
+            xQueueSend(event_queue, &evt_pub, 0);
+        }
+        {% elif sub == 'return' %}
+        {
+            event_t evt_pub = { .id = EVENT_RETURN, .param = 0 };
+            statemachine_process(&evt_pub);
+        }
+        {% else %}
+        /* when sub-action: {{ sub }} */
+        {% endif %}
     }
     {% endif %}
 }
@@ -176,50 +218,11 @@ led_task_notify();
 {%- endfor %}
 {% endmacro %}
 
-/* ========== 定时器收集宏（排除 defer 生成的定时器） ========== */
-{% set all_actions = [] %}
-{% macro collect_timers(states, region_name='') %}
-{% for state in states %}
-    {% for trans in state.transitions %}
-        {% for action in trans.actions %}
-            {% if 'start_timer' in action and not action.split(' ')[1].startswith('defer_') %}
-                {% set _ = all_actions.append(action) %}
-            {% endif %}
-        {% endfor %}
-    {% endfor %}
-    {% for action in state.get('on_entry', []) %}
-        {% if 'start_timer' in action and not action.split(' ')[1].startswith('defer_') %}
-            {% set _ = all_actions.append(action) %}
-        {% endif %}
-    {% endfor %}
-    {% for action in state.get('on_exit', []) %}
-        {% if 'start_timer' in action and not action.split(' ')[1].startswith('defer_') %}
-            {% set _ = all_actions.append(action) %}
-        {% endif %}
-    {% endfor %}
-    {% if state.after %}
-        {% set timer_name = region_name + state.name + '_timeout' %}
-        {% set _ = all_actions.append('start_timer ' + timer_name + ' ' + state.after|string) %}
-    {% endif %}
-    {% if state.states %}
-        {{ collect_timers(state.states, region_name) }}
-    {% endif %}
-{% endfor %}
-{% endmacro %}
-
-{% if business_flow.regions %}
-{% for region in business_flow.regions %}
-{{ collect_timers(region.states, region.name + '_') }}
-{% endfor %}
-{% else %}
-{{ collect_timers(business_flow.states) }}
-{% endif %}
-
 /* ========== 用户定时器 + 状态超时定时器的句柄与回调 ========== */
-{% for action in all_actions %}
-static rtc_timer_handle_t {{ action.split(' ')[1] }}_handle = NULL;
-static void {{ action.split(' ')[1] }}_cb(void *arg) {
-    event_t evt = { .id = EVENT_TIMER_EXPIRED_{{ action.split(' ')[1] }}, .param = 0 };
+{% for t in user_timer_actions %}
+static rtc_timer_handle_t {{ t.timer_name }}_handle = NULL;
+static void {{ t.timer_name }}_cb(void *arg) {
+    event_t evt = { .id = EVENT_TIMER_EXPIRED_{{ t.timer_name }}, .param = 0 };
     statemachine_process(&evt);
 }
 {% endfor %}

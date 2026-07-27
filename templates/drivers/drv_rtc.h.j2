@@ -34,5 +34,6 @@ void RTC_TimerStop(rtc_timer_handle_t handle);
 void RTC_TimerDelete(rtc_timer_handle_t handle);
 void RTC_ProcessTimers(void);
 void RTC_SetWakeUpCounter(uint32_t wake_up_counter);
+void RTC_RestoreTickConfig(void);
 
 #endif /* __DRV_{{ peripheral.name | upper }}_H */

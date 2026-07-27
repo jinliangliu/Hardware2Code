@@ -5,6 +5,7 @@
 
 /* Include driver headers for each peripheral */
 #include "drv_rtc.h"
+#include "drv_uart_debug.h"
 
 /* Include event manager header (always present) */
 #include "event_mgr.h"
@@ -26,6 +27,7 @@ void MX_GPIO_Init(void);
 /* ------- SPI Handles (if SPI peripherals are used) ------- */
 
 /* ------- UART Handles (if UART peripherals are used) ------- */
+UART_HandleTypeDef huart_uart_debug;
 
 /* ------- Task handles ------- */
 TaskHandle_t led_task_handle = NULL;
@@ -61,6 +63,19 @@ void SystemClock_Config(void)
 /* ------- SPI initialization (if peripherals with SPI are present) ------- */
 
 /* ------- UART initialization (if UART peripherals are present) ------- */
+static void MX_USART2_UART_Init(void)
+{
+    __HAL_RCC_USART2_CLK_ENABLE();
+    huart_uart_debug.Instance = USART2;
+    huart_uart_debug.Init.BaudRate = 115200;
+    huart_uart_debug.Init.WordLength = UART_WORDLENGTH_8B;
+    huart_uart_debug.Init.StopBits = UART_STOPBITS_1;
+    huart_uart_debug.Init.Parity = UART_PARITY_NONE;
+    huart_uart_debug.Init.Mode = UART_MODE_TX_RX;
+    huart_uart_debug.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    huart_uart_debug.Init.OverSampling = UART_OVERSAMPLING_16;
+    if (HAL_UART_Init(&huart_uart_debug) != HAL_OK) while(1);
+}
 
 /* ------- Main ------- */
 int main(void)
@@ -75,6 +90,12 @@ int main(void)
     /* 系统时钟配置完成后，重新初始化 HAL 时基（TIM14），
        确保 HAL_GetTick() 使用正确的时钟频率。
        RTC_WakeUp_Config 内部调用 HAL_RTCEx_SetWakeUpTimer_IT 会用到 HAL_GetTick */
+    /* Clear all NVIC interrupt enables to prevent stale IRQs from
+     * previous runs (NVIC ISER persists across system reset).
+     * Must be done BEFORE HAL_InitTick() so TIM14 NVIC gets re-enabled. */
+    for (int irq = 0; irq < 8; irq++) {
+        NVIC->ICER[irq] = 0xFFFFFFFF;
+    }
     HAL_InitTick(TICK_INT_PRIORITY);
 
     /* Enable global interrupts early so HAL_Delay (TIM14 tick ISR)
@@ -100,7 +121,10 @@ int main(void)
     }
     /* Initialize logging subsystem — USART2 @ 115200, ring buffer, TXE IRQ */
     log_init();
+    log_flush();  /* Ensure banner is fully transmitted before proceeding */
     log_info("App main() entry, initialization starting...");
+    log_flush();  /* Drain ring buffer completely */
+    HAL_Delay(500);  /* Let UART finish all pending transmissions */
 
     /* Initialize all configured peripherals */
     MX_GPIO_Init();
@@ -116,6 +140,8 @@ int main(void)
     
     /* Initialize I2C and internal peripherals */
     RTC_Init();
+    /* USART2 already initialized by log system (drv_log.c),
+     * skip duplicate HAL_UART_Init to avoid clearing TXEIE. */
 
 
     RTC_Start();

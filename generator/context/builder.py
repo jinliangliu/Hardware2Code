@@ -10,13 +10,20 @@ import sys
 import yaml
 import importlib.util
 
-from paths import MODELS_DIR, EXAMPLES_DIR, STATIC_STM32_DIR
+from ..paths import MODELS_DIR, EXAMPLES_DIR, STATIC_STM32_DIR
 
-from context.pin_context import process_pins
-from context.peripheral_context import detect_peripherals
-from context.bearer_context import associate_bearers
-from context.hal_context import compute_hal_sources
-from context.bootloader_context import build_boot_config, inject_bootloader_drivers
+from .pin_context import process_pins
+from .peripheral_context import detect_peripherals
+from .bearer_context import associate_bearers
+from .hal_context import compute_hal_sources
+from .bootloader_context import build_boot_config, inject_bootloader_drivers, get_boot_led_pin
+
+# Builder registry — auto-discovers all @register_builder classes
+try:
+    from ..builders.registry import get_builder
+except ImportError:
+    def get_builder(peripheral: dict):
+        return None
 
 # Load generator/types.py with explicit module name to avoid collision
 # with Python's stdlib 'types' module which is frozen at interpreter startup.
@@ -48,6 +55,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     mcu = hw.get("mcu", {})
     mcu["core_clock_mhz"] = int(mcu.get("core_clock_mhz", 64))
     mcu["hse_freq"] = int(mcu.get("hse_freq", 8000000))
+    mcu["hclk_freq_hz"] = mcu["core_clock_mhz"] * 1_000_000
 
     pins = hw.get("pins", [])
     sleep = hw.get("sleep", {})
@@ -87,7 +95,10 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     hal_sources = compute_hal_sources(peri_result, hil_mode)
 
     # ---------- Bootloader ----------
-    boot_config, has_bootloader = build_boot_config(hw.get('bootloader', {}))
+    mcu_flash_kb = mcu.get('flash_kb', 512)
+    boot_config, has_bootloader = build_boot_config(hw.get('bootloader', {}),
+                                                     mcu_flash_kb)
+    boot_led = get_boot_led_pin(pins) if has_bootloader else {}
     boot_result = inject_bootloader_drivers(has_bootloader, has_uart,
                                              boot_config, uart_name)
     drivers.extend(boot_result['drivers_additions'])
@@ -100,6 +111,28 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     if has_bootloader:
         if 'stm32g0xx_hal_iwdg.c' not in hal_sources:
             hal_sources.append('stm32g0xx_hal_iwdg.c')
+
+    # ---------- Builder registry: pre-calculate peripheral values ----------
+    # Each peripheral's registered builder computes register values, timings,
+    # and prescalers so that templates use simple {{ variable }} interpolation
+    # instead of inline arithmetic.
+    for p in peripherals:
+        builder_cls = get_builder(p)
+        if builder_cls is not None:
+            try:
+                builder = builder_cls()
+                computed = builder.calculate(p, mcu, {})
+                # Merge computed fields into the peripheral dict
+                for key, value in computed.items():
+                    if isinstance(value, dict):
+                        p.setdefault(key, {})
+                        if isinstance(p[key], dict):
+                            p[key].update(value)
+                    elif key not in p:
+                        p[key] = value
+            except Exception as e:
+                print(f"Warning: builder {builder_cls.__name__} failed for "
+                      f"'{p.get('name', '?')}': {e}")
 
     # ---------- 业务逻辑 DSL ----------
     business_flow = hw.get('business_flow', {})
@@ -455,24 +488,49 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
 
     # ---------- 收集所有定时器事件名 ----------
     timer_events = set()
+    # 收集用户显式声明的 start_timer / state.after 定时器
+    user_timer_actions = []  # Fix 2: 替代模板 collect_timers 宏
 
     def collect_timer_events_from_states(states, prefix=''):
         for state in states:
             for trans in state.get('transitions', []):
                 for action in trans.get('actions', []):
-                    if 'start_timer' in action:
+                    if action.startswith('start_timer '):
                         timer_name = action.split(' ')[1]
+                        if not timer_name.startswith('defer_'):
+                            period = action.split(' ')[2]
+                            user_timer_actions.append({
+                                'timer_name': timer_name,
+                                'period': period,
+                            })
                         timer_events.add(f"EVENT_TIMER_EXPIRED_{timer_name}")
             for action in state.get('on_entry', []):
-                if 'start_timer' in action:
+                if action.startswith('start_timer '):
                     timer_name = action.split(' ')[1]
+                    if not timer_name.startswith('defer_'):
+                        period = action.split(' ')[2]
+                        user_timer_actions.append({
+                            'timer_name': timer_name,
+                            'period': period,
+                        })
                     timer_events.add(f"EVENT_TIMER_EXPIRED_{timer_name}")
             for action in state.get('on_exit', []):
-                if 'start_timer' in action:
+                if action.startswith('start_timer '):
                     timer_name = action.split(' ')[1]
+                    if not timer_name.startswith('defer_'):
+                        period = action.split(' ')[2]
+                        user_timer_actions.append({
+                            'timer_name': timer_name,
+                            'period': period,
+                        })
                     timer_events.add(f"EVENT_TIMER_EXPIRED_{timer_name}")
             if state.get('after'):
-                timer_events.add(f"EVENT_TIMER_EXPIRED_{prefix}{state['name']}_timeout")
+                timeout_name = f"{prefix}{state['name']}_timeout"
+                user_timer_actions.append({
+                    'timer_name': timeout_name,
+                    'period': state['after'],
+                })
+                timer_events.add(f"EVENT_TIMER_EXPIRED_{timeout_name}")
             if state.get('states'):
                 collect_timer_events_from_states(state['states'], prefix)
 
@@ -602,6 +660,119 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
             if rtc_hal not in hal_sources:
                 hal_sources.append(rtc_hal)
 
+    # ---------- 预计算：MPU6050 缩放因子和寄存器配置值 ----------
+    mpu6050_scale = {}
+    for p in peripherals:
+        if p.get("type") == "I2C_Sensor_MPU6050":
+            extra = p.get("extra", {})
+            # Accel scale: 2g→16384.0, 4g→8192.0, 8g→4096.0, 16g→2048.0
+            accel_fs = extra.get("accel_fs", 2)
+            accel_scale_map = {2: 16384.0, 4: 8192.0, 8: 4096.0, 16: 2048.0}
+            accel_scale = accel_scale_map.get(accel_fs, 16384.0)
+            # Accel register value: 2→0x00, 4→0x08, 8→0x10, 16→0x18
+            accel_reg_map = {2: "0x00", 4: "0x08", 8: "0x10", 16: "0x18"}
+            accel_fs_val = accel_reg_map.get(accel_fs, "0x00")
+            # Gyro scale: 250→131.0, 500→65.5, 1000→32.8, 2000→16.4
+            gyro_fs = extra.get("gyro_fs", 250)
+            gyro_scale_map = {250: 131.0, 500: 65.5, 1000: 32.8, 2000: 16.4}
+            gyro_scale = gyro_scale_map.get(gyro_fs, 131.0)
+            # Gyro register value: 250→0x00, 500→0x08, 1000→0x10, 2000→0x18
+            gyro_reg_map = {250: "0x00", 500: "0x08", 1000: "0x10", 2000: "0x18"}
+            gyro_fs_val = gyro_reg_map.get(gyro_fs, "0x00")
+            mpu6050_scale = {
+                "accel_scale": accel_scale,
+                "accel_fs_val": accel_fs_val,
+                "accel_fs": accel_fs,
+                "gyro_scale": gyro_scale,
+                "gyro_fs_val": gyro_fs_val,
+                "gyro_fs": gyro_fs,
+            }
+            # Inject into peripheral dict for template access
+            p["_mpu6050"] = mpu6050_scale
+            break
+
+    # ---------- 预计算：EXTI handler 分组 ----------
+    def _exti_handler_name(pin_id: str) -> str:
+        num = int(pin_id[2:]) if len(pin_id) > 2 else 0
+        if num <= 1:
+            return "EXTI0_1_IRQHandler"
+        elif num <= 3:
+            return "EXTI2_3_IRQHandler"
+        else:
+            return "EXTI4_15_IRQHandler"
+
+    exti_handler_groups = {}
+    for pin in pins:
+        if pin.get("exti", {}).get("enable"):
+            handler = _exti_handler_name(pin["id"])
+            exti_handler_groups.setdefault(handler, []).append(pin)
+
+    # ---------- 预计算：PWM 预分频器和周期 ----------
+    pwm_tim_prescaler = 15999   # PCLK/(prescaler+1) = timer tick rate
+    pwm_tim_period = 999        # Timer period in ticks
+
+    # ---------- 预计算：RTC 时钟源 ----------
+    rtc_clock_source = "LSI"
+    for p in peripherals:
+        if p.get("type") == "Internal_RTC":
+            rtc_clock_source = p.get("clock_source", rtc_clock_source)
+            p["_clock_source"] = rtc_clock_source  # inject into peripheral dict
+
+    # ---------- 预计算：Bootloader 字节大小 ----------
+    boot_size_bytes = boot_config.get("size_kb", 8) * 1024 if has_bootloader else 0
+
+    # ---------- 预计算：状态枚举稳定值（djb2 哈希） ----------
+    def _djb2_hash(s: str) -> int:
+        h = 5381
+        for c in s:
+            h = ((h << 5) + h) + ord(c)
+        return h & 0x7FFFFFFF
+
+    def compute_state_enums(flow):
+        """为所有状态分配基于名称哈希的稳定枚举值，替代 loop.index0"""
+        if not flow:
+            return
+        def walk(states, prefix=''):
+            for state in states:
+                full_name = f"{prefix}{state['name']}"
+                state['_enum'] = _djb2_hash(full_name)
+                if state.get('states'):
+                    walk(state['states'], f"{full_name}_")
+        if flow.get('states'):
+            walk(flow['states'])
+        if flow.get('regions'):
+            for region in flow['regions']:
+                walk(region['states'], f"{region['name']}_")
+    compute_state_enums(business_flow)
+
+    # ---------- 预计算：FreeRTOS 堆大小 ----------
+    def compute_heap_size(tasks, has_cli, has_fota, cli_stack=512):
+        heap = 0
+        for task in tasks:
+            stack = task.get('stack_size', 128)
+            heap += stack * 4 + 128   # stack bytes + TCB overhead
+        # Event manager task
+        heap += 512 * 4 + 128
+        if has_cli:
+            heap += cli_stack * 4 + 128
+        if has_fota:
+            heap += 512 * 4 + 128
+        # Timer task (FreeRTOS configTIMER_TASK_STACK_DEPTH=256)
+        heap += 256 * 4 + 128
+        # Event queue: 100 entries × 8 bytes + overhead
+        heap += 100 * 8 + 256
+        # Driver / kernel overhead
+        heap += 4096
+        return ((heap + 1023) // 1024) * 1024   # round to KiB
+    total_heap_size = compute_heap_size(app_tasks, has_cli, has_fota)
+
+    # ---------- 查找 LED 任务名 ----------
+    led_task_name = None
+    for t in app_tasks:
+        if t.get('name') == 'led_task':
+            led_task_name = 'led_task'
+            break
+
     # ---------- 静态库绝对路径 ----------
     static_dir_absolute = os.path.abspath(STATIC_STM32_DIR).replace("\\", "/")
 
@@ -619,7 +790,10 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         "has_rtc": has_rtc,
         "rtc_async_prediv": 127 if has_rtc else None,
         "rtc_sync_prediv": 255 if has_rtc else None,
+        "rtc_clock_source": rtc_clock_source,
         "has_pwm": has_pwm,
+        "pwm_tim_prescaler": pwm_tim_prescaler,
+        "pwm_tim_period": pwm_tim_period,
         "has_spi": has_spi,
         "has_spi_flash": has_spi_flash,
         "has_mpu6050": has_mpu6050,
@@ -637,6 +811,9 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         "cli_uart_name": cli_uart_name,
         "has_led": has_led,
         "has_led_task": has_led_task,
+        "led_task_name": led_task_name,
+        "total_heap_size": total_heap_size,
+        "test_mode": False,
         "has_log": has_log,
         "has_tickless": has_tickless,
         "has_business_flow": has_business_flow,
@@ -644,9 +821,15 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         "has_substate": has_substate,
         "has_bootloader": has_bootloader,
         "has_fota": has_fota,
+        "has_iwdg": has_bootloader,
         "boot_config": boot_config,
         "boot_max_retries": boot_config.get('max_retries', 3),
+        "boot_size_bytes": boot_size_bytes,
+        "boot_led_port": boot_led.get('boot_led_port', 'GPIOC'),
+        "boot_led_pin_num": boot_led.get('boot_led_pin_num', 0),
+        "boot_led_rcc_enable": boot_led.get('boot_led_rcc_enable', 'RCC_IOPENR_GPIOCEN'),
         "iwdg_reload_value": boot_config.get('iwdg_reload_value', 625) if has_bootloader else None,
+        "exti_handler_groups": exti_handler_groups,
         "hil": hil_config,
         "hil_tests": hil_tests,
         "hil_mode": hil_mode,
@@ -656,6 +839,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         "has_event_mgr": True,
         "defer_actions": defer_actions,
         "defer_timer_names": defer_timer_names,
+        "user_timer_actions": user_timer_actions,
         "timer_events": sorted(timer_events),
         "published_events": sorted(published_events),
         "transition_events": sorted(transition_events),

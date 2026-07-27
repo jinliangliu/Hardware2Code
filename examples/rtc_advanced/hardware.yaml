@@ -14,6 +14,14 @@ pins:
       enable: true
       trigger: falling
     notify_task: "led_task"
+  - id: PA2
+    function: USART2_TX
+    label: "UART2_TX"
+    af: 1
+  - id: PA3
+    function: USART2_RX
+    label: "UART2_RX"
+    af: 1
 log:
   enable: true
 
@@ -34,6 +42,13 @@ peripherals:
     clock_source: "LSE"
     features:
       - calendar
+  - name: "uart_debug"
+    type: "UART_Serial"
+    instance: "USART2"
+    extra:
+      baudrate: 115200
+      tx_pin: "PA2"
+      rx_pin: "PA3"
 
 business_flow:
   initial_state: "IDLE"

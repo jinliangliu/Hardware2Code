@@ -12,14 +12,14 @@
 #include "stm32g0xx.h"
 
 /* ========== App 槽位地址 ========== */
-#define APP_A_START     0x08002000UL   /* App Slot A（Bank1，Bootloader 之后） */
-#define APP_A_SIZE      0x0003E000UL   /* Slot A 总大小 = 248KB */
-#define APP_B_START     0x08040000UL   /* App Slot B（Bank2） */
-#define APP_B_SIZE      0x00040000UL   /* Slot B 总大小 = 256KB */
+#define APP_A_START     {{ boot_config._app_a_start }}UL
+#define APP_A_SIZE      {{ boot_config._app_a_size }}UL
+#define APP_B_START     {{ boot_config._app_b_start }}UL
+#define APP_B_SIZE      {{ boot_config._app_b_size }}UL
 
-/* ========== 指示灯配置（PC0, 低电平点亮） ========== */
-#define BOOT_LED_PORT   GPIOC
-#define BOOT_LED_PIN    (1UL << 0)         /* GPIO 位 0 = PC0 */
+/* ========== 指示灯配置（{{ boot_led_port }} pin {{ boot_led_pin_num }}, 低电平点亮） ========== */
+#define BOOT_LED_PORT   {{ boot_led_port }}
+#define BOOT_LED_PIN    (1UL << {{ boot_led_pin_num }})
 #define BOOT_LED_ON()   (BOOT_LED_PORT->BRR = BOOT_LED_PIN)
 #define BOOT_LED_OFF()  (BOOT_LED_PORT->BSRR = BOOT_LED_PIN)
 
@@ -67,18 +67,18 @@ static void led_error_blink(void)
 /* ========== 简易时钟初始化（HSI 16MHz，仅配置必要时钟） ========== */
 static void clock_init(void)
 {
-    /* 使能 GPIO C 时钟（LED） */
-    RCC->IOPENR |= RCC_IOPENR_GPIOCEN;
+    /* 使能 LED 所在 GPIO 时钟 */
+    RCC->IOPENR |= {{ boot_led_rcc_enable }};
 }
 
-/* ========== GPIO 初始化（LED PC0 推挽输出） ========== */
+/* ========== GPIO 初始化（LED {{ boot_led_port }} pin {{ boot_led_pin_num }} 推挽输出） ========== */
 static void gpio_init(void)
 {
-    BOOT_LED_PORT->MODER   = (BOOT_LED_PORT->MODER & ~(3UL << 0)) | (1UL << 0);  /* 输出模式 */
-    BOOT_LED_PORT->OTYPER &= ~BOOT_LED_PIN;                                       /* 推挽 */
-    BOOT_LED_PORT->OSPEEDR = (BOOT_LED_PORT->OSPEEDR & ~(3UL << 0)) | (0UL << 0); /* 低速 */
-    BOOT_LED_PORT->PUPDR  &= ~(3UL << 0);                                         /* 无上下拉 */
-    BOOT_LED_OFF();                                                               /* 默认灭 */
+    BOOT_LED_PORT->MODER   = (BOOT_LED_PORT->MODER & ~(3UL << ({{ boot_led_pin_num }} * 2))) | (1UL << ({{ boot_led_pin_num }} * 2));
+    BOOT_LED_PORT->OTYPER &= ~BOOT_LED_PIN;
+    BOOT_LED_PORT->OSPEEDR = (BOOT_LED_PORT->OSPEEDR & ~(3UL << ({{ boot_led_pin_num }} * 2))) | (0UL << ({{ boot_led_pin_num }} * 2));
+    BOOT_LED_PORT->PUPDR  &= ~(3UL << ({{ boot_led_pin_num }} * 2));
+    BOOT_LED_OFF();
 }
 
 /* ========== 系统复位 ========== */

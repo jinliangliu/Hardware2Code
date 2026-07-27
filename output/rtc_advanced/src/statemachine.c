@@ -17,10 +17,10 @@ static uint32_t press_count = 0;
 /* ========== 区域级变量 ========== */
 
 /* ========== 状态枚举 ========== */
-#define STATE_IDLE 0
-#define STATE_ACTIVE 1
-#define STATE_RESET 2
-#define STATE_TIMEOUT 3
+#define STATE_IDLE 2089173635
+#define STATE_ACTIVE 610930977
+#define STATE_RESET 233970152
+#define STATE_TIMEOUT 1975300844
 
 /* ========== 当前状态变量 ========== */
 static uint32_t current_state;
@@ -30,10 +30,6 @@ static uint32_t current_state;
 /* ========== 动作实现宏 ========== */
 
 /* ========== 动作列表处理宏 ========== */
-
-
-/* ========== 定时器收集宏（排除 defer 生成的定时器） ========== */
-
 
 
 /* ========== 用户定时器 + 状态超时定时器的句柄与回调 ========== */

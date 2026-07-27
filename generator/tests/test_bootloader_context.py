@@ -5,7 +5,9 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from context.bootloader_context import build_boot_config, inject_bootloader_drivers
+from context.bootloader_context import (build_boot_config,
+                                          inject_bootloader_drivers,
+                                          get_boot_led_pin)
 
 
 def test_build_boot_config_disabled():
@@ -75,6 +77,58 @@ def test_inject_bootloader_drivers_with_fota():
     assert "fota_bspatch" in names
 
 
+def test_get_boot_led_pin_found():
+    """LED pin extracted from pins list when label == 'LED'"""
+    pins = [{"id": "PA5", "function": "GPIO_Output", "label": "LED"}]
+    result = get_boot_led_pin(pins)
+    assert result["boot_led_port"] == "GPIOA"
+    assert result["boot_led_pin_num"] == 5
+    assert result["boot_led_rcc_enable"] == "RCC_IOPENR_GPIOAEN"
+
+
+def test_get_boot_led_pin_fallback():
+    """No LED pin in list → fallback to GPIOC / pin 0"""
+    pins = [{"id": "PB3", "function": "GPIO_Input", "label": "BUTTON"}]
+    result = get_boot_led_pin(pins)
+    assert result["boot_led_port"] == "GPIOC"
+    assert result["boot_led_pin_num"] == 0
+    assert result["boot_led_rcc_enable"] == "RCC_IOPENR_GPIOCEN"
+
+
+def test_get_boot_led_pin_empty():
+    """Empty pins list → fallback"""
+    result = get_boot_led_pin([])
+    assert result["boot_led_port"] == "GPIOC"
+    assert result["boot_led_pin_num"] == 0
+
+
+def test_build_boot_config_computes_slot_addresses():
+    """Default config computes correct slot addresses for 512KB flash"""
+    config, enabled = build_boot_config({"enabled": True})
+    assert config["_app_a_start"] == 0x08002000
+    assert config["_app_a_end"]   == 0x08040000
+    assert config["_app_b_start"] == 0x08040000
+    assert config["_app_b_end"]   == 0x08080000
+    assert config["_app_a_size"]  == 0x3E000   # 248KB
+    assert config["_app_b_size"]  == 0x40000   # 256KB
+
+
+def test_build_boot_config_slot_addresses_custom():
+    """Custom offsets produce correct computed addresses"""
+    config, enabled = build_boot_config({
+        "enabled": True,
+        "size_kb": 16,
+        "app_a_offset": 0x4000,
+        "app_b_offset": 0x30000,
+    })
+    assert config["_app_a_start"] == 0x08004000
+    assert config["_app_a_end"]   == 0x08030000
+    assert config["_app_b_start"] == 0x08030000
+    assert config["_app_b_end"]   == 0x08080000
+    assert config["_app_a_size"]  == 0x2C000
+    assert config["_app_b_size"]  == 0x50000
+
+
 if __name__ == "__main__":
     test_build_boot_config_disabled()
     test_build_boot_config_enabled_minimal()
@@ -83,4 +137,9 @@ if __name__ == "__main__":
     test_inject_bootloader_drivers_no_bootloader()
     test_inject_bootloader_drivers_with_bootloader_no_uart()
     test_inject_bootloader_drivers_with_fota()
+    test_get_boot_led_pin_found()
+    test_get_boot_led_pin_fallback()
+    test_get_boot_led_pin_empty()
+    test_build_boot_config_computes_slot_addresses()
+    test_build_boot_config_slot_addresses_custom()
     print("All bootloader_context tests passed.")

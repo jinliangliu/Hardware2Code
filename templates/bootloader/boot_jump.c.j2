@@ -45,7 +45,12 @@ void boot_jump_to_app(uint32_t app_addr)
         NVIC->ICER[i] = 0xFFFFFFFF;
         NVIC->ICPR[i] = 0xFFFFFFFF;
     }
-
+{% if has_iwdg %}
+    /* 刷新 IWDG 防止跳转期间复位。
+     * App 必须在 SystemInit() 或 main() 首条指令中重新初始化 IWDG，
+     * 否则 App 初始化耗时超过看门狗超时会导致系统复位。 */
+    IWDG->KR = 0xAAAA;
+{% endif %}
     /* 设置向量表偏移到 App */
     SCB->VTOR = app_addr;
 

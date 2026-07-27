@@ -16,7 +16,6 @@ void HardFault_Handler(void) {
 }
 
 /* EXTI interrupt handlers */
-
 void EXTI4_15_IRQHandler(void)
 {
     HAL_GPIO_EXTI_IRQHandler( GPIO_PIN_13 );

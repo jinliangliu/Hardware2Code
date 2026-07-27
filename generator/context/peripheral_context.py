@@ -5,7 +5,7 @@ the driver list from the peripheral configuration.
 """
 import os
 import yaml
-from paths import MODELS_DIR
+from ..paths import MODELS_DIR
 
 def detect_peripherals(peripherals: list, load_model_func) -> dict:
     """Process peripheral list, load models, detect capability flags.

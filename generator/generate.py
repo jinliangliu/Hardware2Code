@@ -11,17 +11,17 @@ import os
 import sys
 import shutil
 import tempfile
-from typing import Callable
+from typing import Callable, Optional
 
 import jinja2
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
-from context.builder import build_context
-from validator import validate_hardware
-from jinja_filters import register_filters
-from models import HardwareModel
-from paths import STATIC_UNITY_DIR, HIL_RUNNER_PATH, RUN_TESTS_PATH, PATCH_CRC_PATH, TIMEBASE_SRC, TEMPLATES_DIR
+from .context.builder import build_context
+from .validator import validate_hardware
+from .jinja_filters import register_filters
+from .models import HardwareModel
+from .paths import STATIC_UNITY_DIR, HIL_RUNNER_PATH, RUN_TESTS_PATH, PATCH_CRC_PATH, TIMEBASE_SRC, TEMPLATES_DIR
 
 logger = logging.getLogger("hw2c")
 
@@ -407,7 +407,7 @@ def generate_project(
 ) -> None:
     banner = "=" * 60
     logger.info(f"\n{banner}")
-    logger.info("Hardware2Code Generator v1.0")
+    logger.info("Hardware2Code Generator v2.0")
     logger.info(banner)
     logger.info(f"Input file:  {yaml_path}")
     logger.info(f"Output dir:  {output_dir}")
@@ -417,90 +417,42 @@ def generate_project(
         logger.info(f"Diff mode:   Yes")
     logger.info(f"{banner}")
 
-    # Dry-run: redirect to temp directory
-    if dry_run:
+    # ---------- Atomic write: generate to temp dir first ----------
+    actual_output = output_dir
+    tmp_build_dir: Optional[str] = None
+
+    if not dry_run and not show_diff:
+        tmp_build_dir = tempfile.mkdtemp(prefix="hw2c_build_")
+        output_dir = tmp_build_dir
+        logger.info(f"Atomic mode: building to {tmp_build_dir}")
+    elif dry_run:
         output_dir = os.path.join(tempfile.gettempdir(), "hw2c_dryrun", os.path.basename(output_dir))
         logger.info(f"Dry-run output: {output_dir}")
 
     try:
+        # ---------- YAML loading and validation ----------
         hw_raw = load_yaml_fn(yaml_path)
         logger.info("[OK] YAML file loaded successfully")
-    except FileNotFoundError as e:
-        logger.critical(str(e))
-        sys.exit(1)
-    except ValueError as e:
-        logger.critical(str(e))
-        sys.exit(1)
-    except (yaml.YAMLError, OSError, ValueError) as e:
-        logger.error(str(e))
-        sys.exit(1)
 
-    # ---------- Pydantic model validation (type / shape / constraints) ----------
-    try:
+        # Pydantic model validation
         hw_model = HardwareModel.model_validate(hw_raw)
         hw = hw_model.model_dump(exclude_none=True)
         logger.info("[OK] Pydantic model validation passed")
-    except Exception as e:
-        logger.critical(f"Schema validation failed: {e}")
-        sys.exit(1)
 
-    # ---------- Cross-field business logic validation ----------
-    errors = validate_fn(hw)
-    if errors:
-        logger.info(f"\n{banner}")
-        logger.info("VALIDATION RESULTS")
-        logger.info(banner)
-
-        critical_errors = [e for e in errors if e['severity'] == 'CRITICAL']
-        regular_errors = [e for e in errors if e['severity'] == 'ERROR']
-        warnings = [e for e in errors if e['severity'] == 'WARNING']
-        infos = [e for e in errors if e['severity'] == 'INFO']
-
-        if critical_errors:
-            logger.info("\n[CRITICAL] Fatal errors (cannot continue):")
-            for err in critical_errors:
-                logger.critical(f"  {err['message']}")
-
-        if regular_errors:
-            logger.info("\n[ERROR] Errors (recommended to fix):")
-            for err in regular_errors:
-                logger.error(f"  {err['message']}")
-
-        if warnings:
-            logger.info("\n[WARNING] Warnings (may cause unexpected behavior):")
-            for warn in warnings:
-                logger.warning(f"  {warn['message']}")
-
-        if infos:
-            logger.info("\n[INFO] Information:")
-            for info in infos:
-                logger.info(f"  {info['message']}")
-
-        if critical_errors or regular_errors:
-            logger.info(f"\n{banner}")
-            logger.info(f"Found {len(critical_errors)} critical, {len(regular_errors)} errors, {len(warnings)} warnings")
-            logger.info("Please fix the errors and try again.")
-            logger.info(banner)
+        # Cross-field business logic validation
+        errors = validate_fn(hw)
+        if errors:
+            _report_validation_errors(errors)
             sys.exit(1)
         else:
-            logger.info(f"\n[OK] Validation passed with {len(warnings)} warnings")
-    else:
-        logger.info("[OK] Hardware validation passed")
+            logger.info("[OK] Hardware validation passed")
 
-    project_name = os.path.basename(output_dir) or "hw2code"
-
-    try:
+        # Context building
+        project_name = os.path.basename(actual_output) or "hw2code"
         context = build_context_fn(hw, project_name, hil_mode)
         logger.info("[OK] Context built successfully")
-    except (yaml.YAMLError, FileNotFoundError, ValueError) as e:
-        logger.error(f"Error building context: {e}")
-        sys.exit(1)
-    except (ValueError, KeyError, RuntimeError) as e:
-        logger.error(f"Unexpected error building context: {e}")
-        logger.debug("", exc_info=True)
-        sys.exit(1)
 
-    try:
+        # Template environment
         env = Environment(
             loader=FileSystemLoader(TEMPLATES_DIR, encoding='utf-8'),
             trim_blocks=True,
@@ -508,36 +460,111 @@ def generate_project(
         )
         register_filters(env)
         logger.info("[OK] Template environment initialized")
-    except (jinja2.TemplateError, OSError) as e:
-        logger.error(f"Error initializing template environment: {e}")
-        sys.exit(1)
 
-    try:
+        # Rendering
         if hil_mode:
             render_hil_project(env, context, output_dir, dry_run, show_diff)
         else:
             render_templates(env, context, output_dir, dry_run, show_diff)
+
+        # ---------- Atomic commit: copy temp to target ----------
+        if tmp_build_dir:
+            logger.info("Committing atomic build...")
+            if os.path.exists(actual_output):
+                # Backup existing before overwriting
+                backup_dir = actual_output + ".bak"
+                if os.path.exists(backup_dir):
+                    shutil.rmtree(backup_dir)
+                shutil.move(actual_output, backup_dir)
+                logger.info(f"Backed up existing to {backup_dir}")
+
+            shutil.copytree(tmp_build_dir, actual_output)
+            logger.info(f"Atomic commit: {tmp_build_dir} -> {actual_output}")
+
+    except FileNotFoundError as e:
+        logger.critical(str(e))
+        _cleanup_temp(tmp_build_dir)
+        sys.exit(1)
+    except ValueError as e:
+        logger.critical(str(e))
+        _cleanup_temp(tmp_build_dir)
+        sys.exit(1)
+    except (yaml.YAMLError, OSError, ValueError) as e:
+        logger.error(str(e))
+        _cleanup_temp(tmp_build_dir)
+        sys.exit(1)
     except jinja2.TemplateNotFound as e:
         logger.error(f"Template file not found: {e}")
+        _cleanup_temp(tmp_build_dir)
         sys.exit(1)
     except jinja2.TemplateError as e:
         logger.error(f"Jinja2 template error: {e}")
+        _cleanup_temp(tmp_build_dir)
         sys.exit(1)
-    except (jinja2.TemplateError, OSError, KeyError) as e:
-        logger.error(f"Unexpected error during template rendering: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
         logger.debug("", exc_info=True)
+        _cleanup_temp(tmp_build_dir)
         sys.exit(1)
+    finally:
+        if tmp_build_dir and os.path.exists(tmp_build_dir):
+            shutil.rmtree(tmp_build_dir)
+            logger.debug(f"Cleaned up temp dir: {tmp_build_dir}")
 
     logger.info(f"\n{banner}")
-    logger.info(f"SUCCESS! Project '{project_name}' generated in '{output_dir}'")
+    logger.info(f"SUCCESS! Project '{project_name}' generated in '{actual_output}'")
     logger.info(banner)
     logger.info("\nNext steps:")
-    logger.info(f"  1. cd {output_dir}")
+    logger.info(f"  1. cd {actual_output}")
     logger.info(f"  2. make")
     logger.info(f"  3. make flash")
     logger.info(f"\nTo run tests:")
-    logger.info(f"  cd {output_dir}/test")
+    logger.info(f"  cd {actual_output}/test")
     logger.info(f"  python run_tests.py")
+
+
+def _cleanup_temp(tmp_dir: Optional[str]) -> None:
+    """Remove temporary build directory on error, keeping workspace clean."""
+    if tmp_dir and os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir)
+        logger.info(f"Cleaned up failed build dir: {tmp_dir}")
+
+
+def _report_validation_errors(errors: list) -> None:
+    """Print validation errors organized by severity."""
+    banner = "=" * 60
+    logger.info(f"\n{banner}")
+    logger.info("VALIDATION RESULTS")
+    logger.info(banner)
+
+    critical_errors = [e for e in errors if e['severity'] == 'CRITICAL']
+    regular_errors = [e for e in errors if e['severity'] == 'ERROR']
+    warnings = [e for e in errors if e['severity'] == 'WARNING']
+    infos = [e for e in errors if e['severity'] == 'INFO']
+
+    if critical_errors:
+        logger.info("\n[CRITICAL] Fatal errors (cannot continue):")
+        for err in critical_errors:
+            logger.critical(f"  {err['message']}")
+    if regular_errors:
+        logger.info("\n[ERROR] Errors (recommended to fix):")
+        for err in regular_errors:
+            logger.error(f"  {err['message']}")
+    if warnings:
+        logger.info("\n[WARNING] Warnings:")
+        for warn in warnings:
+            logger.warning(f"  {warn['message']}")
+    if infos:
+        logger.info("\n[INFO] Information:")
+        for info in infos:
+            logger.info(f"  {info['message']}")
+
+    if critical_errors or regular_errors:
+        logger.info(f"\n{banner}")
+        logger.info(f"Found {len(critical_errors)} critical, {len(regular_errors)} errors, "
+                      f"{len(warnings)} warnings")
+        logger.info("Please fix the errors and try again.")
+        logger.info(banner)
 
 
 def generate(hardware_yaml: str, output_dir: str, hil_mode: bool = False,

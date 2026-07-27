@@ -78,8 +78,7 @@ void HAL_RTC_MspInit(RTC_HandleTypeDef* hrtc)
         RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
         PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;
 
-        {% set clock_source = peripheral.get('clock_source', 'LSI') %}
-        {% if clock_source == 'LSE' %}
+        {% if peripheral._clock_source == 'LSE' %}
         /* 尝试使用外部低速晶振 LSE (32.768kHz)，失败则回退到 LSI */
         RCC_OscInitTypeDef RCC_OscInitStruct = {0};
         RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE
@@ -139,6 +138,13 @@ void RTC_Init(void)
         Error_Handler();
     }
 
+    /* Explicitly clear stale RTC wakeup/alarm flags from previous runs
+     * (RTC backup domain survives system reset). Must be done BEFORE
+     * enabling the NVIC to prevent spurious ISR firing that could crash
+     * FreeRTOS before the scheduler starts. */
+    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
+    __HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRAF);
+
     /* 配置唤醒定时器 (100ms 周期) */
     RTC_WakeUp_Config();
 
@@ -196,6 +202,18 @@ void RTC_SetWakeUpCounter(uint32_t wake_up_counter)
     SET_BIT(RTC->CR, RTC_CR_WUTE);
 }
 
+/**
+ * @brief  Restore periodic RTC wakeup configuration after tickless idle.
+ *         vPortSuppressTicksAndSleep() reconfigures the wakeup timer to
+ *         CK_SPRE (1 Hz) for STOP mode; this function restores the original
+ *         RTCCLK_DIV16 (2048 Hz) 100ms periodic tick so software timers
+ *         resume firing after the system wakes up.
+ */
+void RTC_RestoreTickConfig(void)
+{
+    RTC_WakeUp_Config();
+}
+
 #else
 /* ========== 测试环境空桩 ========== */
 void RTC_Init(void)
@@ -206,6 +224,7 @@ void RTC_Init(void)
 void RTC_Start(void) {}
 void RTC_TAMP_IRQHandler(void) {}
 void RTC_SetWakeUpCounter(uint32_t wake_up_counter) { (void)wake_up_counter; }
+void RTC_RestoreTickConfig(void) {}
 
 #endif
 
@@ -316,14 +335,22 @@ void RTC_ProcessTimers(void)
 {
     rtc_timer_t *t = timer_head;
     while (t) {
-        /* 提前保存下一个节点，防止回调中删除当前定时器导致 use-after-free */
+        /* Save next pointer BEFORE callback — callback may delete current timer.
+         * Also save mode — callback may RTC_TimerDelete(t), making t->mode
+         * a use-after-free if accessed after the callback returns. */
         rtc_timer_t *next = t->next;
+        uint8_t saved_mode = t->mode;
         if (t->remaining_ms > 0) {
             if (t->remaining_ms <= RTC_TICK_INTERVAL_MS) {
                 t->remaining_ms = 0;
                 if (t->callback) t->callback(t->arg);
-                if (t->mode == RTC_TIMER_MODE_PERIODIC)
+                /* Do NOT dereference t after callback — it may have been freed.
+                 * Use saved_mode instead. */
+                if (saved_mode == RTC_TIMER_MODE_PERIODIC) {
+                    /* t is still valid: periodic timers are never deleted
+                     * by their own callback; they remain in the list. */
                     t->remaining_ms = t->period_ms;
+                }
             } else {
                 t->remaining_ms -= RTC_TICK_INTERVAL_MS;
             }

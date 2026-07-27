@@ -90,6 +90,30 @@ def event_enum(name: str) -> str:
     return f"EVENT_{name.replace(' ', '_')}"
 
 
+def to_binary(value: int, bits: int = 8) -> str:
+    """Convert integer to binary string literal.
+    0x55, 8 -> '0b01010101'
+    Used for register value documentation in templates.
+    """
+    return f"0b{value:0{bits}b}"
+
+
+def i2c_timing_hex(value: int) -> str:
+    """Format I2C TIMINGR value as hex for template use.
+    If value is from a pre-calculated I2CConfig, use it; otherwise default.
+    """
+    if isinstance(value, int):
+        return f"0x{value:08X}"
+    return "0x00000F13"
+
+
+def spi_prescaler_code(value: int) -> str:
+    """Map SPI prescaler divisor to HAL prescaler macro.
+    8 -> 'SPI_BAUDRATEPRESCALER_8'
+    """
+    return f"SPI_BAUDRATEPRESCALER_{value}"
+
+
 def register_filters(env) -> None:
     """Register all custom Jinja2 filters on the given Environment."""
     env.filters['pin_port'] = pin_port
@@ -101,3 +125,6 @@ def register_filters(env) -> None:
     env.filters['exti_handler_name'] = exti_handler_name
     env.filters['event_name'] = event_name
     env.filters['event_enum'] = event_enum
+    env.filters['to_binary'] = to_binary
+    env.filters['i2c_timing_hex'] = i2c_timing_hex
+    env.filters['spi_prescaler_code'] = spi_prescaler_code

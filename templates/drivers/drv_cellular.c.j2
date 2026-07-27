@@ -10,18 +10,17 @@
 
 #define CELLULAR_AT_TIMEOUT_MS   5000
 
-{% set extra = peripheral.get('extra', {}) %}
-{% set has_power = extra.get('power_pin') and extra.power_pin != '' %}
-{% set has_reset = extra.get('reset_pin') and extra.reset_pin != '' %}
+{% set has_power = peripheral.get('extra', {}).get('power_pin', '') != '' %}
+{% set has_reset = peripheral.get('extra', {}).get('reset_pin', '') != '' %}
 {% if has_power %}
-#define CELL_PWR_PORT         GPIO{{ extra.power_pin | pin_port }}
-#define CELL_PWR_PIN          GPIO_PIN_{{ extra.power_pin | pin_number }}
+#define CELL_PWR_PORT         GPIO{{ peripheral.extra.power_pin | pin_port }}
+#define CELL_PWR_PIN          GPIO_PIN_{{ peripheral.extra.power_pin | pin_number }}
 #define CELL_PWR_PULSE_MS     800
 #define CELL_PWR_STABLE_MS    3000
 {% endif %}
 {% if has_reset %}
-#define CELL_RST_PORT         GPIO{{ extra.reset_pin | pin_port }}
-#define CELL_RST_PIN          GPIO_PIN_{{ extra.reset_pin | pin_number }}
+#define CELL_RST_PORT         GPIO{{ peripheral.extra.reset_pin | pin_port }}
+#define CELL_RST_PIN          GPIO_PIN_{{ peripheral.extra.reset_pin | pin_number }}
 #define CELL_RST_PULSE_MS     200
 #define CELL_RST_STABLE_MS    5000
 {% endif %}
