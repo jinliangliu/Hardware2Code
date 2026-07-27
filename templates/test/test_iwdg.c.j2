@@ -1,0 +1,37 @@
+#include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
+
+#include "../src/drivers/drv_iwdg.c"
+
+void setUp(void)
+{
+    mock_HAL_IWDG_reset();
+}
+
+void tearDown(void)
+{
+}
+
+void test_iwdg_init_basic(void)
+{
+    /* IWDG_Init should succeed and mark init as called */
+    IWDG_Init();
+    TEST_ASSERT_TRUE(mock_HAL_IWDG_Init_called());
+}
+
+void test_iwdg_refresh(void)
+{
+    /* First init, then refresh */
+    IWDG_Init();
+    IWDG_Refresh();
+    TEST_ASSERT_TRUE(mock_HAL_IWDG_Refresh_called());
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_iwdg_init_basic);
+    RUN_TEST(test_iwdg_refresh);
+    return UNITY_END();
+}

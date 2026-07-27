@@ -14,6 +14,125 @@
 #define STM32G0B1xx
 
 /* ======================================================================
+ * CMSIS register mock structures (for unit-testing bootloader modules)
+ * ====================================================================== */
+
+/* --- CRC --- */
+typedef struct {
+    __IO uint32_t DR;
+    __IO uint32_t IDR;
+    __IO uint32_t CR;
+    uint32_t _reserved;
+    __IO uint32_t INIT;
+    __IO uint32_t POL;
+} CRC_TypeDef;
+
+#define CRC_BASE    (0x40023000UL)
+extern volatile CRC_TypeDef *CRC;
+
+#define CRC_CR_RESET      0x00000001U
+#define CRC_CR_REV_IN_0   0x00000020U
+#define CRC_CR_REV_OUT    0x00000080U
+
+/* --- PWR --- */
+typedef struct {
+    __IO uint32_t CR1;
+    uint32_t _reserved[6];
+    __IO uint32_t SR1;
+} PWR_TypeDef;
+
+extern volatile PWR_TypeDef *PWR;
+
+#define PWR_CR1_DBP    0x00000100U
+
+/* --- RCC --- */
+typedef struct {
+    __IO uint32_t CR;
+    __IO uint32_t ICSR;
+    __IO uint32_t CFGR;
+    __IO uint32_t PLLCFGR;
+    uint32_t _reserved0;
+    __IO uint32_t AHBENR;
+    __IO uint32_t APBENR1;
+    __IO uint32_t APBENR2;
+    __IO uint32_t CSR;
+} RCC_TypeDef;
+
+#define RCC_BASE    (0x40021000UL)
+extern volatile RCC_TypeDef *RCC;
+
+#define RCC_AHBENR_CRCEN     0x00001000U
+#define RCC_APBENR1_PWREN    0x10000000U
+#define RCC_APBENR1_RTCAPBEN 0x00200000U
+#define RCC_CSR_LSION        0x00000001U
+#define RCC_CSR_LSIRDY       0x00000002U
+#define RCC_CSR_IWDGRSTF     0x20000000U
+
+/* --- TAMP --- */
+typedef struct {
+    __IO uint32_t CR1;
+    __IO uint32_t CR2;
+    uint32_t _reserved0;
+    __IO uint32_t FLTCR;
+    uint32_t _reserved1[3];
+    __IO uint32_t SCR;
+    uint32_t _reserved2;
+    __IO uint32_t IER;
+    __IO uint32_t SR;
+    __IO uint32_t MISR;
+    uint32_t _reserved3;
+    __IO uint32_t SCR2;
+    uint32_t _reserved4[16];
+    __IO uint32_t BKP0R;
+    __IO uint32_t BKP1R;
+    __IO uint32_t BKP2R;
+    __IO uint32_t BKP3R;
+} TAMP_TypeDef;
+
+#define TAMP_BASE   (0x4000B000UL)
+extern volatile TAMP_TypeDef *TAMP;
+
+/* --- SCB --- */
+typedef struct {
+    __I  uint32_t CPUID;
+    __IO uint32_t ICSR;
+    __IO uint32_t VTOR;
+    __IO uint32_t AIRCR;
+    __IO uint32_t SCR;
+} SCB_TypeDef;
+
+#define SCB_BASE    (0xE000ED00UL)
+extern volatile SCB_TypeDef *SCB;
+
+/* --- NVIC --- */
+typedef struct {
+    __IO uint32_t ISER[8];
+    uint32_t _reserved0[24];
+    __IO uint32_t ICER[8];
+    uint32_t _reserved1[24];
+    __IO uint32_t ICPR[8];
+} NVIC_TypeDef;
+
+#define NVIC_BASE   (0xE000E100UL)
+extern volatile NVIC_TypeDef *NVIC;
+
+/* --- SysTick --- */
+typedef struct {
+    __IO uint32_t CTRL;
+    __IO uint32_t LOAD;
+    __IO uint32_t VAL;
+} SysTick_TypeDef;
+
+#define SysTick_BASE    (0xE000E010UL)
+extern volatile SysTick_TypeDef *SysTick;
+
+/* --- CMSIS intrinsic stubs --- */
+static inline void __disable_irq(void) {}
+static inline void __set_MSP(uint32_t sp) { (void)sp; }
+static inline void __DSB(void) {}
+static inline void __ISB(void) {}
+
+/* ======================================================================
  * GPIO stubs
  * ====================================================================== */
 typedef uint32_t GPIO_TypeDef;
@@ -41,6 +160,10 @@ typedef uint32_t GPIO_TypeDef;
 #define GPIO_PIN_13  ((uint16_t)0x2000)
 #define GPIO_PIN_14  ((uint16_t)0x4000)
 #define GPIO_PIN_15  ((uint16_t)0x8000)
+#define GPIO_PIN_SET   ((uint16_t)0x0001)    /* 兼容 HAL_GPIO_WritePin 宏 */
+#define GPIO_PIN_RESET ((uint16_t)0x0000)
+
+typedef uint16_t GPIO_PinState;  /* for HAL_GPIO_ReadPin */
 
 typedef struct {
     uint32_t Pin;
@@ -54,6 +177,7 @@ typedef struct {
 #define GPIO_MODE_IT_FALLING    2
 #define GPIO_MODE_AF_OD         3
 #define GPIO_MODE_AF_PP         4
+#define GPIO_MODE_ANALOG        5
 #define GPIO_NOPULL             0
 #define GPIO_PULLUP             1
 #define GPIO_SPEED_FREQ_LOW     2
@@ -65,6 +189,7 @@ typedef struct {
 #define __HAL_RCC_GPIOD_CLK_ENABLE()
 #define __HAL_RCC_GPIOE_CLK_ENABLE()
 #define __HAL_RCC_GPIOF_CLK_ENABLE()
+#define __HAL_RCC_SYSCFG_CLK_ENABLE()
 #define __HAL_RCC_RTC_ENABLE()
 
 /* ======================================================================
@@ -177,6 +302,68 @@ typedef struct {
 } I2C_HandleTypeDef;
 
 /* ======================================================================
+ * SPI stubs
+ * ====================================================================== */
+typedef void SPI_HandleTypeDef;
+
+/* ======================================================================
+ * TIM stubs
+ * ====================================================================== */
+ typedef void TIM_HandleTypeDef;
+
+/* PWM additional types */
+typedef struct {
+    uint32_t OCMode;
+    uint32_t Pulse;
+    uint32_t OCPolarity;
+} TIM_OC_InitTypeDef;
+
+/* ======================================================================
+ * IWDG stubs
+ * ====================================================================== */
+typedef struct {
+    uint32_t Prescaler;
+    uint32_t Reload;
+    uint32_t Window;
+} IWDG_InitTypeDef;
+
+typedef struct {
+    void          *Instance;
+    IWDG_InitTypeDef Init;
+} IWDG_HandleTypeDef;
+
+#define IWDG  ((void *)0)
+#define IWDG_PRESCALER_256    6
+#define IWDG_WINDOW_DISABLE   0x0FFF
+
+HAL_StatusTypeDef HAL_IWDG_Init(IWDG_HandleTypeDef *hiwdg);
+HAL_StatusTypeDef HAL_IWDG_Refresh(IWDG_HandleTypeDef *hiwdg);
+
+/* ======================================================================
+ * Flash stubs (for FOTA)
+ * ====================================================================== */
+#define FLASH_TYPEPROGRAM_DOUBLEWORD  0x02U
+#define FLASH_FLAG_EOP                0x00000001U
+#define FLASH_FLAG_WRPERR             0x00000010U
+#define FLASH_FLAG_PGERR              0x00000004U
+
+typedef struct {
+    uint32_t TypeErase;
+    uint32_t Page;
+    uint32_t NbPages;
+} FLASH_EraseInitTypeDef;
+
+#define FLASH_TYPEERASE_PAGES     0x00U
+
+HAL_StatusTypeDef HAL_FLASH_Unlock(void);
+HAL_StatusTypeDef HAL_FLASH_Lock(void);
+HAL_StatusTypeDef HAL_FLASH_Program(uint32_t TypeProgram, uint32_t Address, uint64_t Data);
+void HAL_FLASHEx_Erase(FLASH_EraseInitTypeDef *pEraseInit, uint32_t *PageError);
+void mock_flash_reset(void);
+bool mock_flash_get_erase_called(void);
+uint32_t mock_flash_get_program_count(void);
+
+/* ======================================================================
  * Common HAL constants
  * ====================================================================== */
 #define HAL_OK      0
@@ -187,6 +374,7 @@ typedef struct {
  * FreeRTOS stubs
  * ====================================================================== */
 typedef void * QueueHandle_t;
+typedef void * SemaphoreHandle_t;
 typedef uint32_t TickType_t;
 typedef void * TaskHandle_t;
 typedef uint32_t BaseType_t;
@@ -195,6 +383,7 @@ typedef uint32_t BaseType_t;
 #define pdTRUE         1
 #define pdPASS         1
 #define portMAX_DELAY  0xFFFFFFFF
+#define pdMS_TO_TICKS(ms) ((TickType_t)(ms))
 
 typedef enum {
     eNoAction,
@@ -214,6 +403,19 @@ void taskEXIT_CRITICAL(void);
 void *pvPortMalloc(size_t size);
 void vPortFree(void *ptr);
 void vTaskDelay(TickType_t ticks);
+
+/* Semaphore stubs (for CLI driver) */
+SemaphoreHandle_t xSemaphoreCreateBinary(void);
+BaseType_t xSemaphoreGiveFromISR(SemaphoreHandle_t sem, BaseType_t *pxHigherPriorityTaskWoken);
+BaseType_t xSemaphoreTake(SemaphoreHandle_t sem, TickType_t xTicksToWait);
+
+/* Task info stubs (for CLI built-in commands) */
+TickType_t xTaskGetTickCount(void);
+uint32_t xPortGetFreeHeapSize(void);
+void vTaskList(char *pcWriteBuffer);
+
+/* CMSIS system reset stub */
+void NVIC_SystemReset(void);
 
 /* ======================================================================
  * Mock verification helpers
@@ -239,6 +441,9 @@ bool mock_HAL_NVIC_EnableIRQ_called_with(IRQn_Type IRQn);
  * HAL function prototypes (stubs)
  * ====================================================================== */
 void HAL_GPIO_Init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *init);
+void HAL_GPIO_WritePin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, uint16_t PinState);
+void HAL_GPIO_TogglePin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin);
+GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin);
 void HAL_NVIC_EnableIRQ(IRQn_Type IRQn);
 void HAL_NVIC_SetPriority(IRQn_Type IRQn, uint32_t prio, uint32_t subprio);
 void HAL_I2C_Init(I2C_HandleTypeDef *hi2c);
@@ -261,9 +466,134 @@ void HAL_SuspendTick(void);
 void HAL_ResumeTick(void);
 void vTaskStepTick(uint32_t ticks);
 
-
-typedef void TIM_HandleTypeDef;
 void HAL_InitTick(uint32_t TickPriority);
 void HAL_TIM_Base_Start_IT(TIM_HandleTypeDef *htim);
+
+/* SPI mock */
+void HAL_SPI_Init(SPI_HandleTypeDef *hspi);
+void HAL_SPI_Transmit(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint16_t Size, uint32_t Timeout);
+void HAL_SPI_Receive(SPI_HandleTypeDef *hspi, uint8_t *pRxData, uint16_t Size, uint32_t Timeout);
+void HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint8_t *pRxData, uint16_t Size, uint32_t Timeout);
+bool mock_HAL_SPI_Init_called(void);
+
+void HAL_TIM_PWM_Init(TIM_HandleTypeDef *htim);
+void HAL_TIM_PWM_ConfigChannel(TIM_HandleTypeDef *htim, TIM_OC_InitTypeDef *sConfig, uint32_t Channel);
+void HAL_TIM_PWM_Start(TIM_HandleTypeDef *htim, uint32_t Channel);
+bool mock_HAL_TIM_PWM_Init_called(void);
+
+/* ========== ADC mock ========== */
+typedef struct {
+    uint32_t ClockPrescaler;
+    uint32_t Resolution;
+    uint32_t DataAlign;
+    uint32_t ScanConvMode;
+    uint32_t EOCSelection;
+    uint32_t LowPowerAutoWait;
+    uint32_t LowPowerAutoPowerOff;
+    uint32_t ContinuousConvMode;
+    uint32_t NbrOfConversion;
+    uint32_t DiscontinuousConvMode;
+    uint32_t ExternalTrigConv;
+    uint32_t ExternalTrigConvEdge;
+    uint32_t DMAContinuousRequests;
+    uint32_t Overrun;
+} ADC_InitTypeDef;
+
+typedef void ADC_HandleTypeDef;
+
+#define ADC_CLOCK_SYNC_PCLK_DIV2  0
+#define ADC_RESOLUTION_12B        0
+#define ADC_DATAALIGN_RIGHT       0
+#define ADC_SCAN_DISABLE          0
+#define ADC_EOC_SINGLE_CONV       0
+#define ADC_SOFTWARE_START        0
+#define ADC_EXTERNALTRIGCONVEDGE_NONE 0
+#define ADC_OVR_DATA_PRESERVED    0
+#define ADC_CHANNEL_0             0
+
+typedef struct {
+    uint32_t Channel;
+    uint32_t Rank;
+    uint32_t SamplingTime;
+} ADC_ChannelConfTypeDef;
+
+#define ADC_REGULAR_RANK_1        0
+#define ADC_SAMPLETIME_39CYCLES_5 0
+
+void HAL_ADC_Init(ADC_HandleTypeDef *hadc);
+void HAL_ADC_ConfigChannel(ADC_HandleTypeDef *hadc, ADC_ChannelConfTypeDef *sConfig);
+void HAL_ADC_Start(ADC_HandleTypeDef *hadc);
+void HAL_ADC_PollForConversion(ADC_HandleTypeDef *hadc, uint32_t Timeout);
+uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef *hadc);
+bool mock_HAL_ADC_Init_called(void);
+
+/* ========== UART mock ========== */
+typedef struct {
+    uint32_t BaudRate;
+    uint32_t WordLength;
+    uint32_t StopBits;
+    uint32_t Parity;
+    uint32_t Mode;
+    uint32_t HwFlowCtl;
+    uint32_t OverSampling;
+} UART_InitTypeDef;
+
+typedef void UART_HandleTypeDef;
+
+#define UART_WORDLENGTH_8B       0
+#define UART_STOPBITS_1          0
+#define UART_PARITY_NONE         0
+#define UART_MODE_TX_RX          0
+#define UART_HWCONTROL_NONE      0
+#define UART_OVERSAMPLING_16     0
+
+void HAL_UART_Init(UART_HandleTypeDef *huart);
+void HAL_UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+void HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+void HAL_UART_Receive_IT(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size);
+bool mock_HAL_UART_Init_called(void);
+bool mock_HAL_UART_Transmit_called(void);
+void mock_HAL_UART_Transmit_reset(void);
+bool mock_HAL_UART_Receive_called(void);
+void mock_HAL_UART_Receive_reset(void);
+
+/* UART TX data capture for test verification */
+void mock_HAL_UART_Transmit_get_tx_data(uint8_t **buf, uint16_t *len);
+#define MOCK_UART_TX_BUF_SIZE 4096
+
+/* GPIO WritePin tracking mock */
+void mock_HAL_GPIO_WritePin_set(uint32_t pin, uint32_t state);
+void mock_HAL_GPIO_WritePin_reset(void);
+uint32_t mock_HAL_GPIO_WritePin_get_last_pin(void);
+uint32_t mock_HAL_GPIO_WritePin_get_last_state(void);
+uint32_t mock_HAL_GPIO_WritePin_get_count(void);
+
+/* IWDG mock verification */
+bool mock_HAL_IWDG_Init_called(void);
+bool mock_HAL_IWDG_Refresh_called(void);
+void mock_HAL_IWDG_reset(void);
+
+/* Task info mock helpers */
+void mock_task_set_tick_count(TickType_t ticks);
+
+/* SystemReset mock helpers */
+bool mock_NVIC_SystemReset_called(void);
+void mock_NVIC_SystemReset_reset(void);
+
+/* CMSIS register mock reset */
+void mock_cmsis_reset(void);
+
+/* HAL_Delay stub */
+void HAL_Delay(uint32_t ms);
+
+/* I2C Mem Read/Write stubs (for EEPROM) */
+#define I2C_MEMADD_SIZE_16BIT       ((uint16_t)0x0002U)
+
+HAL_StatusTypeDef HAL_I2C_Mem_Read(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
+                                   uint16_t MemAddress, uint16_t MemAddSize,
+                                   uint8_t *pData, uint16_t Size, uint32_t Timeout);
+HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
+                                    uint16_t MemAddress, uint16_t MemAddSize,
+                                    uint8_t *pData, uint16_t Size, uint32_t Timeout);
 
 #endif /* MOCK_HAL_H */

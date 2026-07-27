@@ -26,6 +26,8 @@ void RTC_GetTime(rtc_time_t *time);
 void RTC_SetTime(rtc_time_t *time);
 void RTC_AdjustDrift(int16_t ppm);
 
+extern RTC_HandleTypeDef hrtc;
+
 rtc_timer_handle_t RTC_TimerCreate(uint32_t period_ms, uint8_t mode, rtc_timer_cb_t callback, void *arg);
 void RTC_TimerStart(rtc_timer_handle_t handle);
 void RTC_TimerStop(rtc_timer_handle_t handle);

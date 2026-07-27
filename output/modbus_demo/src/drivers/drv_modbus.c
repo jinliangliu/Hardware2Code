@@ -1,0 +1,317 @@
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#endif
+#include "drv_modbus.h"
+#include <string.h>
+
+/* CRC-16/MODBUS polynomial 0x8005 (NOT the same as FOTA's CCITT 0x1021!) */
+#define CRC16_MODBUS_POLY 0x8005U
+
+/* ---- CRC-16/MODBUS lookup table (polynomial 0x8005, reflected 0xA001) ---- */
+static const uint16_t crc16_modbus_table[256] = {
+    0x0000U, 0xC0C1U, 0xC181U, 0x0140U, 0xC301U, 0x03C0U, 0x0280U, 0xC241U,
+    0xC601U, 0x06C0U, 0x0780U, 0xC741U, 0x0500U, 0xC5C1U, 0xC481U, 0x0440U,
+    0xCC01U, 0x0CC0U, 0x0D80U, 0xCD41U, 0x0F00U, 0xCFC1U, 0xCE81U, 0x0E40U,
+    0x0A00U, 0xCAC1U, 0xCB81U, 0x0B40U, 0xC901U, 0x09C0U, 0x0880U, 0xC841U,
+    0xD801U, 0x18C0U, 0x1980U, 0xD941U, 0x1B00U, 0xDBC1U, 0xDA81U, 0x1A40U,
+    0x1E00U, 0xDEC1U, 0xDF81U, 0x1F40U, 0xDD01U, 0x1DC0U, 0x1C80U, 0xDC41U,
+    0x1400U, 0xD4C1U, 0xD581U, 0x1540U, 0xD701U, 0x17C0U, 0x1680U, 0xD641U,
+    0xD201U, 0x12C0U, 0x1380U, 0xD341U, 0x1100U, 0xD1C1U, 0xD081U, 0x1040U,
+    0xF001U, 0x30C0U, 0x3180U, 0xF141U, 0x3300U, 0xF3C1U, 0xF281U, 0x3240U,
+    0x3600U, 0xF6C1U, 0xF781U, 0x3740U, 0xF501U, 0x35C0U, 0x3480U, 0xF441U,
+    0x3C00U, 0xFCC1U, 0xFD81U, 0x3D40U, 0xFF01U, 0x3FC0U, 0x3E80U, 0xFE41U,
+    0xFA01U, 0x3AC0U, 0x3B80U, 0xFB41U, 0x3900U, 0xF9C1U, 0xF881U, 0x3840U,
+    0x2800U, 0xE8C1U, 0xE981U, 0x2940U, 0xEB01U, 0x2BC0U, 0x2A80U, 0xEA41U,
+    0xEE01U, 0x2EC0U, 0x2F80U, 0xEF41U, 0x2D00U, 0xEDC1U, 0xEC81U, 0x2C40U,
+    0xE401U, 0x24C0U, 0x2580U, 0xE541U, 0x2700U, 0xE7C1U, 0xE681U, 0x2640U,
+    0x2200U, 0xE2C1U, 0xE381U, 0x2340U, 0xE101U, 0x21C0U, 0x2080U, 0xE041U,
+    0xA001U, 0x60C0U, 0x6180U, 0xA141U, 0x6300U, 0xA3C1U, 0xA281U, 0x6240U,
+    0x6600U, 0xA6C1U, 0xA781U, 0x6740U, 0xA501U, 0x65C0U, 0x6480U, 0xA441U,
+    0x6C00U, 0xACC1U, 0xAD81U, 0x6D40U, 0xAF01U, 0x6FC0U, 0x6E80U, 0xAE41U,
+    0xAA01U, 0x6AC0U, 0x6B80U, 0xAB41U, 0x6900U, 0xA9C1U, 0xA881U, 0x6840U,
+    0x7800U, 0xB8C1U, 0xB981U, 0x7940U, 0xBB01U, 0x7BC0U, 0x7A80U, 0xBA41U,
+    0xBE01U, 0x7EC0U, 0x7F80U, 0xBF41U, 0x7D00U, 0xBDC1U, 0xBC81U, 0x7C40U,
+    0xB401U, 0x74C0U, 0x7580U, 0xB541U, 0x7700U, 0xB7C1U, 0xB681U, 0x7640U,
+    0x7200U, 0xB2C1U, 0xB381U, 0x7340U, 0xB101U, 0x71C0U, 0x7080U, 0xB041U,
+    0x5000U, 0x90C1U, 0x9181U, 0x5140U, 0x9301U, 0x53C0U, 0x5280U, 0x9241U,
+    0x9601U, 0x56C0U, 0x5780U, 0x9741U, 0x5500U, 0x95C1U, 0x9481U, 0x5440U,
+    0x9C01U, 0x5CC0U, 0x5D80U, 0x9D41U, 0x5F00U, 0x9FC1U, 0x9E81U, 0x5E40U,
+    0x5A00U, 0x9AC1U, 0x9B81U, 0x5B40U, 0x9901U, 0x59C0U, 0x5880U, 0x9841U,
+    0x8801U, 0x48C0U, 0x4980U, 0x8941U, 0x4B00U, 0x8BC1U, 0x8A81U, 0x4A40U,
+    0x4E00U, 0x8EC1U, 0x8F81U, 0x4F40U, 0x8D01U, 0x4DC0U, 0x4C80U, 0x8C41U,
+    0x4400U, 0x84C1U, 0x8581U, 0x4540U, 0x8701U, 0x47C0U, 0x4680U, 0x8641U,
+    0x8201U, 0x42C0U, 0x4380U, 0x8341U, 0x4100U, 0x81C1U, 0x8081U, 0x4040U
+};
+
+static uint16_t crc16_modbus_compute(const uint8_t *data, uint16_t len)
+{
+    uint16_t crc = 0xFFFFU;
+    for (uint16_t i = 0; i < len; i++) {
+        crc = (uint16_t)(crc >> 8) ^ crc16_modbus_table[(crc ^ data[i]) & 0xFF];
+    }
+    return crc;
+}
+
+/* ---- Static state for slave mode ---- */
+static uint8_t slave_id = 1;
+static void (*reg_read_cb)(uint16_t addr, uint16_t *val);
+static void (*reg_write_cb)(uint16_t addr, uint16_t val);
+static uint8_t (*tx_func)(uint8_t *data, uint16_t len);
+static uint8_t (*rx_func)(uint8_t *buf, uint16_t len, uint32_t timeout);
+
+/* ---- Internal helpers ---- */
+
+static void modbus_send_exception(uint8_t func, uint8_t excode)
+{
+    uint8_t frame[5];
+    frame[0] = slave_id;
+    frame[1] = func | 0x80;
+    frame[2] = excode;
+    uint16_t crc = crc16_modbus_compute(frame, 3);
+    frame[3] = (uint8_t)(crc & 0xFF);       /* CRC low byte first (Modbus) */
+    frame[4] = (uint8_t)(crc >> 8);
+    if (tx_func) {
+        tx_func(frame, 5);
+    }
+}
+
+static void modbus_build_read_response(uint8_t *frame, uint16_t *buf,
+                                       uint16_t count)
+{
+    uint8_t byte_count = (uint8_t)(count * 2);
+    frame[0] = slave_id;
+    frame[1] = MODBUS_FC_READ_HOLDING_REGS;
+    frame[2] = byte_count;
+    for (uint16_t i = 0; i < count; i++) {
+        frame[3 + i * 2] = (uint8_t)(buf[i] >> 8);       /* high byte first */
+        frame[4 + i * 2] = (uint8_t)(buf[i] & 0xFF);
+    }
+    uint16_t len = (uint16_t)(3 + byte_count);
+    uint16_t crc = crc16_modbus_compute(frame, len);
+    frame[len] = (uint8_t)(crc & 0xFF);     /* CRC low byte first */
+    frame[len + 1] = (uint8_t)(crc >> 8);
+    if (tx_func) {
+        tx_func(frame, (uint16_t)(len + 2));
+    }
+}
+
+static void modbus_build_write_single_response(uint8_t *frame,
+                                               uint16_t addr, uint16_t val)
+{
+    frame[0] = slave_id;
+    frame[1] = MODBUS_FC_WRITE_SINGLE_REG;
+    frame[2] = (uint8_t)(addr >> 8);
+    frame[3] = (uint8_t)(addr & 0xFF);
+    frame[4] = (uint8_t)(val >> 8);
+    frame[5] = (uint8_t)(val & 0xFF);
+    uint16_t crc = crc16_modbus_compute(frame, 6);
+    frame[6] = (uint8_t)(crc & 0xFF);
+    frame[7] = (uint8_t)(crc >> 8);
+    if (tx_func) {
+        tx_func(frame, 8);
+    }
+}
+
+static void modbus_build_write_multiple_response(uint8_t *frame,
+                                                 uint16_t addr, uint16_t count)
+{
+    frame[0] = slave_id;
+    frame[1] = MODBUS_FC_WRITE_MULTIPLE_REGS;
+    frame[2] = (uint8_t)(addr >> 8);
+    frame[3] = (uint8_t)(addr & 0xFF);
+    frame[4] = (uint8_t)(count >> 8);
+    frame[5] = (uint8_t)(count & 0xFF);
+    uint16_t crc = crc16_modbus_compute(frame, 6);
+    frame[6] = (uint8_t)(crc & 0xFF);
+    frame[7] = (uint8_t)(crc >> 8);
+    if (tx_func) {
+        tx_func(frame, 8);
+    }
+}
+
+/* ---- Process a single Modbus frame ---- */
+static void modbus_handle_frame(uint8_t *frame, uint16_t len)
+{
+    uint8_t addr;
+    uint8_t func;
+    uint16_t crc_calc, crc_recv;
+    uint16_t start_addr;
+    uint16_t reg_count;
+    uint16_t reg_value;
+    uint16_t i;
+    uint8_t byte_count;
+
+    /* Minimum frame: addr(1) + func(1) + crc(2) = 4 bytes */
+    if (len < 4) {
+        return;
+    }
+
+    /* Validate CRC */
+    crc_recv = (uint16_t)(frame[len - 1] << 8) | frame[len - 2]; /* high, low */
+    crc_calc = crc16_modbus_compute(frame, (uint16_t)(len - 2));
+    if (crc_calc != crc_recv) {
+        return; /* CRC mismatch, silently discard */
+    }
+
+    addr = frame[0];
+    func = frame[1];
+
+    /* Check address match or broadcast */
+    if (addr != slave_id && addr != MODBUS_BROADCAST_ADDR) {
+        return; /* Not addressed to us */
+    }
+
+    switch (func) {
+
+    case MODBUS_FC_READ_HOLDING_REGS:
+        /* Frame: addr + func + start_addr(2) + count(2) + crc(2) = 8 */
+        if (len < 8) {
+            /* Broadcast: no response */
+            if (addr == MODBUS_BROADCAST_ADDR) return;
+            modbus_send_exception(func, MODBUS_EX_ILLEGAL_DATA);
+            return;
+        }
+        start_addr = ((uint16_t)frame[2] << 8) | frame[3];
+        reg_count  = ((uint16_t)frame[4] << 8) | frame[5];
+
+        /* Validate range: 1-125 registers per request */
+        if (reg_count < 1 || reg_count > 125) {
+            if (addr == MODBUS_BROADCAST_ADDR) return;
+            modbus_send_exception(func, MODBUS_EX_ILLEGAL_DATA);
+            return;
+        }
+
+        /* Read registers via callback */
+        {
+            uint16_t read_buf[125];
+            if (reg_read_cb) {
+                for (i = 0; i < reg_count; i++) {
+                    reg_read_cb((uint16_t)(start_addr + i), &read_buf[i]);
+                }
+            } else {
+                for (i = 0; i < reg_count; i++) {
+                    read_buf[i] = 0;
+                }
+            }
+            /* Broadcast: no response */
+            if (addr == MODBUS_BROADCAST_ADDR) return;
+            {
+                uint8_t resp[256];
+                modbus_build_read_response(resp, read_buf, reg_count);
+            }
+        }
+        break;
+
+    case MODBUS_FC_WRITE_SINGLE_REG:
+        /* Frame: addr + func + reg_addr(2) + value(2) + crc(2) = 8 */
+        if (len < 8) {
+            if (addr == MODBUS_BROADCAST_ADDR) return;
+            modbus_send_exception(func, MODBUS_EX_ILLEGAL_DATA);
+            return;
+        }
+        start_addr = ((uint16_t)frame[2] << 8) | frame[3];
+        reg_value  = ((uint16_t)frame[4] << 8) | frame[5];
+
+        /* Write register via callback */
+        if (reg_write_cb) {
+            reg_write_cb(start_addr, reg_value);
+        }
+
+        /* Echo response (broadcast: no response) */
+        if (addr == MODBUS_BROADCAST_ADDR) return;
+        {
+            uint8_t resp[8];
+            modbus_build_write_single_response(resp, start_addr, reg_value);
+        }
+        break;
+
+    case MODBUS_FC_WRITE_MULTIPLE_REGS:
+        /* Frame: addr + func + start_addr(2) + count(2) + byte_count(1)
+         *        + data(N) + crc(2) */
+        if (len < 10) {
+            if (addr == MODBUS_BROADCAST_ADDR) return;
+            modbus_send_exception(func, MODBUS_EX_ILLEGAL_DATA);
+            return;
+        }
+        start_addr = ((uint16_t)frame[2] << 8) | frame[3];
+        reg_count  = ((uint16_t)frame[4] << 8) | frame[5];
+        byte_count = frame[6];
+
+        /* Validate: 1-123 registers, byte_count must match reg_count*2 */
+        if (reg_count < 1 || reg_count > 123 ||
+            byte_count != (uint8_t)(reg_count * 2)) {
+            if (addr == MODBUS_BROADCAST_ADDR) return;
+            modbus_send_exception(func, MODBUS_EX_ILLEGAL_DATA);
+            return;
+        }
+
+        /* Verify frame length: 7 header + byte_count + 2 crc */
+        if (len < (uint16_t)(7 + byte_count + 2)) {
+            if (addr == MODBUS_BROADCAST_ADDR) return;
+            modbus_send_exception(func, MODBUS_EX_ILLEGAL_DATA);
+            return;
+        }
+
+        /* Write each register */
+        for (i = 0; i < reg_count; i++) {
+            reg_value = ((uint16_t)frame[7 + i * 2] << 8) | frame[8 + i * 2];
+            if (reg_write_cb) {
+                reg_write_cb((uint16_t)(start_addr + i), reg_value);
+            }
+        }
+
+        /* Response (broadcast: no response) */
+        if (addr == MODBUS_BROADCAST_ADDR) return;
+        {
+            uint8_t resp[8];
+            modbus_build_write_multiple_response(resp, start_addr, reg_count);
+        }
+        break;
+
+    default:
+        /* Unknown function code */
+        if (addr == MODBUS_BROADCAST_ADDR) return;
+        modbus_send_exception(func, MODBUS_EX_ILLEGAL_FUNCTION);
+        break;
+    }
+}
+
+/* ---- Public API ---- */
+
+void modbus_init(uint8_t id, void *tx, void *rx, void *read_cb, void *write_cb)
+{
+    slave_id = id;
+    tx_func = (uint8_t (*)(uint8_t*, uint16_t))tx;
+    rx_func = (uint8_t (*)(uint8_t*, uint16_t, uint32_t))rx;
+    reg_read_cb = (void (*)(uint16_t, uint16_t*))read_cb;
+    reg_write_cb = (void (*)(uint16_t, uint16_t))write_cb;
+}
+
+void modbus_process(void)
+{
+    uint8_t frame[256];
+    uint16_t len;
+
+    if (!rx_func) {
+        return;
+    }
+
+    /* Try to receive a frame (first byte = slave address, wait for it) */
+    /* Receive one byte first to detect the start of a frame */
+    if (rx_func(frame, 1, MODBUS_FRAME_TIMEOUT_MS) == 0) {
+        return; /* No data available */
+    }
+
+    /* Read remaining bytes with timeout */
+    /* Frame: addr(1) + func(1) + data(0-252) + crc(2) = max 256 */
+    for (len = 1; len < 252; len++) {
+        if (rx_func(&frame[len], 1, MODBUS_FRAME_TIMEOUT_MS) == 0) {
+            break;
+        }
+    }
+
+    /* Process the frame */
+    modbus_handle_frame(frame, len);
+}

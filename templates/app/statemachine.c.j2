@@ -1,12 +1,12 @@
 #ifdef TEST
 #include "mock_hal.h"
-{% if has_rtc %}
+{% if timer_events or defer_actions %}
 #include "drv_rtc.h"
 {% endif %}
 #else
 #include "FreeRTOS.h"
 #include "task.h"
-{% if has_rtc %}
+{% if timer_events or defer_actions %}
 #include "drv_rtc.h"
 {% endif %}
 #endif
@@ -132,12 +132,12 @@ led_task_notify();
 }
 {% elif action.startswith('publish_async ') %}
 {
-    event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | replace(' ', '_') }}, .param = 0 };
+    event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | event_name }}, .param = 0 };
     xQueueSend(event_queue, &evt_pub, 0);
 }
 {% elif action.startswith('publish ') %}
 {
-    event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | replace(' ', '_') }}, .param = 0 };
+    event_t evt_pub = { .id = EVENT_{{ action.split(' ',1)[1] | event_name }}, .param = 0 };
     statemachine_process(&evt_pub);
 }
 {% elif action.startswith('when ') %}
@@ -152,7 +152,7 @@ led_task_notify();
 {% elif action.startswith('send_to ') %}
 {
     {% set parts = action.split(' ', 2) %}
-    event_t evt_pub = { .id = EVENT_{{ parts[2] | replace(' ', '_') }}, .param = 0 };
+    event_t evt_pub = { .id = EVENT_{{ parts[2] | event_name }}, .param = 0 };
     xQueueSend(event_queue, &evt_pub, 0);
 }
 {% elif action == 'return' %}
@@ -320,7 +320,7 @@ void statemachine_process(event_t *evt) {
 {% for nested in state.states %}
                 case STATE_{{ region.name }}_{{ state.name }}_{{ nested.name }}:
 {% for trans in nested.transitions %}
-                    if (evt->id == EVENT_{{ trans.event | replace(' ', '_') }}) {
+                    if (evt->id == EVENT_{{ trans.event | event_name }}) {
 {% if nested.on_exit %}
 {{ process_actions_for_region(region.name, nested.on_exit) | indent(24, true) }}
 {% endif %}
@@ -381,7 +381,7 @@ void statemachine_process(event_t *evt) {
 {% if trans.guard %}
                 ({{ trans.guard }}) &&
 {% endif %}
-                (evt->id == EVENT_{{ trans.event | replace(' ', '_') }})
+                (evt->id == EVENT_{{ trans.event | event_name }})
             ) {
 {% if state.on_exit %}
 {{ process_actions_for_region(region.name, state.on_exit) | indent(16, true) }}
@@ -473,7 +473,7 @@ void statemachine_process(event_t *evt) {
 {% for nested in state.states %}
             case STATE_{{ state.name }}_{{ nested.name }}:
 {% for trans in nested.transitions %}
-                if (evt->id == EVENT_{{ trans.event | replace(' ', '_') }}) {
+                if (evt->id == EVENT_{{ trans.event | event_name }}) {
 {% if nested.on_exit %}
 {{ process_actions(nested.on_exit) | indent(20, true) }}
 {% endif %}
@@ -533,7 +533,7 @@ void statemachine_process(event_t *evt) {
 {% if trans.guard %}
             ({{ trans.guard }}) &&
 {% endif %}
-            (evt->id == EVENT_{{ trans.event | replace(' ', '_') }})
+            (evt->id == EVENT_{{ trans.event | event_name }})
         ) {
 {% if state.on_exit %}
 {{ process_actions(state.on_exit) | indent(12, true) }}

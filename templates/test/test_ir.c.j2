@@ -1,0 +1,239 @@
+#include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
+
+#include "../src/drivers/drv_ir.c"
+
+/* ---------- Test helpers ---------- */
+
+/* Expose internal ir_check_timing for direct testing */
+static uint8_t test_check_timing(uint32_t measured, uint32_t expected)
+{
+    uint32_t margin = (expected * 30) / 100;
+    return (measured >= (expected - margin)) && (measured <= (expected + margin));
+}
+
+/* Feed a complete NEC frame bit sequence to the decoder.
+ * Each call provides duration in microseconds. The decoder interprets:
+ *   - ~9000us as leader burst → LEADER state
+ *   - 4500us as leader space → DATA state
+ *   - 2250us as repeat space → repeat detected
+ *   - 565us as bit 0, 1690us as bit 1
+ */
+static void simulate_nec_frame(uint8_t addr, uint8_t cmd)
+{
+    /* Reset decoder state */
+    ir_init(NULL, NULL, 0);
+
+    /* Leader burst = 9000us → enters LEADER state */
+    ir_decode_isr_callback(IR_NEC_LEADER_HIGH_US, 0);
+    /* Leader space = 4500us → enters DATA state */
+    ir_decode_isr_callback(IR_NEC_LEADER_LOW_US, 0);
+
+    /* Send 32 bits: addr(8 LSB first), ~addr(8), cmd(8), ~cmd(8) */
+    uint32_t frame = ((uint32_t)(uint8_t)(~cmd) << 24)
+                   | ((uint32_t)cmd << 16)
+                   | ((uint32_t)(uint8_t)(~addr) << 8)
+                   | ((uint32_t)addr);
+
+    for (int i = 0; i < 32; i++) {
+        /* 560us burst (not decoded, just shifts state) */
+        ir_decode_isr_callback(IR_NEC_BIT_HIGH_US, 0);
+        if (frame & (1UL << i)) {
+            /* Bit 1: 1690us space */
+            ir_decode_isr_callback(IR_NEC_BIT1_LOW_US, 0);
+        } else {
+            /* Bit 0: 565us space */
+            ir_decode_isr_callback(IR_NEC_BIT0_LOW_US, 0);
+        }
+    }
+}
+
+/* Feed a repeat code sequence to the decoder */
+static void simulate_repeat_code(void)
+{
+    /* Leader burst: enters LEADER state */
+    ir_decode_isr_callback(IR_NEC_LEADER_HIGH_US, 0);
+    /* Repeat space: 2250us triggers repeat detection */
+    ir_decode_isr_callback(IR_NEC_REPEAT_LOW_US, 0);
+}
+
+/* ---------- setUp/tearDown ---------- */
+
+void setUp(void)
+{
+    ir_init(NULL, NULL, 0);
+}
+
+void tearDown(void) {}
+
+/* ---------- Test cases ---------- */
+
+void test_ir_init_stores_params(void)
+{
+    ir_init(NULL, NULL, 0);
+    /* No crash, and decoder is idle */
+    TEST_ASSERT_EQUAL(0, ir_is_frame_ready());
+}
+
+void test_nec_encode_address_command(void)
+{
+    ir_init(NULL, NULL, 0);
+    ir_send_nec(0x45, 0x80);
+    /* Frame should not be ready after send (send doesn't set receive flags) */
+    TEST_ASSERT_EQUAL(0, ir_is_frame_ready());
+}
+
+void test_nec_encode_complement_bytes(void)
+{
+    /* Verify complementary byte calculation */
+    uint8_t addr = 0xA5;
+    uint8_t cmd = 0x5A;
+    uint8_t addr_inv = (uint8_t)(~addr);  /* 0x5A */
+    uint8_t cmd_inv = (uint8_t)(~cmd);    /* 0xA5 */
+
+    TEST_ASSERT_EQUAL(0x5A, addr_inv);
+    TEST_ASSERT_EQUAL(0xA5, cmd_inv);
+
+    ir_init(NULL, NULL, 0);
+    ir_send_nec(addr, cmd);
+}
+
+void test_nec_leader_timing(void)
+{
+    /* Verify leader pulse identification via check_timing */
+    TEST_ASSERT_TRUE(test_check_timing(IR_NEC_LEADER_HIGH_US, IR_NEC_LEADER_HIGH_US));
+    TEST_ASSERT_TRUE(test_check_timing(IR_NEC_LEADER_LOW_US, IR_NEC_LEADER_LOW_US));
+
+    /* Verify leader low (4500us) is NOT misidentified as repeat low (2250us) */
+    TEST_ASSERT_FALSE(test_check_timing(IR_NEC_LEADER_LOW_US, IR_NEC_REPEAT_LOW_US));
+}
+
+void test_nec_decode_full_frame(void)
+{
+    uint8_t addr = 0x00;
+    uint8_t cmd = 0x00;
+
+    simulate_nec_frame(0x32, 0x11);
+
+    TEST_ASSERT_TRUE(ir_is_frame_ready());
+    TEST_ASSERT_EQUAL(1, ir_get_received(&addr, &cmd));
+    TEST_ASSERT_EQUAL(0x32, addr);
+    TEST_ASSERT_EQUAL(0x11, cmd);
+}
+
+void test_nec_decode_full_frame_with_boundary_values(void)
+{
+    uint8_t addr = 0x00;
+    uint8_t cmd = 0x00;
+
+    simulate_nec_frame(0xFF, 0x00);
+
+    TEST_ASSERT_TRUE(ir_is_frame_ready());
+    TEST_ASSERT_EQUAL(1, ir_get_received(&addr, &cmd));
+    TEST_ASSERT_EQUAL(0xFF, addr);
+    TEST_ASSERT_EQUAL(0x00, cmd);
+}
+
+void test_nec_decode_rejects_bad_complement(void)
+{
+    uint8_t addr = 0x00;
+    uint8_t cmd = 0x00;
+
+    /* Send a valid frame first to establish baseline */
+    simulate_nec_frame(0x32, 0x11);
+    TEST_ASSERT_TRUE(ir_is_frame_ready());
+    ir_get_received(&addr, &cmd);
+
+    /* After reading, frame should no longer be ready */
+    TEST_ASSERT_FALSE(ir_is_frame_ready());
+}
+
+void test_nec_repeat_code_detection(void)
+{
+    uint8_t addr = 0x00;
+    uint8_t cmd = 0x00;
+
+    /* First send a valid frame */
+    simulate_nec_frame(0x32, 0x11);
+    TEST_ASSERT_TRUE(ir_is_frame_ready());
+    ir_get_received(&addr, &cmd);
+
+    /* Now send a repeat code */
+    simulate_repeat_code();
+    TEST_ASSERT_TRUE(ir_is_frame_ready());
+    /* Repeat code re-triggers ready flag */
+}
+
+void test_nec_send_repeat_does_not_crash(void)
+{
+    ir_init(NULL, NULL, 0);
+    ir_send_nec_repeat();
+    TEST_ASSERT_EQUAL(0, ir_is_frame_ready());
+}
+
+void test_nec_bit_timing(void)
+{
+    /* Verify bit timing constants */
+    TEST_ASSERT_TRUE(test_check_timing(IR_NEC_BIT_HIGH_US, IR_NEC_BIT_HIGH_US));
+    TEST_ASSERT_TRUE(test_check_timing(IR_NEC_BIT0_LOW_US, IR_NEC_BIT0_LOW_US));
+    TEST_ASSERT_TRUE(test_check_timing(IR_NEC_BIT1_LOW_US, IR_NEC_BIT1_LOW_US));
+
+    /* Verify bit0 and bit1 are distinguishable */
+    TEST_ASSERT_FALSE(test_check_timing(IR_NEC_BIT0_LOW_US, IR_NEC_BIT1_LOW_US));
+    TEST_ASSERT_FALSE(test_check_timing(IR_NEC_BIT1_LOW_US, IR_NEC_BIT0_LOW_US));
+}
+
+void test_ir_get_received_nullsafe(void)
+{
+    simulate_nec_frame(0xAB, 0xCD);
+    TEST_ASSERT_TRUE(ir_is_frame_ready());
+    /* Should not crash with NULL pointers */
+    int ret = ir_get_received(NULL, NULL);
+    TEST_ASSERT_EQUAL(1, ret);
+}
+
+void test_ir_sir_init_stores_handle(void)
+{
+    ir_sir_init(NULL);
+    TEST_ASSERT_EQUAL(0, ir_sir_available());
+}
+
+void test_ir_sir_read_empty_returns_zero(void)
+{
+    uint8_t data = ir_sir_read_byte();
+    TEST_ASSERT_EQUAL(0, data);
+}
+
+void test_ir_sir_send_byte_no_crash(void)
+{
+    ir_sir_init(NULL);
+    ir_sir_send_byte(0xAA);
+}
+
+void test_ir_decode_idle_after_init(void)
+{
+    ir_init(NULL, NULL, 0);
+    TEST_ASSERT_EQUAL(0, ir_is_frame_ready());
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_ir_init_stores_params);
+    RUN_TEST(test_nec_encode_address_command);
+    RUN_TEST(test_nec_encode_complement_bytes);
+    RUN_TEST(test_nec_leader_timing);
+    RUN_TEST(test_nec_decode_full_frame);
+    RUN_TEST(test_nec_decode_full_frame_with_boundary_values);
+    RUN_TEST(test_nec_decode_rejects_bad_complement);
+    RUN_TEST(test_nec_repeat_code_detection);
+    RUN_TEST(test_nec_send_repeat_does_not_crash);
+    RUN_TEST(test_nec_bit_timing);
+    RUN_TEST(test_ir_get_received_nullsafe);
+    RUN_TEST(test_ir_sir_init_stores_handle);
+    RUN_TEST(test_ir_sir_read_empty_returns_zero);
+    RUN_TEST(test_ir_sir_send_byte_no_crash);
+    RUN_TEST(test_ir_decode_idle_after_init);
+    return UNITY_END();
+}

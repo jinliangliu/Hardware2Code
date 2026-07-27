@@ -23,62 +23,18 @@ typedef enum {
 {% endfor %}
     EVENT_RETURN,   /* 子状态返回事件 */
 
-/* ========== 动态定时器事件（由模板自动收集） ========== */
-{% set all_timer_events = [] %}
-{% macro collect_timer_events(states, prefix='') %}
-{% for state in states %}
-    {% for trans in state.transitions %}
-        {% for action in trans.actions %}
-            {% if 'start_timer' in action %}
-                {% set evt = 'EVENT_TIMER_EXPIRED_' + action.split(' ')[1] %}
-                {% if evt not in all_timer_events %}
-                    {% set _ = all_timer_events.append(evt) %}
-                {% endif %}
-            {% endif %}
-        {% endfor %}
-    {% endfor %}
-    {% for action in state.get('on_entry', []) %}
-        {% if 'start_timer' in action %}
-            {% set evt = 'EVENT_TIMER_EXPIRED_' + action.split(' ')[1] %}
-            {% if evt not in all_timer_events %}
-                {% set _ = all_timer_events.append(evt) %}
-            {% endif %}
-        {% endif %}
-    {% endfor %}
-    {% for action in state.get('on_exit', []) %}
-        {% if 'start_timer' in action %}
-            {% set evt = 'EVENT_TIMER_EXPIRED_' + action.split(' ')[1] %}
-            {% if evt not in all_timer_events %}
-                {% set _ = all_timer_events.append(evt) %}
-            {% endif %}
-        {% endif %}
-    {% endfor %}
-    {% if state.after %}
-        {% set evt = 'EVENT_TIMER_EXPIRED_' + prefix + state.name + '_timeout' %}
-        {% if evt not in all_timer_events %}
-            {% set _ = all_timer_events.append(evt) %}
-        {% endif %}
-    {% endif %}
-    {% if state.states %}
-        {{ collect_timer_events(state.states, prefix) }}
-    {% endif %}
-{% endfor %}
-{% endmacro %}
-
-{% if business_flow.regions %}
-{% for region in business_flow.regions %}
-{{ collect_timer_events(region.states, region.name + '_') }}
-{% endfor %}
-{% else %}
-{{ collect_timer_events(business_flow.states) }}
-{% endif %}
-
-{% for evt in all_timer_events %}
+/* ========== 动态定时器事件（由 context builder 预计算） ========== */
+{% for evt in timer_events %}
     {{ evt }},
 {% endfor %}
 
-/* ========== 动态发布事件（由生成器提供） ========== */
+/* ========== 动态发布事件（由 context builder 预计算） ========== */
 {% for evt in published_events %}
+    EVENT_{{ evt }},
+{% endfor %}
+
+/* ========== 业务流转换事件（来自 YAML transitions 的 event 字段） ========== */
+{% for evt in transition_events %}
     EVENT_{{ evt }},
 {% endfor %}
 

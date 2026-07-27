@@ -1,12 +1,13 @@
 #ifdef TEST
 #include "mock_hal.h"
-#include "drv_rtc.h"
 #else
 #include "FreeRTOS.h"
 #include "task.h"
 #endif
 
 #include "statemachine.h"
+
+
 
 /* ========== 全局变量 ========== */
 
@@ -57,12 +58,12 @@ void statemachine_process(event_t *evt) {
             if (
                 (evt->id == EVENT_BUTTON_PRESS)
             ) {
-                /* 停止当前状态的时间序列定时器 */
-                        {
-        event_t evt_pub = { .id = EVENT_LED_ON, .param = 0 };
-        xQueueSend(event_queue, &evt_pub, 0);
-    }
-
+                /* 停止并删除当前状态的超时定时器 */
+                /* 停止并删除所有 defer 定时器 */
+                {
+                    event_t evt_pub = { .id = EVENT_LED_ON, .param = 0 };
+                    xQueueSend(event_queue, &evt_pub, 0);
+                }
 
                 *p_curr = STATE_button_region_DOWN;
                 /* 执行目标状态的进入动作并启动时间序列 */
@@ -73,12 +74,12 @@ void statemachine_process(event_t *evt) {
             if (
                 (evt->id == EVENT_BUTTON_PRESS)
             ) {
-                /* 停止当前状态的时间序列定时器 */
-                        {
-        event_t evt_pub = { .id = EVENT_LED_OFF, .param = 0 };
-        xQueueSend(event_queue, &evt_pub, 0);
-    }
-
+                /* 停止并删除当前状态的超时定时器 */
+                /* 停止并删除所有 defer 定时器 */
+                {
+                    event_t evt_pub = { .id = EVENT_LED_OFF, .param = 0 };
+                    xQueueSend(event_queue, &evt_pub, 0);
+                }
 
                 *p_curr = STATE_button_region_UP;
                 /* 执行目标状态的进入动作并启动时间序列 */
@@ -94,14 +95,10 @@ void statemachine_process(event_t *evt) {
             if (
                 (evt->id == EVENT_LED_ON)
             ) {
-                /* 停止当前状态的时间序列定时器 */
-                    #ifndef TEST
-    led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
-
+                /* 停止并删除当前状态的超时定时器 */
+                /* 停止并删除所有 defer 定时器 */
+                extern void led_task_notify(void);
+                led_task_notify();
 
                 *p_curr = STATE_led_region_ON;
                 /* 执行目标状态的进入动作并启动时间序列 */
@@ -112,14 +109,10 @@ void statemachine_process(event_t *evt) {
             if (
                 (evt->id == EVENT_LED_OFF)
             ) {
-                /* 停止当前状态的时间序列定时器 */
-                    #ifndef TEST
-    led_task_notify();
-#else
-    extern void led_task_notify(void);
-    led_task_notify();
-#endif
-
+                /* 停止并删除当前状态的超时定时器 */
+                /* 停止并删除所有 defer 定时器 */
+                extern void led_task_notify(void);
+                led_task_notify();
 
                 *p_curr = STATE_led_region_OFF;
                 /* 执行目标状态的进入动作并启动时间序列 */

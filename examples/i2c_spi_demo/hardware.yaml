@@ -1,0 +1,103 @@
+mcu:
+  part: STM32G0B1RET6
+  core_clock_mhz: 64
+  hse_freq: 8000000
+
+pins:
+  # I2C1 pins for MPU6050
+  - id: PB6
+    function: I2C_SCL
+    label: I2C1_SCL
+    af: 6
+  - id: PB7
+    function: I2C_SDA
+    label: I2C1_SDA
+    af: 6
+
+  # SPI1 pins for Flash
+  - id: PA5
+    function: SPI_SCK
+    label: SPI1_SCK
+    af: 0
+  - id: PA6
+    function: SPI_MISO
+    label: SPI1_MISO
+    af: 0
+  - id: PA7
+    function: SPI_MOSI
+    label: SPI1_MOSI
+    af: 0
+  - id: PA4
+    function: GPIO_Output
+    label: SPI1_CS
+  - id: PA0
+    function: GPIO_Output
+    label: LED
+
+  # Button with EXTI
+  - id: PC13
+    function: GPIO_Input
+    label: BUTTON
+    exti:
+      enable: true
+      trigger: falling
+
+peripherals:
+  - name: mpu6050
+    type: I2C_Sensor_MPU6050
+    bus: I2C1
+    extra:
+      update_interval_ms: 500
+
+  - name: flash
+    type: SPI_Flash_Generic
+    bus: SPI1
+    extra:
+      chip_select_pin: PA4
+      total_size: 4194304
+
+app_tasks:
+  - name: led_task
+    priority: 1
+    stack_size: 128
+
+  - name: sensor_task
+    priority: 2
+    stack_size: 512
+
+business_flow:
+  initial_state: idle
+  variables:
+    - name: button_count
+      type: uint32_t
+      initial: 0
+    - name: stored
+      type: uint32_t
+      initial: 0
+  states:
+    - name: idle
+      on_entry:
+        - toggle_led
+      transitions:
+        - event: BUTTON_PRESS
+          target: reading
+    - name: reading
+      on_entry:
+        - set button_count inc
+      transitions:
+        - event: SENSOR_READY
+          target: storing
+        - event: BUTTON_PRESS
+          target: idle
+    - name: storing
+      on_entry:
+        - calc stored = button_count * 2
+      transitions:
+        - event: STORE_DONE
+          target: idle
+
+sleep:
+  mode: STOP0
+
+heap_size: "0x1000"
+stack_size: "0x400"

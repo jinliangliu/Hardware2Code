@@ -92,7 +92,7 @@ void test_initial_state_actions(void) {
 
 {% for tr in ns.transitions %}{% if tr.state == initial_name %}
 void test_{{ tr.state }}_to_{{ tr.target }}_on_{{ tr.event }}(void) {
-    event_t evt = { .id = EVENT_{{ tr.event | replace(' ', '_') }} };
+    event_t evt = { .id = EVENT_{{ tr.event | event_name }} };
     statemachine_process(&evt);
     TEST_ASSERT_EQUAL({{ tr.expected }}, led_notify_count);
 }
@@ -100,10 +100,10 @@ void test_{{ tr.state }}_to_{{ tr.target }}_on_{{ tr.event }}(void) {
 
 {% for tr in ns.transitions %}{% if tr.back_event is defined %}
 void test_{{ tr.target }}_to_{{ initial_name }}_on_{{ tr.back_event }}(void) {
-    event_t evt_fwd = { .id = EVENT_{{ tr.event | replace(' ', '_') }} };
+    event_t evt_fwd = { .id = EVENT_{{ tr.event | event_name }} };
     statemachine_process(&evt_fwd);
     led_notify_count = 0;
-    event_t evt_back = { .id = EVENT_{{ tr.back_event | replace(' ', '_') }} };
+    event_t evt_back = { .id = EVENT_{{ tr.back_event | event_name }} };
     statemachine_process(&evt_back);
     TEST_ASSERT_EQUAL({{ tr.back_toggle }}, led_notify_count);
 }
@@ -112,9 +112,9 @@ void test_{{ tr.target }}_to_{{ initial_name }}_on_{{ tr.back_event }}(void) {
 {% for tr in ns.transitions %}{% if tr.back_event is defined %}
 void test_roundtrip_cycle(void) {
     for (int i = 0; i < 4; i++) {
-        event_t evt_fwd = { .id = EVENT_{{ tr.event | replace(' ', '_') }} };
+        event_t evt_fwd = { .id = EVENT_{{ tr.event | event_name }} };
         statemachine_process(&evt_fwd);
-        event_t evt_back = { .id = EVENT_{{ tr.back_event | replace(' ', '_') }} };
+        event_t evt_back = { .id = EVENT_{{ tr.back_event | event_name }} };
         statemachine_process(&evt_back);
     }
     TEST_ASSERT_EQUAL({{ 4 * (tr.expected - ns.init_entry + tr.back_toggle) }}, led_notify_count);

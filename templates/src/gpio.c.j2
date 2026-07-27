@@ -1,10 +1,8 @@
-{% import 'macros.j2' as macros %}
 {#
  gpio.c.j2 - GPIO initialization template
  Generates: src/gpio.c
  Requires context variables: pins
- Uses macros: exti_irq_name from macros.j2
- For each pin: enables GPIO clock, configures mode/pull/speed/AF, and enables NVIC if EXTI is set.
+For each pin: enables GPIO clock, configures mode/pull/speed/AF, and enables NVIC if EXTI is set.
 #}
 #ifdef TEST
 #include "mock_hal.h"
@@ -46,9 +44,24 @@ void MX_GPIO_Init(void)
     GPIO_InitStruct.Pull = GPIO_PULLUP;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
     GPIO_InitStruct.Alternate = {{ pin.af }};
+{% elif pin.function == 'CELL_PWR' or pin.function == 'CELL_RST' %}
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 {% elif 'ADC' in pin.function %}
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
+{% elif pin.function == 'IR_OUT' %}
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+{% elif pin.function == 'IR_IN' %}
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+{% elif pin.function == 'RS485_DE' %}
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 {% endif %}
 
     HAL_GPIO_Init(GPIO{{ pin.id[1] }}, &GPIO_InitStruct);
@@ -57,9 +70,17 @@ void MX_GPIO_Init(void)
     /* 初始输出高电平，LED 熄灭（低电平有效） */
     HAL_GPIO_WritePin(GPIO{{ pin.id[1] }}, GPIO_PIN_{{ pin.id[2:] }}, GPIO_PIN_SET);
 {% endif %}
+{% if pin.function == 'RS485_DE' %}
+    /* RS485 DE pin: initial LOW = receive mode */
+    HAL_GPIO_WritePin(GPIO{{ pin.id[1] }}, GPIO_PIN_{{ pin.id[2:] }}, GPIO_PIN_RESET);
+{% endif %}
+{% if pin.function == 'CELL_PWR' or pin.function == 'CELL_RST' %}
+    /* Cellular control pin: initial HIGH = power disabled / reset inactive */
+    HAL_GPIO_WritePin(GPIO{{ pin.id[1] }}, GPIO_PIN_{{ pin.id[2:] }}, GPIO_PIN_SET);
+{% endif %}
     /* Enable NVIC if EXTI is configured */
     {% if pin.exti and pin.exti.enable %}
-    HAL_NVIC_EnableIRQ({{ macros.exti_irq_name(pin.id) }});
+    HAL_NVIC_EnableIRQ({{ pin.id | exti_irq_name }});
     {% endif %}
 {% endfor %}
 }

@@ -1,5 +1,18 @@
 import re
 import os
+import importlib.util
+
+from paths import MODELS_DIR, EXAMPLES_DIR
+
+# Load generator/types.py with explicit module name to avoid collision
+# with Python's stdlib 'types' module which is frozen at interpreter startup.
+_types_spec = importlib.util.spec_from_file_location(
+    "hw2c_types",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "types.py")
+)
+_types_module = importlib.util.module_from_spec(_types_spec)
+_types_spec.loader.exec_module(_types_module)
+ValidationError = _types_module.ValidationError
 
 # ---------- Expression validation helpers ----------
 
@@ -8,7 +21,7 @@ _COMPARISON_OPS = {'>', '>=', '<', '<=', '==', '!='}
 _C_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
-def _collect_all_variables(hw):
+def _collect_all_variables(hw: dict) -> dict[str, str]:
     """
     Collect all declared variable names from business_flow and regions.
     Returns dict: {var_name: var_type_str}
@@ -19,6 +32,8 @@ def _collect_all_variables(hw):
         return variables
 
     for var in bf.get('variables', []):
+        if 'name' not in var:
+            continue
         variables[var['name']] = var.get('type', 'uint32_t')
 
     for region in bf.get('regions', []):
@@ -29,7 +44,7 @@ def _collect_all_variables(hw):
     return variables
 
 
-def _validate_guard(guard_str, variables, location):
+def _validate_guard(guard_str: str, variables: dict[str, str], location: str) -> list[str]:
     """
     Validate a guard condition string.
     Expected format: "var_name OP literal"
@@ -77,7 +92,7 @@ def _validate_guard(guard_str, variables, location):
     return errors
 
 
-def _validate_calc(calc_str, variables, location):
+def _validate_calc(calc_str: str, variables: dict[str, str], location: str) -> list[str]:
     """
     Validate a calc expression string.
     Expected format: "dest_var = expression"
@@ -110,7 +125,7 @@ def _validate_calc(calc_str, variables, location):
     return errors
 
 
-def _validate_when(when_str, variables, location):
+def _validate_when(when_str: str, variables: dict[str, str], location: str) -> list[str]:
     """
     Validate a when condition+action string.
     Expected format: "var OP literal => action"
@@ -157,7 +172,7 @@ def _validate_when(when_str, variables, location):
 # ---------- Main validator ----------
 
 
-def _validate_extra_fields(peripheral, model_path, errors):
+def _validate_extra_fields(peripheral: dict, model_path: str, errors: list[str]) -> None:
     """
     Validate peripheral extra fields against model's extra_schema.
     """
@@ -165,7 +180,7 @@ def _validate_extra_fields(peripheral, model_path, errors):
     try:
         with open(model_path, 'r', encoding='utf-8') as f:
             model = yaml.safe_load(f)
-    except Exception:
+    except (yaml.YAMLError, OSError):
         return
 
     schema = model.get('extra_schema', {})
@@ -181,54 +196,65 @@ def _validate_extra_fields(peripheral, model_path, errors):
         default = field_schema.get('default')
         allowed_values = field_schema.get('values')
 
-        if field_name not in extra:
+        # Check extra dict first, then fall back to top-level peripheral fields
+        if field_name in extra:
+            value = extra[field_name]
+        elif field_name in peripheral:
+            value = peripheral[field_name]
+        else:
             if required:
-                errors.append(f"[ERROR] Peripheral '{pname}' is missing required extra field '{field_name}'.")
+                errors.append(f"[ERROR] Peripheral '{pname}' is missing required field '{field_name}'.")
             continue
-
-        value = extra[field_name]
 
         # Type check
         if field_type == 'int' and not isinstance(value, int):
-            errors.append(f"[ERROR] Peripheral '{pname}' extra field '{field_name}' must be an integer, got '{value}'.")
+            errors.append(f"[ERROR] Peripheral '{pname}' field '{field_name}' must be an integer, got '{value}'.")
         elif field_type == 'str' and not isinstance(value, str):
-            errors.append(f"[ERROR] Peripheral '{pname}' extra field '{field_name}' must be a string, got '{value}'.")
+            errors.append(f"[ERROR] Peripheral '{pname}' field '{field_name}' must be a string, got '{value}'.")
         elif field_type == 'pin':
             if not isinstance(value, str) or not re.match(r'^P[A-F][0-9]{1,2}$', value):
-                errors.append(f"[ERROR] Peripheral '{pname}' extra field '{field_name}' must be a valid pin ID (e.g. PA2), got '{value}'.")
+                errors.append(f"[ERROR] Peripheral '{pname}' field '{field_name}' must be a valid pin ID (e.g. PA2), got '{value}'.")
 
         # Enum check
         if allowed_values and value not in allowed_values:
-            errors.append(f"[WARNING] Peripheral '{pname}' extra field '{field_name}' value '{value}' is not in recommended list: {allowed_values}.")
+            errors.append(f"[WARNING] Peripheral '{pname}' field '{field_name}' value '{value}' is not in recommended list: {allowed_values}.")
 
 
-def validate_hardware(hw):
-    errors = []
+_ERROR_PREFIX_RE = re.compile(r'\[(CRITICAL|ERROR|WARNING|INFO)\]\s*(.*)')
 
-    if 'mcu' not in hw or 'part' not in hw['mcu']:
-        errors.append("[CRITICAL] Missing 'mcu.part' field in hardware YAML.")
-    else:
-        mcu_part = hw['mcu']['part']
-        if not re.match(r'^STM32[A-Z0-9]+$', mcu_part):
-            errors.append(f"[ERROR] Invalid MCU part number format: '{mcu_part}'. Expected format like 'STM32G0B1RET6'.")
+
+def _parse_error(raw: str) -> ValidationError:
+    """
+    Parse a raw error string like '[ERROR] message' into a ValidationError dict.
+    Defaults to severity 'ERROR' if prefix is missing.
+    """
+    m = _ERROR_PREFIX_RE.match(raw)
+    if m:
+        return ValidationError(severity=m.group(1), message=m.group(2))
+    return ValidationError(severity="ERROR", message=raw)
+
+
+def validate_hardware(hw: dict) -> list[ValidationError]:
+    """
+    Cross-field business logic validation.
+
+    Type/shape/format validation is handled by Pydantic models (models.py).
+    This function only validates cross-referencing and business rules that
+    Pydantic cannot express alone.
+    """
+    errors: list[str] = []
+
+    # MCU and pin shape checks are now handled by Pydantic (McuModel, PinModel).
+    # Pin duplicates and LED-task consistency are also handled by HardwareModel.
 
     if 'pins' not in hw or not hw['pins']:
         errors.append("[WARNING] No pins defined in hardware YAML.")
     else:
-        pin_ids = []
         for i, pin in enumerate(hw['pins']):
-            if 'id' not in pin or not pin['id']:
-                errors.append(f"[ERROR] Pin #{i} has no 'id' field.")
-            else:
-                pin_id = pin['id']
-                if not re.match(r'^P[A-F][0-9]$|^P[A-F][0-9][0-9]$', pin_id):
-                    errors.append(f"[ERROR] Invalid pin ID format '{pin_id}' at pin #{i}. Expected format like 'PA0' or 'PC13'.")
-                pin_ids.append(pin_id)
-
             if 'function' not in pin or not pin['function']:
                 errors.append(f"[ERROR] Pin #{i} ('{pin.get('id', 'unknown')}') has no 'function' field.")
 
-            valid_functions = ['GPIO_Output', 'GPIO_Input', 'I2C_SCL', 'I2C_SDA', 'SPI_SCK', 'SPI_MISO', 'SPI_MOSI', 'SPI_NSS', 'UART_TX', 'UART_RX', 'USART_TX', 'USART_RX', 'LPUART_TX', 'LPUART_RX', 'ADC_IN']
+            valid_functions = ['GPIO_Output', 'GPIO_Input', 'I2C_SCL', 'I2C_SDA', 'SPI_SCK', 'SPI_MISO', 'SPI_MOSI', 'SPI_NSS', 'UART_TX', 'UART_RX', 'USART_TX', 'USART_RX', 'LPUART_TX', 'LPUART_RX', 'RS485_DE', 'ADC_IN', 'IR_OUT', 'IR_IN', 'CELL_PWR', 'CELL_RST']
             valid_function_patterns = [
                 r'^I2C\d+_SCL$', r'^I2C\d+_SDA$',
                 r'^SPI\d+_SCK$', r'^SPI\d+_MISO$', r'^SPI\d+_MOSI$', r'^SPI\d+_NSS$',
@@ -236,89 +262,67 @@ def validate_hardware(hw):
                 r'^ADC_IN\d+$',
             ]
             if pin.get('function') and pin['function'] not in valid_functions:
-                # Check against regex patterns for numbered variants
                 if not any(re.match(p, pin['function']) for p in valid_function_patterns):
                     errors.append(f"[ERROR] Pin #{i} ('{pin.get('id', 'unknown')}') has invalid function '{pin['function']}'. Valid options: {valid_functions} or numbered variants like I2C1_SCL, SPI1_SCK, USART2_TX, ADC_IN1.")
 
-            if pin.get('pull') and pin['pull'] not in ['up', 'down', None]:
-                errors.append(f"[WARNING] Pin #{i} ('{pin.get('id', 'unknown')}') has invalid pull value '{pin['pull']}'. Valid options: 'up', 'down'.")
-
+            # EXTI trigger check: Pydantic validates trigger enum values, but
+            # the cross-field rule (enabled implies trigger required) remains.
             if pin.get('exti') and pin['exti'].get('enable'):
                 if not pin.get('exti', {}).get('trigger'):
                     errors.append(f"[ERROR] Pin #{i} ('{pin.get('id', 'unknown')}') has EXTI enabled but no trigger specified.")
-                elif pin['exti']['trigger'] not in ['rising', 'falling', 'both']:
-                    errors.append(f"[ERROR] Pin #{i} ('{pin.get('id', 'unknown')}') has invalid EXTI trigger '{pin['exti']['trigger']}'. Valid options: 'rising', 'falling', 'both'.")
 
-        duplicates = set([pid for pid in pin_ids if pin_ids.count(pid) > 1])
-        if duplicates:
-            errors.append(f"[ERROR] Duplicate pin IDs found: {duplicates}")
-
-        has_led = any(pin.get('label') == 'LED' for pin in hw['pins'])
-        has_led_task = any(t.get('name') == 'led_task' for t in hw.get('app_tasks', []))
-        if has_led_task and not has_led:
-            errors.append("[ERROR] 'led_task' defined but no pin labeled 'LED' found. LED task needs an output pin.")
-
-    if 'app_tasks' in hw:
-        for i, task in enumerate(hw['app_tasks']):
-            if 'name' not in task or not task['name']:
-                errors.append(f"[ERROR] Task #{i} has no 'name' field.")
-
-            if 'priority' in task:
-                if not isinstance(task['priority'], int) or task['priority'] < 0 or task['priority'] > 31:
-                    errors.append(f"[ERROR] Task '{task.get('name', 'unknown')}' has invalid priority '{task['priority']}'. Must be integer 0-31.")
-
-            if 'stack_size' in task:
-                if not isinstance(task['stack_size'], int) or task['stack_size'] <= 0:
-                    errors.append(f"[ERROR] Task '{task.get('name', 'unknown')}' has invalid stack_size '{task['stack_size']}'. Must be positive integer.")
+    # Task name/priority/stack_size shape is now handled by Pydantic (TaskModel).
 
     if 'peripherals' in hw:
         for i, p in enumerate(hw['peripherals']):
-            if 'name' not in p or not p['name']:
-                errors.append(f"[ERROR] Peripheral #{i} has no 'name' field.")
+            # Peripheral name/type shape is handled by Pydantic (PeripheralModel).
+            # Type enum validation is handled by Pydantic.
 
-            if 'type' not in p or not p['type']:
-                errors.append(f"[ERROR] Peripheral #{i} ('{p.get('name', 'unknown')}') has no 'type' field.")
-
-            valid_types = ['Internal_RTC', 'Internal_PWM', 'Internal_ADC', 'UART_Serial', 'I2C_Sensor_MPU6050', 'SPI_Flash_W25Q32']
-            if p.get('type') and p['type'] not in valid_types:
-                errors.append(f"[ERROR] Peripheral #{i} ('{p.get('name', 'unknown')}') has invalid type '{p['type']}'. Valid options: {valid_types}")
-
-            if p.get('type') in ['I2C_Sensor_MPU6050'] and 'bus' not in p:
+            if p.get('type') in ['I2C_Sensor_MPU6050', 'I2C_EEPROM'] and 'bus' not in p:
                 errors.append(f"[ERROR] I2C peripheral '{p.get('name', 'unknown')}' is missing 'bus' field (e.g., 'I2C1').")
 
-            if p.get('type') in ['SPI_Flash_W25Q32'] and 'bus' not in p:
+            if p.get('type') in ['SPI_Flash_W25Q32', 'SPI_Flash_Generic'] and 'bus' not in p:
                 errors.append(f"[ERROR] SPI peripheral '{p.get('name', 'unknown')}' is missing 'bus' field (e.g., 'SPI1').")
 
-            model_path = os.path.join('models', p['type'] + '.yaml')
+            if p.get('type') in ['Protocol_MQTT']:
+                extra = p.get('extra', {})
+                bearer_val = p.get('bearer', extra.get('bearer'))
+                broker_val = p.get('broker', extra.get('broker'))
+                if not bearer_val:
+                    errors.append(f"[ERROR] Protocol_MQTT peripheral '{p.get('name', 'unknown')}' is missing required 'bearer' field.")
+                else:
+                    bearer_found = any(
+                        pp.get('name') == bearer_val and pp.get('type') == 'Cellular_4G'
+                        for pp in hw.get('peripherals', [])
+                    )
+                    if not bearer_found:
+                        errors.append(f"[ERROR] Protocol_MQTT peripheral '{p.get('name', 'unknown')}' bearer '{bearer_val}' refers to a non-existent Cellular_4G peripheral. Available Cellular_4G: {[pp.get('name') for pp in hw.get('peripherals', []) if pp.get('type') == 'Cellular_4G']}")
+                if not broker_val:
+                    errors.append(f"[ERROR] Protocol_MQTT peripheral '{p.get('name', 'unknown')}' is missing required 'broker' field.")
+
+            if p.get('type') in ['Protocol_Modbus']:
+                extra = p.get('extra', {})
+                bearer_val = p.get('bearer', extra.get('bearer'))
+                if not bearer_val:
+                    errors.append(f"[ERROR] Protocol_Modbus peripheral '{p.get('name', 'unknown')}' is missing required 'bearer' field.")
+                else:
+                    bearer_found = any(
+                        pp.get('name') == bearer_val and pp.get('type') in ['RS485', 'UART_Serial']
+                        for pp in hw.get('peripherals', [])
+                    )
+                    if not bearer_found:
+                        errors.append(f"[ERROR] Protocol_Modbus peripheral '{p.get('name', 'unknown')}' bearer '{bearer_val}' refers to a non-existent RS485 or UART peripheral. Available: {[pp.get('name') for pp in hw.get('peripherals', []) if pp.get('type') in ['RS485', 'UART_Serial']]}")
+
+            model_path = os.path.join(MODELS_DIR, p['type'] + '.yaml')
             if not os.path.exists(model_path):
                 errors.append(f"[WARNING] Model file '{model_path}' for peripheral type '{p['type']}' not found. Some features may not work.")
             else:
                 # Validate extra fields against model's extra_schema
                 _validate_extra_fields(p, model_path, errors)
 
-    if 'sleep' in hw and hw['sleep'].get('mode'):
-        valid_modes = ['STOP0', 'STOP1', 'STOP2', 'STANDBY', 'SLEEP']
-        if hw['sleep']['mode'] not in valid_modes:
-            errors.append(f"[WARNING] Invalid sleep mode '{hw['sleep']['mode']}'. Valid options: {valid_modes}")
-
-    if 'bootloader' in hw and hw['bootloader']:
-        bl = hw['bootloader']
-        if bl.get('enabled'):
-            size_kb = bl.get('size_kb', 8)
-            if not isinstance(size_kb, int) or size_kb < 4 or size_kb > 32:
-                errors.append(f"[ERROR] Bootloader size_kb '{size_kb}' is invalid. Must be 4-32 (KB).")
-
-            max_retries = bl.get('max_retries', 3)
-            if not isinstance(max_retries, int) or max_retries < 1 or max_retries > 10:
-                errors.append(f"[ERROR] Bootloader max_retries '{max_retries}' is invalid. Must be 1-10.")
-
-            app_a = bl.get('app_a_offset', 0x2000)
-            app_b = bl.get('app_b_offset', 0x40000)
-            if app_a >= app_b:
-                errors.append(f"[ERROR] Bootloader app_a_offset (0x{app_a:X}) must be less than app_b_offset (0x{app_b:X}).")
-
-            if app_a < size_kb * 1024:
-                errors.append(f"[ERROR] Bootloader app_a_offset (0x{app_a:X}) must be >= bootloader size ({size_kb}KB = 0x{size_kb*1024:X}).")
+    # Sleep mode enum is handled by Pydantic (SleepModel).
+    # Bootloader size_kb, max_retries, and offset constraints are handled
+    # by Pydantic (BootloaderModel).
 
     if 'business_flow' in hw and hw['business_flow']:
         bf = hw['business_flow']
@@ -461,7 +465,7 @@ def validate_hardware(hw):
                     if not ref_file:
                         errors.append(f"[ERROR] State '{state.get('name', 'unknown')}' is a 'ref' type but has no 'ref' field.")
                     else:
-                        ref_path = os.path.join('examples', ref_file)
+                        ref_path = os.path.join(EXAMPLES_DIR, ref_file)
                         if not os.path.exists(ref_path) and not os.path.exists(ref_file):
                             errors.append(f"[ERROR] Ref file '{ref_file}' not found for state '{state.get('name', 'unknown')}'. Searched in: '{ref_path}' and '{ref_file}'.")
                     if not state.get('namespace'):
@@ -494,7 +498,7 @@ def validate_hardware(hw):
                     errors.append(f"[ERROR] Region '{region.get('name', 'unknown')}' has no 'initial_state' field.")
                 if region.get('states'):
                     for j, state in enumerate(region['states']):
-                        state_full_name = f"{region['name']}.{state.get('name', 'unknown')}"
+                        state_full_name = f"{region.get('name', 'unknown')}.{state.get('name', 'unknown')}"
                         state_names.append(state_full_name)
                         if 'name' not in state or not state['name']:
                             errors.append(f"[ERROR] State #{j} in region '{region.get('name', 'unknown')}' has no 'name' field.")
@@ -523,4 +527,4 @@ def validate_hardware(hw):
                     if var['type'] not in _VALID_C_TYPES:
                         errors.append(f"[WARNING] Variable '{var.get('name', 'unknown')}' has type '{var['type']}' which is not in the recommended list: {sorted(_VALID_C_TYPES)}")
 
-    return errors
+    return [_parse_error(e) for e in errors]

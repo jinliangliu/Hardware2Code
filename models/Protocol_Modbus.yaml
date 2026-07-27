@@ -1,0 +1,28 @@
+model: "Modbus_RTU"
+type: "Protocol_Modbus"
+interface: "protocol"
+driver_template: "drivers/drv_modbus.c.j2"
+header_template: "drivers/drv_modbus.h.j2"
+capabilities:
+  - modbus_rtu_slave
+  - modbus_rtu_master
+  - crc16_modbus
+default_params:
+  role: "slave"
+  slave_id: 1
+  baudrate: 9600
+extra_schema:
+  role:
+    type: str
+    required: true
+    values: ["slave", "master"]
+  bearer:
+    type: str
+    required: true
+  slave_id:
+    type: int
+    required: false
+    default: 1
+  registers:
+    type: dict
+    required: false

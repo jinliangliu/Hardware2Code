@@ -1,0 +1,24 @@
+model: "IR_NEC"
+type: "Internal_IR"
+interface: "gpio"
+driver_template: "drivers/drv_ir.c.j2"
+header_template: "drivers/drv_ir.h.j2"
+capabilities:
+  - nec_encode
+  - nec_decode
+  - sir_mode
+default_params:
+  mode: "nec"
+  carrier_freq: 38000
+extra_schema:
+  mode:
+    type: str
+    required: false
+    default: "nec"
+    values: ["nec", "sir"]
+  tx_pin:
+    type: pin
+    required: false
+  rx_pin:
+    type: pin
+    required: false

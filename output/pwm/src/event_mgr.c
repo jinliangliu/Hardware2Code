@@ -10,6 +10,7 @@
 #include "event_mgr.h"
 
 
+
 #include "drv_pwm.h"
 
 extern TaskHandle_t led_task_handle;
@@ -43,6 +44,9 @@ void EventMgr_Task(void *pvParameters)
                     break;
                 case EVENT_BUTTON_PRESS:
                     handle_button_press();
+                    break;
+                case EVENT_RTC_TICK:
+                    /* 无 RTC 硬件时，事件直接忽略（或由状态机处理） */
                     break;
                 default:
                     break;

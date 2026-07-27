@@ -1,8 +1,10 @@
-{% import 'macros.j2' as macros %}
 #include "stm32g0xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "event_mgr.h"
+{% if has_log %}
+#include "drv_log.h"
+{% endif %}
 
 /* External task handles for notifications */
 {% for pin in pins if pin.exti and pin.exti.enable and pin.notify_task %}
@@ -20,7 +22,7 @@ void HardFault_Handler(void) {
 /* EXTI interrupt handlers */
 {% set handlers = {} %}
 {% for pin in pins if pin.exti and pin.exti.enable %}
-  {% set handler = macros.exti_handler_name(pin.id) %}
+  {% set handler = pin.id | exti_handler_name %}
   {% if handler not in handlers %}{% set _ = handlers.update({handler: []}) %}{% endif %}
   {% set _ = handlers[handler].append(pin) %}
 {% endfor %}
@@ -36,6 +38,9 @@ void {{ handler }}(void)
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
         event_t evt = { .id = EVENT_BUTTON_PRESS, .param = 0 };
         xQueueSendFromISR(event_queue, &evt, &xHigherPriorityTaskWoken);
+{% if has_log %}
+        log_info("BUTTON pressed (PC13)");
+{% endif %}
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
     {% endif %}

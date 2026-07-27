@@ -56,6 +56,13 @@ peripherals:
     interface: "uart"
     extra:
       baudrate: 115200
+  - name: "modbus1"
+    type: "Protocol_Modbus"
+    interface: "protocol"
+    extra:
+      role: "slave"
+      bearer: "uart2"
+      slave_id: 1
 
 # ========== 业务状态机 ==========
 business_flow:

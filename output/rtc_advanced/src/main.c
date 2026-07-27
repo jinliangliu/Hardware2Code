@@ -14,7 +14,6 @@
 
 #include "drv_log.h"
 
-
 /* GPIO initialization function */
 void MX_GPIO_Init(void);
 

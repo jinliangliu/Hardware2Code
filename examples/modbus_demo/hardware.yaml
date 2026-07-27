@@ -1,0 +1,73 @@
+# modbus_demo — RS485 + Modbus RTU slave with LED/Button/RTC
+
+mcu:
+  part: STM32G0B1RET6
+  core_clock_mhz: 64
+
+pins:
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: falling
+    notify_task: "led_task"
+  - id: PA9
+    function: USART1_TX
+    label: "RS485_TX"
+    af: 1
+  - id: PA10
+    function: USART1_RX
+    label: "RS485_RX"
+    af: 1
+  - id: PA1
+    function: RS485_DE
+    label: "RS485_DE"
+    active_level: high
+
+sleep:
+  mode: STOP1
+
+app_tasks:
+  - name: led_task
+    priority: 2
+    stack_size: 128
+  - name: modbus_task
+    priority: 3
+    stack_size: 512
+
+peripherals:
+  - name: "rs485_1"
+    type: "RS485"
+    uart: "uart1"
+    de_pin: "PA1"
+    extra:
+      baudrate: 9600
+  - name: "uart1"
+    type: "UART_Serial"
+    instance: "USART1"
+    interface: "uart"
+    extra:
+      baudrate: 9600
+      tx_pin: "PA9"
+      rx_pin: "PA10"
+  - name: "modbus"
+    type: "Protocol_Modbus"
+    bearer: "rs485_1"
+    role: "slave"
+    slave_id: 1
+
+business_flow:
+  initial_state: "RUNNING"
+  states:
+    - name: "RUNNING"
+      transitions:
+        - event: "BUTTON_PRESS"
+          target: "RUNNING"
+          actions:
+            - "toggle_led"

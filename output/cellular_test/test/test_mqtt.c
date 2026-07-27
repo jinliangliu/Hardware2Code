@@ -1,0 +1,502 @@
+#include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
+#include <stdlib.h>
+
+/* ====================================================================== */
+/* Mock buffers for the MQTT driver (TEST mode)                            */
+/* ====================================================================== */
+uint8_t  mock_mqtt_rx_buf[2048];
+uint16_t mock_mqtt_rx_len = 0;
+uint16_t mock_mqtt_rx_idx = 0;
+uint8_t  mock_mqtt_tx_buf[2048];
+uint16_t mock_mqtt_tx_len = 0;
+
+/* ---- Helper to reset all mock state ---- */
+static void mock_mqtt_reset(void)
+{
+    memset(mock_mqtt_rx_buf, 0, sizeof(mock_mqtt_rx_buf));
+    mock_mqtt_rx_len = 0;
+    mock_mqtt_rx_idx = 0;
+    memset(mock_mqtt_tx_buf, 0, sizeof(mock_mqtt_tx_buf));
+    mock_mqtt_tx_len = 0;
+}
+
+/* ---- Helper: set RX buffer for CONNACK ---- */
+static void mock_mqtt_set_rx(const uint8_t *data, uint16_t len)
+{
+    mock_mqtt_reset();
+    if (data && len > 0) {
+        memcpy(mock_mqtt_rx_buf, data, len);
+        mock_mqtt_rx_len = len;
+    }
+}
+
+/* ---- Helper: get TX byte at index ---- */
+static uint8_t mock_mqtt_tx_byte(uint16_t idx)
+{
+    if (idx < mock_mqtt_tx_len) {
+        return mock_mqtt_tx_buf[idx];
+    }
+    return 0xFF;
+}
+
+/* ====================================================================== */
+/* Include driver source under test                                        */
+/* ====================================================================== */
+#include "../src/drivers/drv_mqtt.c"
+
+/* ====================================================================== */
+/* Test cases                                                              */
+/* ====================================================================== */
+
+void setUp(void)
+{
+    mock_mqtt_reset();
+}
+
+void tearDown(void)
+{
+    /* nothing */
+}
+
+/* ---- test_mqtt_remaining_length_encode_0_127 ---- */
+void test_mqtt_remaining_length_encode_0_127(void)
+{
+    uint8_t buf[4];
+    uint8_t bytes;
+
+    /* 0 -> single byte 0x00 */
+    bytes = mqtt_encode_remaining_length(0, buf);
+    TEST_ASSERT_EQUAL_UINT8(1, bytes);
+    TEST_ASSERT_EQUAL_UINT8(0x00, buf[0]);
+
+    /* 127 -> single byte 0x7F */
+    bytes = mqtt_encode_remaining_length(127, buf);
+    TEST_ASSERT_EQUAL_UINT8(1, bytes);
+    TEST_ASSERT_EQUAL_UINT8(0x7F, buf[0]);
+}
+
+/* ---- test_mqtt_remaining_length_encode_128_16383 ---- */
+void test_mqtt_remaining_length_encode_128_16383(void)
+{
+    uint8_t buf[4];
+    uint8_t bytes;
+
+    /* 128 -> 0x80 0x01 */
+    bytes = mqtt_encode_remaining_length(128, buf);
+    TEST_ASSERT_EQUAL_UINT8(2, bytes);
+    TEST_ASSERT_EQUAL_UINT8(0x80, buf[0]);
+    TEST_ASSERT_EQUAL_UINT8(0x01, buf[1]);
+
+    /* 16383 -> 0xFF 0x7F */
+    bytes = mqtt_encode_remaining_length(16383, buf);
+    TEST_ASSERT_EQUAL_UINT8(2, bytes);
+    TEST_ASSERT_EQUAL_UINT8(0xFF, buf[0]);
+    TEST_ASSERT_EQUAL_UINT8(0x7F, buf[1]);
+}
+
+/* ---- test_mqtt_remaining_length_encode_16384_2097151 ---- */
+void test_mqtt_remaining_length_encode_16384_2097151(void)
+{
+    uint8_t buf[4];
+    uint8_t bytes;
+
+    /* 16384 -> 0x80 0x80 0x01 */
+    bytes = mqtt_encode_remaining_length(16384, buf);
+    TEST_ASSERT_EQUAL_UINT8(3, bytes);
+    TEST_ASSERT_EQUAL_UINT8(0x80, buf[0]);
+    TEST_ASSERT_EQUAL_UINT8(0x80, buf[1]);
+    TEST_ASSERT_EQUAL_UINT8(0x01, buf[2]);
+}
+
+/* ---- test_mqtt_remaining_length_encode_boundary_127 ---- */
+void test_mqtt_remaining_length_encode_boundary_127(void)
+{
+    uint8_t buf[4];
+    uint8_t bytes;
+
+    /* 127 should be single byte (no continuation) */
+    bytes = mqtt_encode_remaining_length(127, buf);
+    TEST_ASSERT_EQUAL_UINT8(1, bytes);
+    TEST_ASSERT_EQUAL_UINT8(0x7F, buf[0]);
+    /* MSB must NOT be set */
+    TEST_ASSERT_EQUAL_UINT8(0x00, buf[0] & 0x80);
+}
+
+/* ---- test_mqtt_connect_packet_format ---- */
+void test_mqtt_connect_packet_format(void)
+{
+    /* CONNACK response: 0x20 0x02 0x00 0x00 */
+    uint8_t connack[] = {0x20, 0x02, 0x00, 0x00};
+    mock_mqtt_set_rx(connack, 4);
+
+    mqtt_init(NULL, NULL, "test_client");
+    /* Set mock transport callback; both send/recv replace with mock equivalents */
+    {
+        int ret = mqtt_connect(NULL, NULL, 30);
+        TEST_ASSERT_EQUAL_INT(MQTT_OK, ret);
+    }
+
+    /* Verify CONNECT fixed header: 0x10 (CONNECT) */
+    TEST_ASSERT_EQUAL_UINT8(0x10, mock_mqtt_tx_byte(0));
+
+    /* Remaining length exists (byte 1) - should not have bit 7 set for short packets */
+    /* Skip exact value since it depends on client_id length */
+
+    /* Verify protocol name "MQTT" at position after remaining length */
+    /* Get remaining length first */
+    {
+        uint32_t rl;
+        uint8_t  consumed;
+        mqtt_decode_remaining_length(mock_mqtt_tx_buf + 1, &rl, &consumed);
+        /* Variable header starts at 1 + consumed */
+        /* Protocol name: 0x00 0x04 'M' 'Q' 'T' 'T' */
+        uint16_t vh_offset = (uint16_t)(1 + consumed);
+        TEST_ASSERT_EQUAL_UINT8(0x00, mock_mqtt_tx_byte(vh_offset));
+        TEST_ASSERT_EQUAL_UINT8(0x04, mock_mqtt_tx_byte(vh_offset + 1));
+        TEST_ASSERT_EQUAL_UINT8('M',  mock_mqtt_tx_byte(vh_offset + 2));
+        TEST_ASSERT_EQUAL_UINT8('Q',  mock_mqtt_tx_byte(vh_offset + 3));
+        TEST_ASSERT_EQUAL_UINT8('T',  mock_mqtt_tx_byte(vh_offset + 4));
+        TEST_ASSERT_EQUAL_UINT8('T',  mock_mqtt_tx_byte(vh_offset + 5));
+        /* Protocol level: 4 */
+        TEST_ASSERT_EQUAL_UINT8(4,    mock_mqtt_tx_byte(vh_offset + 6));
+        /* Connect flags: clean session = 0x02 */
+        TEST_ASSERT_EQUAL_UINT8(0x02, mock_mqtt_tx_byte(vh_offset + 7));
+        /* Keep alive: 30 -> 0x00 0x1E */
+        TEST_ASSERT_EQUAL_UINT8(0x00, mock_mqtt_tx_byte(vh_offset + 8));
+        TEST_ASSERT_EQUAL_UINT8(0x1E, mock_mqtt_tx_byte(vh_offset + 9));
+    }
+}
+
+/* ---- test_mqtt_connack_parse_success ---- */
+void test_mqtt_connack_parse_success(void)
+{
+    uint8_t connack[] = {0x20, 0x02, 0x00, 0x00};
+    mock_mqtt_set_rx(connack, 4);
+
+    mqtt_init(NULL, NULL, "test_client");
+    int ret = mqtt_connect(NULL, NULL, 60);
+    TEST_ASSERT_EQUAL_INT(MQTT_OK, ret);
+}
+
+/* ---- test_mqtt_connack_parse_refused ---- */
+void test_mqtt_connack_parse_refused(void)
+{
+    /* CONNACK with return code 4 (bad username/password) */
+    uint8_t connack[] = {0x20, 0x02, 0x00, 0x04};
+    mock_mqtt_set_rx(connack, 4);
+
+    mqtt_init(NULL, NULL, "test_client");
+    int ret = mqtt_connect(NULL, NULL, 60);
+    TEST_ASSERT_EQUAL_INT(MQTT_ERROR, ret);
+}
+
+/* ---- test_mqtt_pingreq_packet ---- */
+void test_mqtt_pingreq_packet(void)
+{
+    uint8_t pingresp[] = {0xD0, 0x00};
+    mock_mqtt_set_rx(pingresp, 2);
+
+    mqtt_init(NULL, NULL, "test_client");
+
+    /* Verify PINGREQ is exactly 0xC0 0x00 */
+    /* Note: mqtt_ping sends PINGREQ first, RX is consumed by mock_recv */
+    int ret = mqtt_ping();
+    TEST_ASSERT_EQUAL_INT(MQTT_OK, ret);
+
+    /* TX should contain PINGREQ: 0xC0 0x00 */
+    TEST_ASSERT_EQUAL_UINT8(0xC0, mock_mqtt_tx_byte(0));
+    TEST_ASSERT_EQUAL_UINT8(0x00, mock_mqtt_tx_byte(1));
+}
+
+/* ---- test_mqtt_publish_packet_format ---- */
+void test_mqtt_publish_packet_format(void)
+{
+    const uint8_t payload[] = "hello";
+    uint8_t topic[] = "test/topic";
+
+    mqtt_init(NULL, NULL, "test_client");
+
+    int ret = mqtt_publish((const char *)topic, payload, 5, 0);
+    TEST_ASSERT_EQUAL_INT(MQTT_OK, ret);
+
+    /* Fixed header: 0x30 (PUBLISH, QoS=0) */
+    TEST_ASSERT_EQUAL_UINT8(0x30, mock_mqtt_tx_byte(0));
+
+    /* Remaining length should be 2 + 10 (topic) + 5 (payload) = 17 */
+    TEST_ASSERT_EQUAL_UINT8(17, mock_mqtt_tx_byte(1));
+
+    /* Topic length prefix: 0x00 0x0A (10 = strlen("test/topic")) */
+    TEST_ASSERT_EQUAL_UINT8(0x00, mock_mqtt_tx_byte(2));
+    TEST_ASSERT_EQUAL_UINT8(0x0A, mock_mqtt_tx_byte(3));
+
+    /* Topic string */
+    {
+        const char *expected = "test/topic";
+        uint8_t i;
+        for (i = 0; i < 10; i++) {
+            TEST_ASSERT_EQUAL_UINT8(expected[i], mock_mqtt_tx_byte(4 + i));
+        }
+    }
+
+    /* Payload */
+    {
+        const char *expected = "hello";
+        uint8_t i;
+        for (i = 0; i < 5; i++) {
+            TEST_ASSERT_EQUAL_UINT8(expected[i], mock_mqtt_tx_byte(14 + i));
+        }
+    }
+}
+
+/* ---- test_mqtt_subscribe_packet_format ---- */
+void test_mqtt_subscribe_packet_format(void)
+{
+    /* SUBACK response: 0x90 0x03 <pid_hi> <pid_lo> <return_code> */
+    uint8_t suback[] = {0x90, 0x03, 0x00, 0x01, 0x00};
+    mock_mqtt_set_rx(suback, 5);
+
+    mqtt_init(NULL, NULL, "test_client");
+
+    int ret = mqtt_subscribe("devices/+", 0);
+    TEST_ASSERT_EQUAL_INT(MQTT_OK, ret);
+
+    /* Fixed header: 0x82 (SUBSCRIBE, reserved bits = 2) */
+    TEST_ASSERT_EQUAL_UINT8(0x82, mock_mqtt_tx_byte(0));
+
+    /* Remaining length depends on topic */
+    /* Packet ID at bytes after fixed header */
+    {
+        uint32_t rl;
+        uint8_t  consumed;
+        mqtt_decode_remaining_length(mock_mqtt_tx_buf + 1, &rl, &consumed);
+        uint16_t pid_off = (uint16_t)(1 + consumed);
+        /* Packet ID = 1 (first packet) */
+        TEST_ASSERT_EQUAL_UINT8(0x00, mock_mqtt_tx_byte(pid_off));
+        TEST_ASSERT_EQUAL_UINT8(0x01, mock_mqtt_tx_byte(pid_off + 1));
+        /* Topic length: 0x00 0x09 (9 = strlen("devices/+")) */
+        TEST_ASSERT_EQUAL_UINT8(0x00, mock_mqtt_tx_byte(pid_off + 2));
+        TEST_ASSERT_EQUAL_UINT8(0x09, mock_mqtt_tx_byte(pid_off + 3));
+        /* Requested QoS: 0 */
+        /* Last byte before QoS: topic string length is 9, so QoS at pid_off + 2 + 2 + 9 = pid_off + 13 */
+    }
+}
+
+/* ---- test_mqtt_topic_length_prefix ---- */
+void test_mqtt_topic_length_prefix(void)
+{
+    uint8_t  buf[32];
+    uint16_t written;
+
+    /* Verify big-endian length prefix */
+    written = mqtt_build_string_field(buf, "AB");
+    TEST_ASSERT_EQUAL_UINT16(4, written);
+    /* Length = 2, MSB first */
+    TEST_ASSERT_EQUAL_UINT8(0x00, buf[0]);
+    TEST_ASSERT_EQUAL_UINT8(0x02, buf[1]);
+    TEST_ASSERT_EQUAL_UINT8('A',  buf[2]);
+    TEST_ASSERT_EQUAL_UINT8('B',  buf[3]);
+
+    /* Verify longer string */
+    written = mqtt_build_string_field(buf, "HelloWorld");
+    TEST_ASSERT_EQUAL_UINT16(12, written);
+    TEST_ASSERT_EQUAL_UINT8(0x00, buf[0]);
+    TEST_ASSERT_EQUAL_UINT8(0x0A, buf[1]);
+
+    /* Verify NULL string */
+    written = mqtt_build_string_field(buf, NULL);
+    TEST_ASSERT_EQUAL_UINT16(2, written);
+    TEST_ASSERT_EQUAL_UINT8(0x00, buf[0]);
+    TEST_ASSERT_EQUAL_UINT8(0x00, buf[1]);
+}
+
+/* ---- test_mqtt_topic_wildcard_match ---- */
+void test_mqtt_topic_wildcard_match(void)
+{
+    /* Exact match */
+    TEST_ASSERT_EQUAL_INT(1, mqtt_topic_match("a/b/c", "a/b/c"));
+    TEST_ASSERT_EQUAL_INT(0, mqtt_topic_match("a/b/c", "a/b/d"));
+    TEST_ASSERT_EQUAL_INT(0, mqtt_topic_match("a/b/c", "a/b/c/d"));
+
+    /* Single-level wildcard + */
+    TEST_ASSERT_EQUAL_INT(1, mqtt_topic_match("a/+/c", "a/b/c"));
+    TEST_ASSERT_EQUAL_INT(1, mqtt_topic_match("a/+/c", "a/xyz/c"));
+    TEST_ASSERT_EQUAL_INT(0, mqtt_topic_match("a/+/c", "a/b/d"));
+    TEST_ASSERT_EQUAL_INT(0, mqtt_topic_match("a/+/c", "a/b/c/d"));
+
+    /* Multi-level wildcard # */
+    TEST_ASSERT_EQUAL_INT(1, mqtt_topic_match("a/b/#", "a/b/c"));
+    TEST_ASSERT_EQUAL_INT(1, mqtt_topic_match("a/b/#", "a/b/c/d"));
+    TEST_ASSERT_EQUAL_INT(1, mqtt_topic_match("a/b/#", "a/b/c/d/e"));
+    TEST_ASSERT_EQUAL_INT(1, mqtt_topic_match("#", "a/b/c"));
+    TEST_ASSERT_EQUAL_INT(0, mqtt_topic_match("a/b/#", "a/c/d"));
+
+    /* + matches exactly one level */
+    TEST_ASSERT_EQUAL_INT(1, mqtt_topic_match("+/+/+", "a/b/c"));
+    TEST_ASSERT_EQUAL_INT(0, mqtt_topic_match("+/+", "a/b/c"));
+
+    /* devices/+ matches devices/led */
+    TEST_ASSERT_EQUAL_INT(1, mqtt_topic_match("devices/+", "devices/led"));
+    TEST_ASSERT_EQUAL_INT(1, mqtt_topic_match("devices/+", "devices/pump"));
+    TEST_ASSERT_EQUAL_INT(0, mqtt_topic_match("devices/+", "sensors/temp"));
+}
+
+/* ---- test_mqtt_disconnect_packet ---- */
+void test_mqtt_disconnect_packet(void)
+{
+    mqtt_init(NULL, NULL, "test_client");
+    mqtt_disconnect();
+
+    /* DISCONNECT is 0xE0 0x00 */
+    TEST_ASSERT_EQUAL_UINT8(0xE0, mock_mqtt_tx_byte(0));
+    TEST_ASSERT_EQUAL_UINT8(0x00, mock_mqtt_tx_byte(1));
+}
+
+/* ---- test_mqtt_connect_with_credentials ---- */
+void test_mqtt_connect_with_credentials(void)
+{
+    uint8_t connack[] = {0x20, 0x02, 0x00, 0x00};
+    mock_mqtt_set_rx(connack, 4);
+
+    mqtt_init(NULL, NULL, "dev01");
+
+    int ret = mqtt_connect("admin", "secret", 120);
+    TEST_ASSERT_EQUAL_INT(MQTT_OK, ret);
+
+    /* Verify connect flags: clean(0x02) + username(0x80) + password(0x40) = 0xC2 */
+    {
+        uint32_t rl;
+        uint8_t  consumed;
+        mqtt_decode_remaining_length(mock_mqtt_tx_buf + 1, &rl, &consumed);
+        uint16_t vh_offset = (uint16_t)(1 + consumed);
+        /* Protocol level (vh_offset + 6), connect flags (vh_offset + 7) */
+        TEST_ASSERT_EQUAL_UINT8(0xC2, mock_mqtt_tx_byte(vh_offset + 7));
+        /* Keep alive: 120 -> 0x00 0x78 */
+        TEST_ASSERT_EQUAL_UINT8(0x00, mock_mqtt_tx_byte(vh_offset + 8));
+        TEST_ASSERT_EQUAL_UINT8(0x78, mock_mqtt_tx_byte(vh_offset + 9));
+    }
+}
+
+/* ---- test_mqtt_connect_timeout ---- */
+void test_mqtt_connect_timeout(void)
+{
+    /* Empty RX buffer -> timeout */
+    mock_mqtt_set_rx(NULL, 0);
+
+    mqtt_init(NULL, NULL, "test_client");
+
+    int ret = mqtt_connect(NULL, NULL, 60);
+    TEST_ASSERT_EQUAL_INT(MQTT_TIMEOUT, ret);
+}
+
+/* ---- test_mqtt_register_callback_max ---- */
+void test_mqtt_register_callback_max(void)
+{
+    int  i;
+    int  ret;
+    char topic[16];
+
+    mqtt_init(NULL, NULL, "test_client");
+
+    /* Register MQTT_MAX_CALLBACKS callbacks */
+    for (i = 0; i < MQTT_MAX_CALLBACKS; i++) {
+        snprintf(topic, sizeof(topic), "topic/%d", i);
+        ret = mqtt_register_callback(topic, (mqtt_msg_cb_t)(uintptr_t)(i + 1));
+        TEST_ASSERT_EQUAL_INT(MQTT_OK, ret);
+    }
+
+    /* Next registration should fail */
+    ret = mqtt_register_callback("topic/extra", (mqtt_msg_cb_t)0x1234);
+    TEST_ASSERT_EQUAL_INT(MQTT_ERROR, ret);
+}
+
+/* ---- test_mqtt_register_callback_null ---- */
+void test_mqtt_register_callback_null(void)
+{
+    mqtt_init(NULL, NULL, "test_client");
+
+    /* NULL topic */
+    TEST_ASSERT_EQUAL_INT(MQTT_ERROR, mqtt_register_callback(NULL,
+                          (mqtt_msg_cb_t)0x1234));
+
+    /* NULL callback */
+    TEST_ASSERT_EQUAL_INT(MQTT_ERROR, mqtt_register_callback("topic", NULL));
+
+    /* Both NULL */
+    TEST_ASSERT_EQUAL_INT(MQTT_ERROR, mqtt_register_callback(NULL, NULL));
+}
+
+/* ---- test_mqtt_publish_qos1_adds_packet_id ---- */
+void test_mqtt_publish_qos1_adds_packet_id(void)
+{
+    const uint8_t payload[] = "data";
+
+    mqtt_init(NULL, NULL, "test_client");
+
+    int ret = mqtt_publish("test", payload, 4, 1);
+    TEST_ASSERT_EQUAL_INT(MQTT_OK, ret);
+
+    /* Fixed header: 0x32 (PUBLISH, QoS=1, flags=0x02) */
+    TEST_ASSERT_EQUAL_UINT8(0x32, mock_mqtt_tx_byte(0));
+}
+
+/* ---- test_mqtt_publish_null_params ---- */
+void test_mqtt_publish_null_params(void)
+{
+    mqtt_init(NULL, NULL, "test_client");
+
+    /* NULL topic */
+    TEST_ASSERT_EQUAL_INT(MQTT_ERROR,
+                          mqtt_publish(NULL, (const uint8_t *)"data", 4, 0));
+
+    /* NULL payload */
+    TEST_ASSERT_EQUAL_INT(MQTT_ERROR,
+                          mqtt_publish("test", NULL, 4, 0));
+}
+
+/* ---- test_mqtt_subscribe_null_topic ---- */
+void test_mqtt_subscribe_null_topic(void)
+{
+    mqtt_init(NULL, NULL, "test_client");
+
+    TEST_ASSERT_EQUAL_INT(MQTT_ERROR, mqtt_subscribe(NULL, 0));
+}
+
+/* ---- test_mqtt_connect_no_client_id ---- */
+void test_mqtt_connect_no_client_id(void)
+{
+    mqtt_init(NULL, NULL, NULL);
+
+    int ret = mqtt_connect(NULL, NULL, 60);
+    TEST_ASSERT_EQUAL_INT(MQTT_ERROR, ret);
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+
+    RUN_TEST(test_mqtt_remaining_length_encode_0_127);
+    RUN_TEST(test_mqtt_remaining_length_encode_128_16383);
+    RUN_TEST(test_mqtt_remaining_length_encode_16384_2097151);
+    RUN_TEST(test_mqtt_remaining_length_encode_boundary_127);
+    RUN_TEST(test_mqtt_connect_packet_format);
+    RUN_TEST(test_mqtt_connack_parse_success);
+    RUN_TEST(test_mqtt_connack_parse_refused);
+    RUN_TEST(test_mqtt_pingreq_packet);
+    RUN_TEST(test_mqtt_publish_packet_format);
+    RUN_TEST(test_mqtt_subscribe_packet_format);
+    RUN_TEST(test_mqtt_topic_length_prefix);
+    RUN_TEST(test_mqtt_topic_wildcard_match);
+    RUN_TEST(test_mqtt_disconnect_packet);
+    RUN_TEST(test_mqtt_connect_with_credentials);
+    RUN_TEST(test_mqtt_connect_timeout);
+    RUN_TEST(test_mqtt_register_callback_max);
+    RUN_TEST(test_mqtt_register_callback_null);
+    RUN_TEST(test_mqtt_publish_qos1_adds_packet_id);
+    RUN_TEST(test_mqtt_publish_null_params);
+    RUN_TEST(test_mqtt_subscribe_null_topic);
+    RUN_TEST(test_mqtt_connect_no_client_id);
+
+    return UNITY_END();
+}

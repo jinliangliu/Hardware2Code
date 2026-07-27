@@ -30,15 +30,15 @@
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /* Hook functions */
-#define configUSE_IDLE_HOOK                     1
+#define configUSE_IDLE_HOOK                     0
 #define configUSE_TICK_HOOK                     0
 #define configUSE_MALLOC_FAILED_HOOK            0
 #define configUSE_DAEMON_TASK_STARTUP_HOOK      0
 
 /* Run time and task stats */
 #define configGENERATE_RUN_TIME_STATS           0
-#define configUSE_TRACE_FACILITY                0
-#define configUSE_STATS_FORMATTING_FUNCTIONS    0
+#define configUSE_TRACE_FACILITY                1
+#define configUSE_STATS_FORMATTING_FUNCTIONS    1
 
 /* Co-routines */
 #define configUSE_CO_ROUTINES                   0
@@ -47,7 +47,7 @@
 /* MPU support (required by Cortex-M0+ port) */
 #define configENABLE_MPU                        0
 
-/* Low power - use Idle Hook instead of Tickless for MVP */
+/* Low power - Tickless idle with RTC wake-up */
 #define configUSE_TICKLESS_IDLE                 0
 
 /* Interrupt nesting */

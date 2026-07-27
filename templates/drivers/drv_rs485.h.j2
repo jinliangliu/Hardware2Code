@@ -1,0 +1,16 @@
+#ifndef __DRV_{{ peripheral.name | upper }}_H
+#define __DRV_{{ peripheral.name | upper }}_H
+
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#endif
+
+void rs485_init(UART_HandleTypeDef *huart, GPIO_TypeDef *de_gpio, uint16_t de_pin);
+void rs485_set_tx(void);
+void rs485_set_rx(void);
+void rs485_send(uint8_t *data, uint16_t len);
+void rs485_recv(uint8_t *data, uint16_t len, uint32_t timeout);
+
+#endif

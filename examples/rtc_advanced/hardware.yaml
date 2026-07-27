@@ -14,6 +14,9 @@ pins:
       enable: true
       trigger: falling
     notify_task: "led_task"
+log:
+  enable: true
+
 sleep:
   mode: STOP1
 app_tasks:

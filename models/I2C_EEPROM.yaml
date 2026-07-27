@@ -1,0 +1,18 @@
+model: "I2C_EEPROM"
+type: "I2C_EEPROM"
+interface: "I2C"
+driver_template: "drivers/drv_eeprom.c.j2"
+header_template: "drivers/drv_eeprom.h.j2"
+page_size: 32
+total_size: 32768
+i2c_addr: 0x50
+extra_schema:
+  i2c_addr:
+    type: "int"
+    required: false
+  page_size:
+    type: "int"
+    required: false
+  total_size:
+    type: "int"
+    required: false

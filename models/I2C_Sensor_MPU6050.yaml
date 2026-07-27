@@ -1,6 +1,7 @@
 model: "MPU6050"
 type: "I2C_Sensor"
 interface: "I2C"
+address: 0x68
 driver_template: "drivers/drv_i2c_mpu6050.c.j2"
 header_template: "drivers/drv_i2c_mpu6050.h.j2"
 init_sequence:

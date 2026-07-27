@@ -1,10 +1,8 @@
 #ifdef TEST
 #include "mock_hal.h"
-#include "drv_rtc.h"
 #else
 #include "FreeRTOS.h"
 #include "task.h"
-#include "drv_rtc.h"
 #endif
 
 #include "statemachine.h"

@@ -6,13 +6,14 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "drv_log.h"
 #endif
 
 #include "drv_rtc.h"
 #include "event_mgr.h"
 
 /* Private handle */
-static RTC_HandleTypeDef hrtc;
+RTC_HandleTypeDef hrtc;
 
 /* RTC tick 间隔 (毫秒) - 必须与 RTC_WakeUp_Config 配置的唤醒周期一致 */
 #define RTC_TICK_INTERVAL_MS    100
@@ -152,6 +153,16 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     event_t evt = { .id = EVENT_RTC_TICK, .param = 0 };
     xQueueSendFromISR(event_queue, &evt, &xHigherPriorityTaskWoken);
+    /* Periodic log: print RTC time every 10 ticks (1 second) */
+    {
+        static uint32_t tick_count = 0;
+        if (++tick_count >= 10) {
+            tick_count = 0;
+            rtc_time_t now;
+            RTC_GetTime(&now);
+            log_info("RTC: %02d:%02d:%02d", (int)now.hour, (int)now.min, (int)now.sec);
+        }
+    }
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 

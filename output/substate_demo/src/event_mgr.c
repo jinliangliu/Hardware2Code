@@ -9,6 +9,7 @@
 
 #include "event_mgr.h"
 
+
 #ifndef TEST
 #include "statemachine.h"
 #endif
@@ -36,9 +37,8 @@ void EventMgr_Task(void *pvParameters)
 #ifndef TEST
             if (evt.id == EVENT_RTC_TICK) {
                 RTC_ProcessTimers();
-            } else {
-                statemachine_process(&evt);
             }
+            statemachine_process(&evt);
 #else
             /* 测试模式：仅标记事件已处理 */
             (void)evt;

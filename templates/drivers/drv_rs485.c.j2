@@ -1,0 +1,75 @@
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#endif
+#include "drv_{{ peripheral.name }}.h"
+
+#ifndef TEST
+static UART_HandleTypeDef *huart_ptr;
+static GPIO_TypeDef *de_port;
+static uint16_t de_pin;
+#endif
+
+void rs485_init(UART_HandleTypeDef *huart, GPIO_TypeDef *de_gpio, uint16_t de_gpio_pin)
+{
+#ifndef TEST
+    huart_ptr = huart;
+    de_port = de_gpio;
+    de_pin = de_gpio_pin;
+    /* DE low = receive mode by default */
+    HAL_GPIO_WritePin(de_port, de_pin, GPIO_PIN_RESET);
+#else
+    (void)huart;
+    (void)de_gpio;
+    (void)de_gpio_pin;
+    mock_HAL_GPIO_WritePin_set(0, GPIO_PIN_RESET);
+#endif
+}
+
+void rs485_set_tx(void)
+{
+#ifndef TEST
+    HAL_GPIO_WritePin(de_port, de_pin, GPIO_PIN_SET);
+#else
+    mock_HAL_GPIO_WritePin_set(0, GPIO_PIN_SET);
+#endif
+}
+
+void rs485_set_rx(void)
+{
+#ifndef TEST
+    HAL_GPIO_WritePin(de_port, de_pin, GPIO_PIN_RESET);
+#else
+    mock_HAL_GPIO_WritePin_set(0, GPIO_PIN_RESET);
+#endif
+}
+
+void rs485_send(uint8_t *data, uint16_t len)
+{
+#ifndef TEST
+    rs485_set_tx();
+    HAL_UART_Transmit(huart_ptr, data, len, 100);
+    /* Wait for TC before switching back to RX */
+    while (__HAL_UART_GET_FLAG(huart_ptr, UART_FLAG_TC) == RESET);
+    rs485_set_rx();
+#else
+    (void)data;
+    (void)len;
+    rs485_set_tx();
+    HAL_UART_Transmit(NULL, data, len, 100);
+    rs485_set_rx();
+#endif
+}
+
+void rs485_recv(uint8_t *data, uint16_t len, uint32_t timeout)
+{
+#ifndef TEST
+    HAL_UART_Receive(huart_ptr, data, len, timeout);
+#else
+    (void)data;
+    (void)len;
+    (void)timeout;
+    HAL_UART_Receive(NULL, data, len, timeout);
+#endif
+}

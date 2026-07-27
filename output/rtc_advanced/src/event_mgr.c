@@ -10,6 +10,10 @@
 #include "event_mgr.h"
 
 #ifndef TEST
+#include "drv_log.h"
+#endif
+
+#ifndef TEST
 #include "statemachine.h"
 #endif
 
@@ -34,6 +38,7 @@ void EventMgr_Task(void *pvParameters)
     while(1) {
         if( xQueueReceive(event_queue, &evt, portMAX_DELAY) == pdTRUE ) {
 #ifndef TEST
+            log_debug("EventMgr: dispatching event #%d", (int)evt.id);
             if (evt.id == EVENT_RTC_TICK) {
                 RTC_ProcessTimers();
             }

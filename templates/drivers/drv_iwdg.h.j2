@@ -7,8 +7,8 @@
 #include <stdint.h>
 #endif
 
-/* IWDG timeout in milliseconds (derived from peripheral.wdg_timeout_ms) */
-#define IWDG_TIMEOUT_MS     {{ peripheral.wdg_timeout_ms | default(5000) }}U
+/* IWDG timeout in milliseconds (derived from peripheral.wdg_timeout_ms, default 5000) */
+#define IWDG_TIMEOUT_MS     {{ peripheral.get('wdg_timeout_ms', 5000) }}U
 
 /**
  * @brief   Initialize the Independent Watchdog (IWDG)

@@ -1,0 +1,38 @@
+model: "MQTT_311"
+type: "Protocol_MQTT"
+interface: "protocol"
+driver_template: "drivers/drv_mqtt.c.j2"
+header_template: "drivers/drv_mqtt.h.j2"
+capabilities:
+  - mqtt_connect
+  - mqtt_publish
+  - mqtt_subscribe
+  - mqtt_ping
+  - mqtt_auto_reconnect
+default_params:
+  keep_alive_s: 60
+  qos: 0
+extra_schema:
+  bearer:
+    type: str
+    required: true
+  broker:
+    type: str
+    required: true
+  port:
+    type: int
+    required: false
+    default: 1883
+  client_id:
+    type: str
+    required: true
+  username:
+    type: str
+    required: false
+  password:
+    type: str
+    required: false
+  keep_alive_s:
+    type: int
+    required: false
+    default: 60

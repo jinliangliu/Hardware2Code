@@ -1,9 +1,16 @@
 #include "stm32g0xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
 
 /* Include driver headers for each peripheral */
 #include "drv_mpu6050.h"
+
+/* Include event manager header (always present) */
+#include "event_mgr.h"
+
+
+
 
 /* GPIO initialization function */
 void MX_GPIO_Init(void);
@@ -15,6 +22,10 @@ void MX_GPIO_Init(void);
 /* ------- I2C Handles (if I2C peripherals are used) ------- */
 I2C_HandleTypeDef hi2c1;
 
+/* ------- SPI Handles (if SPI peripherals are used) ------- */
+
+/* ------- UART Handles (if UART peripherals are used) ------- */
+
 /* ------- Task handles ------- */
 TaskHandle_t mpu6050_alert_task_handle = NULL;
 TaskHandle_t led_task_handle = NULL;
@@ -23,7 +34,9 @@ TaskHandle_t led_task_handle = NULL;
 void mpu6050_alert_task(void *pvParameters);
 void led_task(void *pvParameters);
 
-/* ------- System clock configuration (HSI 16MHz) ------- */
+
+
+/* ------- System clock configuration (HSI 16MHz default) ------- */
 void SystemClock_Config(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -40,17 +53,13 @@ void SystemClock_Config(void)
     RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
     if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) while(1);
-
-    HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000);
-    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-    HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 }
 
 /* ------- I2C initialization (if peripherals with I2C are present) ------- */
 static void MX_I2C1_Init(void)
 {
     hi2c1.Instance = I2C1;
-    hi2c1.Init.Timing = 0x2000090E;
+    hi2c1.Init.Timing = 0x2000090E;  // 100kHz standard mode (adjust if needed)
     hi2c1.Init.OwnAddress1 = 0;
     hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
     hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -58,82 +67,87 @@ static void MX_I2C1_Init(void)
     hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
     hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
     if (HAL_I2C_Init(&hi2c1) != HAL_OK) while(1);
-    /* Analog filter is enabled by default; no explicit call needed */
 }
 
-{% for p in peripherals %}
-{% if p.type == 'Internal_RTC' %}
-#include "drv_{{ p.name }}.h"
-{% endif %}
-{% endfor %}
+/* ------- SPI initialization (if peripherals with SPI are present) ------- */
+
+/* ------- UART initialization (if UART peripherals are present) ------- */
 
 /* ------- Main ------- */
 int main(void)
 {
     HAL_Init();
+
+    /* 使能调试模块在 STOP 模式下的时钟，保持 SWD 连接 */
+    DBG->CR |= DBG_CR_DBG_STOP;
+
     SystemClock_Config();
+
+    /* 系统时钟配置完成后，重新初始化 HAL 时基（TIM14），
+       确保 HAL_GetTick() 使用正确的时钟频率。
+       RTC_WakeUp_Config 内部调用 HAL_RTCEx_SetWakeUpTimer_IT 会用到 HAL_GetTick */
+    HAL_InitTick(TICK_INT_PRIORITY);
+
+
+    /* Initialize all configured peripherals */
     MX_GPIO_Init();
 
-    /* Initialize I2C and peripherals */
+
+    /* Initialize the event manager */
+    EventMgr_Init();
+
+    
+    /* Initialize I2C and internal peripherals */
     MX_I2C1_Init();
-    mpu6050_init(&hi2c1);
+mpu6050_init(&hi2c1);
 
-    /* Initialize internal peripherals */
-    {% for p in peripherals %}
-    {% if p.type == 'Internal_RTC' %}
-    RTC_Init();
-    {% endif %}
-    {% endfor %}
 
-    /* Create application tasks */
+
+    /* Create application tasks (user-defined) */
     xTaskCreate( mpu6050_alert_task, "mpu6050_alert_task", 512, NULL, 3, &mpu6050_alert_task_handle );
     xTaskCreate( led_task, "led_task", 128, NULL, 2, &led_task_handle );
 
-    /* Create application tasks */
-    {% for task in app_tasks %}
-    xTaskCreate( {{ task.name }}, "{{ task.name }}", {{ task.stack_size | default(128) }}, NULL, {{ task.priority }}, &{{ task.name }}_handle );
-    {% endfor %}
 
-    /* Create RTC timer service task (if RTC used) */
-    {% set has_rtc = peripherals | selectattr('type', 'equalto', 'Internal_RTC') | list %}
-    {% if has_rtc %}
-    TaskHandle_t rtc_svc_handle;
-    xTaskCreate(RTC_TimerServiceTask, "rtc_timer_svc", 256, NULL, 4, &rtc_svc_handle);
-    {% endif %}
+
+
+
+    /* Create the central event manager task (highest priority) */
+    xTaskCreate(EventMgr_Task, "event_mgr", 512, NULL, configMAX_PRIORITIES - 1, NULL);
+
+
+
+    /* Enable DBGMCU clock and keep debug interface active during STOP mode */
+    __HAL_RCC_DBGMCU_CLK_ENABLE();
+    HAL_DBGMCU_EnableDBGStopMode();
 
     vTaskStartScheduler();
     while(1);
 }
 
-/* ------- Task implementations (auto-generated from app_tasks) ------- */
-/* Task implementations ... */
-/* Add a sample task using RTC timer:
-void rtc_led_task(void *pvParameters)
-{
-    while(1) {
-        HAL_GPIO_TogglePin(LED_GPIO_Port, LED_GPIO_Pin);
-        vTaskDelay(1000);
-    }
-}
-*/
-
+/* ------- Task implementations ------- */
 void mpu6050_alert_task(void *pvParameters)
 {
-    /* Example: read accelerometer and toggle LED if X axis exceeds threshold */
     mpu6050_data_t sensor_data;
     while(1) {
         mpu6050_read(&sensor_data);
         if (sensor_data.accel_x > 1.0f || sensor_data.accel_x < -1.0f) {
-            xTaskNotify( led_task_handle, 0, eSetBits );
+            event_t evt = { .id = EVENT_MPU6050_ALERT, .param = 0 };
+            xQueueSend(event_queue, &evt, 0);
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 void led_task(void *pvParameters)
 {
-    uint32_t ulNotifiedValue;
     while(1) {
-        xTaskNotifyWait( 0x00, 0xFFFFFFFF, &ulNotifiedValue, portMAX_DELAY );
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         HAL_GPIO_TogglePin( LED_GPIO_Port, LED_GPIO_Pin );
     }
 }
+
+void led_task_notify(void) {
+    if (led_task_handle) {
+        xTaskNotifyGive(led_task_handle);
+    }
+}
+

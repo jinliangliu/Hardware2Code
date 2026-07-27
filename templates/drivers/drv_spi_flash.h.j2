@@ -1,12 +1,32 @@
 #ifndef __DRV_{{ peripheral.name | upper }}_H
 #define __DRV_{{ peripheral.name | upper }}_H
 
+#ifdef TEST
+#include "mock_hal.h"
+#else
 #include "stm32g0xx_hal.h"
-
-void {{ peripheral.name }}_init(SPI_HandleTypeDef *hspi);
-void {{ peripheral.name }}_read_id(uint8_t *id);
-void {{ peripheral.name }}_read_data(uint32_t addr, uint8_t *buf, uint32_t len);
-void {{ peripheral.name }}_sector_erase(uint32_t addr);
-void {{ peripheral.name }}_write_data(uint32_t addr, const uint8_t *buf, uint32_t len);
-
 #endif
+
+#include <stdint.h>
+
+/* Command constants */
+#define SPI_FLASH_CMD_READ_ID        ((uint8_t){{ model.commands.READ_ID }})
+#define SPI_FLASH_CMD_READ_DATA      ((uint8_t){{ model.commands.READ_DATA }})
+#define SPI_FLASH_CMD_WRITE_ENABLE   ((uint8_t){{ model.commands.WRITE_ENABLE }})
+#define SPI_FLASH_CMD_SECTOR_ERASE   ((uint8_t){{ model.commands.SECTOR_ERASE }})
+#define SPI_FLASH_CMD_CHIP_ERASE     ((uint8_t){{ model.commands.CHIP_ERASE }})
+#define SPI_FLASH_CMD_PAGE_PROGRAM   ((uint8_t)0x02)
+
+/* Flash geometry */
+#define SPI_FLASH_SECTOR_SIZE        {{ model.sector_size }}U
+#define SPI_FLASH_PAGE_SIZE          {{ model.get('page_size', 256) }}U
+#define SPI_FLASH_TOTAL_SIZE         {{ model.total_size }}U
+
+/* SPI Flash API */
+int spi_flash_init(SPI_HandleTypeDef *hspi);
+int spi_flash_read(uint32_t addr, uint8_t *buf, uint32_t len);
+int spi_flash_write(uint32_t addr, const uint8_t *buf, uint32_t len);
+int spi_flash_erase_sector(uint32_t addr);
+int spi_flash_get_id(uint8_t *id);
+
+#endif /* __DRV_{{ peripheral.name | upper }}_H */

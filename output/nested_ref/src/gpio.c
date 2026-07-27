@@ -8,6 +8,9 @@ void MX_GPIO_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
+    /* SYSCFG clock must be enabled for EXTI line mapping (STM32G0) */
+    __HAL_RCC_SYSCFG_CLK_ENABLE();
+
     /* LED (PC0) */
     __HAL_RCC_GPIOC_CLK_ENABLE();
     GPIO_InitStruct.Pin = GPIO_PIN_0;

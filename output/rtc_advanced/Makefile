@@ -106,7 +106,7 @@ INCLUDES  = \
 
 # Compiler / Linker flags
 CFLAGS   = $(MCU_FLAGS) $(CPU_DEFINE) $(CLOCK_DEFINE) \
-           -Os -g3 -Wall -fdata-sections -ffunction-sections \
+           -Og -g3 -Wall -fdata-sections -ffunction-sections \
            $(INCLUDES) -DSTM32G0B1xx -DUSE_HAL_DRIVER
 
 # ---------------------------------------------------------------------------

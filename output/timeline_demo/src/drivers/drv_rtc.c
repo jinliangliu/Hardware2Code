@@ -12,7 +12,7 @@
 #include "event_mgr.h"
 
 /* Private handle */
-static RTC_HandleTypeDef hrtc;
+RTC_HandleTypeDef hrtc;
 
 /* RTC tick 间隔 (毫秒) - 必须与 RTC_WakeUp_Config 配置的唤醒周期一致 */
 #define RTC_TICK_INTERVAL_MS    100
@@ -277,6 +277,8 @@ void RTC_ProcessTimers(void)
 {
     rtc_timer_t *t = timer_head;
     while (t) {
+        /* 提前保存下一个节点，防止回调中删除当前定时器导致 use-after-free */
+        rtc_timer_t *next = t->next;
         if (t->remaining_ms > 0) {
             if (t->remaining_ms <= RTC_TICK_INTERVAL_MS) {
                 t->remaining_ms = 0;
@@ -287,7 +289,7 @@ void RTC_ProcessTimers(void)
                 t->remaining_ms -= RTC_TICK_INTERVAL_MS;
             }
         }
-        t = t->next;
+        t = next;
     }
 }
 

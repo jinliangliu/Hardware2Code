@@ -18,15 +18,14 @@ typedef enum {
     EVENT_RTC_TICK,
     EVENT_RETURN,   /* 子状态返回事件 */
 
-/* ========== 动态定时器事件（由模板自动收集） ========== */
-
-
-
-    EVENT_TIMER_EXPIRED_defer_0,
+/* ========== 动态定时器事件（由 context builder 预计算） ========== */
     EVENT_TIMER_EXPIRED_IDLE_timeout,
+    EVENT_TIMER_EXPIRED_defer_0,
     EVENT_TIMER_EXPIRED_exit_timer,
 
-/* ========== 动态发布事件（由生成器提供） ========== */
+/* ========== 动态发布事件（由 context builder 预计算） ========== */
+
+/* ========== 业务流转换事件（来自 YAML transitions 的 event 字段） ========== */
 
     EVENT_MAX
 } event_id_t;

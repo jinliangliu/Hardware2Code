@@ -4,6 +4,7 @@ venv/
 # Python Cache
 __pycache__/
 *.pyc
+.pytest_cache/
 *.venv
 anaconda3/
 

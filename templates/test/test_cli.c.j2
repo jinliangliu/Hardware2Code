@@ -1,0 +1,624 @@
+{#
+    test_cli.c.j2 - CLI debug shell unit test template
+    Tests ring buffer, tokenizer, command table, output capture,
+    and full command pipeline (inject → process → verify).
+#}
+#include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
+#include <stdio.h>
+
+/*
+ * UART_HandleTypeDef is typedef void in mock_hal.h — cannot declare
+ * a variable of that type. Use an int for storage and pass its address.
+ */
+static int mock_huart_storage;
+
+/* Include CLI source under test to access all static functions */
+#include "../src/drivers/drv_cli.c"
+
+/* ==================================================================
+ *  Test injection & processing helpers
+ *  (defined AFTER drv_cli.c include to access static vars/funcs)
+ * ================================================================== */
+
+/* Line buffer state for simulating cli_task's inner loop */
+static char   test_line_buf[CLI_MAX_CMD_LEN + 1];
+static uint16_t test_line_pos = 0;
+static char  *test_argv_data[CLI_MAX_ARGS + 1];
+
+static void cli_test_inject_char(uint8_t c)
+{
+    cli_rx_byte = c;
+    HAL_UART_RxCpltCallback(&mock_huart_storage);
+}
+
+static void cli_test_inject_str(const char *str)
+{
+    while (*str) {
+        cli_test_inject_char((uint8_t)(*str));
+        str++;
+    }
+}
+
+/**
+ * @brief  Simulate one pass of cli_task's inner loop:
+ *         take semaphore, drain ring buffer, process up to one
+ *         complete command (stopping at the first \r or \n).
+ */
+static void cli_test_simulate_one_command(void)
+{
+    if (xSemaphoreTake(cli_rx_sem, pdMS_TO_TICKS(0)) == pdTRUE) {
+        int c;
+        while ((c = ringbuf_get()) >= 0) {
+            if (c == '\r' || c == '\n') {
+                test_line_buf[test_line_pos] = '\0';
+                if (test_line_pos > 0) {
+                    int argc = cli_tokenize(test_line_buf,
+                                            test_argv_data,
+                                            CLI_MAX_ARGS);
+                    if (argc > 0) {
+                        cli_command_t *cmd = cli_find_command(test_argv_data[0]);
+                        if (cmd) {
+                            cmd->handler(argc, test_argv_data, cli_output);
+                        } else {
+                            cli_output("Unknown command: %s. "
+                                       "Type 'help' for available commands.\r\n",
+                                       test_argv_data[0]);
+                        }
+                    }
+                }
+                test_line_pos = 0;
+                return;
+            } else if (c == 0x08 || c == 0x7F) {
+                /* Backspace / DEL */
+                if (test_line_pos > 0) {
+                    test_line_pos--;
+                }
+            } else if (c >= 0x20 && c <= 0x7E) {
+                /* Printable ASCII */
+                if (test_line_pos < CLI_MAX_CMD_LEN) {
+                    test_line_buf[test_line_pos++] = (char)c;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * @brief  Inject a complete command string (without \r\n) and simulate
+ *         processing once (one command dispatched).
+ */
+static void cli_test_inject_and_process(const char *cmd)
+{
+    char full_cmd[CLI_MAX_CMD_LEN + 4];
+    snprintf(full_cmd, sizeof(full_cmd), "%s\r\n", cmd);
+    cli_test_inject_str(full_cmd);
+    cli_test_simulate_one_command();
+}
+
+/**
+ * @brief  Retrieve captured UART TX output as a null-terminated C string.
+ */
+static const char *cli_test_get_output(void)
+{
+    uint8_t *buf;
+    uint16_t len;
+    mock_HAL_UART_Transmit_get_tx_data(&buf, &len);
+    static char str_buf[MOCK_UART_TX_BUF_SIZE + 1];
+    if (len > MOCK_UART_TX_BUF_SIZE) len = MOCK_UART_TX_BUF_SIZE;
+    memcpy(str_buf, buf, len);
+    str_buf[len] = '\0';
+    return str_buf;
+}
+
+/* ==================================================================
+ *  Custom command handler for registration test
+ * ================================================================== */
+static bool custom_cmd_called = false;
+
+static void dummy_cmd_handler(int argc, char *argv[], cli_output_fn out)
+{
+    (void)argc; (void)argv;
+    custom_cmd_called = true;
+    out("custom handler: OK\r\n");
+}
+
+/* ==================================================================
+ *  setUp / tearDown
+ * ================================================================== */
+
+void setUp(void)
+{
+    mock_HAL_UART_Transmit_reset();
+    mock_HAL_GPIO_WritePin_reset();
+    mock_NVIC_SystemReset_reset();
+    mock_task_set_tick_count(5000);
+    test_line_pos = 0;
+    memset(test_line_buf, 0, sizeof(test_line_buf));
+    custom_cmd_called = false;
+    /* Reset command table to prevent cross-test pollution */
+    cli_cmd_count = 0;
+    memset(cli_commands, 0, sizeof(cli_commands));
+    /* Reset ring buffer to prevent stale chars leaking between tests */
+    cli_ringbuf_head = 0;
+    cli_ringbuf_tail = 0;
+    cli_init(&mock_huart_storage);
+}
+
+void tearDown(void)
+{
+    /* Nothing */
+}
+
+/* ==================================================================
+ *  Ring Buffer Tests
+ * ================================================================== */
+
+void test_ringbuf_put_get_basic(void)
+{
+    TEST_ASSERT_TRUE(ringbuf_put('H'));
+    TEST_ASSERT_TRUE(ringbuf_put('e'));
+    TEST_ASSERT_TRUE(ringbuf_put('y'));
+    TEST_ASSERT_EQUAL('H', ringbuf_get());
+    TEST_ASSERT_EQUAL('e', ringbuf_get());
+    TEST_ASSERT_EQUAL('y', ringbuf_get());
+}
+
+void test_ringbuf_empty_returns_negative(void)
+{
+    TEST_ASSERT_EQUAL(-1, ringbuf_get());
+}
+
+void test_ringbuf_overflow_protection(void)
+{
+    /* Fill all usable slots (CLI_RINGBUF_SIZE - 1) */
+    for (int i = 0; i < CLI_RINGBUF_SIZE - 1; i++) {
+        bool ok = ringbuf_put((uint8_t)(i & 0xFF));
+        TEST_ASSERT_TRUE(ok);
+    }
+    /* Next put must fail (buffer full) */
+    TEST_ASSERT_FALSE(ringbuf_put(0xFF));
+}
+
+void test_ringbuf_wraparound(void)
+{
+    /* Fill buffer completely */
+    for (int i = 0; i < CLI_RINGBUF_SIZE - 1; i++) {
+        ringbuf_put((uint8_t)(i & 0xFF));
+    }
+    /* Drain first 50 bytes */
+    for (int i = 0; i < 50; i++) {
+        ringbuf_get();
+    }
+    /* Put 50 more — must wrap around */
+    for (int i = 0; i < 50; i++) {
+        TEST_ASSERT_TRUE(ringbuf_put((uint8_t)((100 + i) & 0xFF)));
+    }
+    /* Verify remaining original data */
+    for (int i = 50; i < CLI_RINGBUF_SIZE - 1; i++) {
+        int val = ringbuf_get();
+        if (val < 0) break;
+        TEST_ASSERT_EQUAL((i & 0xFF), val);
+    }
+    /* Verify wrapped-around data */
+    for (int i = 0; i < 50; i++) {
+        int val = ringbuf_get();
+        if (val < 0) break;
+        TEST_ASSERT_EQUAL(((100 + i) & 0xFF), val);
+    }
+}
+
+/* ==================================================================
+ *  Tokenizer Tests
+ * ================================================================== */
+
+void test_tokenize_simple(void)
+{
+    char line[] = "cmd arg1 arg2";
+    char *argv[CLI_MAX_ARGS + 1];
+    int argc = cli_tokenize(line, argv, CLI_MAX_ARGS);
+    TEST_ASSERT_EQUAL(3, argc);
+    TEST_ASSERT_EQUAL_STRING("cmd", argv[0]);
+    TEST_ASSERT_EQUAL_STRING("arg1", argv[1]);
+    TEST_ASSERT_EQUAL_STRING("arg2", argv[2]);
+    TEST_ASSERT_NULL(argv[3]);
+}
+
+void test_tokenize_single_arg(void)
+{
+    char line[] = "cmd";
+    char *argv[CLI_MAX_ARGS + 1];
+    int argc = cli_tokenize(line, argv, CLI_MAX_ARGS);
+    TEST_ASSERT_EQUAL(1, argc);
+    TEST_ASSERT_EQUAL_STRING("cmd", argv[0]);
+    TEST_ASSERT_NULL(argv[1]);
+}
+
+void test_tokenize_empty_string(void)
+{
+    char line[] = "";
+    char *argv[CLI_MAX_ARGS + 1];
+    int argc = cli_tokenize(line, argv, CLI_MAX_ARGS);
+    TEST_ASSERT_EQUAL(0, argc);
+    TEST_ASSERT_NULL(argv[0]);
+}
+
+void test_tokenize_leading_whitespace(void)
+{
+    char line[] = "   cmd   arg  ";
+    char *argv[CLI_MAX_ARGS + 1];
+    int argc = cli_tokenize(line, argv, CLI_MAX_ARGS);
+    TEST_ASSERT_EQUAL(2, argc);
+    TEST_ASSERT_EQUAL_STRING("cmd", argv[0]);
+    TEST_ASSERT_EQUAL_STRING("arg", argv[1]);
+}
+
+void test_tokenize_max_args_limit(void)
+{
+    char line[] = "a b c d e f g h i j k l";
+    char *argv[CLI_MAX_ARGS + 1];
+    int argc = cli_tokenize(line, argv, 4);
+    TEST_ASSERT_EQUAL(4, argc);
+}
+
+/* ==================================================================
+ *  Command Table Tests
+ * ================================================================== */
+
+void test_register_and_find_command(void)
+{
+    cli_register_command("test1", "Test command 1", NULL);
+    cli_register_command("test2", "Test command 2", NULL);
+
+    cli_command_t *cmd = cli_find_command("test1");
+    TEST_ASSERT_NOT_NULL(cmd);
+    TEST_ASSERT_EQUAL_STRING("test1", cmd->name);
+
+    cmd = cli_find_command("test2");
+    TEST_ASSERT_NOT_NULL(cmd);
+    TEST_ASSERT_EQUAL_STRING("Test command 2", cmd->help);
+}
+
+void test_find_command_nonexistent(void)
+{
+    cli_command_t *cmd = cli_find_command("nonexistent");
+    TEST_ASSERT_NULL(cmd);
+}
+
+void test_register_command_overflow(void)
+{
+    /* Use static 2-D array so each command name has stable storage
+     * (plain local char[] would leave all entries pointing to the
+     *  same overwritten buffer, causing a dangling-pointer bug). */
+    static char names[CLI_MAX_COMMANDS][8];
+    for (int i = 0; i < CLI_MAX_COMMANDS; i++) {
+        snprintf(names[i], sizeof(names[0]), "cmd%d", i);
+        cli_register_command(names[i], "overflow test", NULL);
+    }
+    /* 33rd register should be silently ignored */
+    cli_register_command("extra", "extra cmd", NULL);
+    /* Verify cmd0 is findable */
+    cli_command_t *cmd = cli_find_command("cmd0");
+    TEST_ASSERT_NOT_NULL(cmd);
+    /* Verify extra was NOT registered (table was full) */
+    cmd = cli_find_command("extra");
+    TEST_ASSERT_NULL(cmd);
+}
+
+/* ==================================================================
+ *  Output Tests
+ * ================================================================== */
+
+void test_cli_output_simple(void)
+{
+    cli_output("Hello World");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "Hello World") != NULL);
+}
+
+void test_cli_output_with_format(void)
+{
+    cli_output("Value: %d, Name: %s", 42, "test");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "Value: 42") != NULL);
+    TEST_ASSERT(strstr(tx, "Name: test") != NULL);
+}
+
+void test_cli_output_multiline(void)
+{
+    cli_output("Line1\r\n");
+    cli_output("Line2\r\n");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "Line1") != NULL);
+    TEST_ASSERT(strstr(tx, "Line2") != NULL);
+}
+
+/* ==================================================================
+ *  Init Test
+ * ================================================================== */
+
+void test_cli_init_no_crash(void)
+{
+    /* setUp already called cli_init. If we reach here, no crash. */
+    TEST_ASSERT_TRUE(1);
+}
+
+/* ==================================================================
+ *  Full Pipeline Tests
+ *  (inject command string → simulate processing → verify TX output)
+ * ================================================================== */
+
+void test_cli_help_shows_command_list(void)
+{
+    cli_register_builtin_commands();
+    cli_test_inject_and_process("help");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "Available commands:") != NULL);
+    TEST_ASSERT(strstr(tx, "help") != NULL);
+    TEST_ASSERT(strstr(tx, "version") != NULL);
+    TEST_ASSERT(strstr(tx, "uptime") != NULL);
+    TEST_ASSERT(strstr(tx, "free") != NULL);
+    TEST_ASSERT(strstr(tx, "tasks") != NULL);
+    TEST_ASSERT(strstr(tx, "reset") != NULL);
+{% if has_led or pins|length > 0 %}
+    TEST_ASSERT(strstr(tx, "gpio") != NULL);
+{% endif %}
+{% if has_led %}
+    TEST_ASSERT(strstr(tx, "led") != NULL);
+{% endif %}
+{% if has_rtc %}
+    TEST_ASSERT(strstr(tx, "rtc") != NULL);
+{% endif %}
+{% if has_modbus %}
+    TEST_ASSERT(strstr(tx, "modbus") != NULL);
+{% endif %}
+{% if has_cellular %}
+    TEST_ASSERT(strstr(tx, "cellular") != NULL);
+{% endif %}
+{% if has_mqtt %}
+    TEST_ASSERT(strstr(tx, "mqtt") != NULL);
+{% endif %}
+{% if has_fota %}
+    TEST_ASSERT(strstr(tx, "fota") != NULL);
+{% endif %}
+}
+
+void test_cli_unknown_command_shows_error(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("xyz_command_99");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "Unknown command: xyz_command_99") != NULL);
+}
+
+void test_cli_version_shows_build_info(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("version");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "Build:") != NULL);
+}
+
+void test_cli_free_shows_heap_size(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("free");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "4096") != NULL);
+}
+
+void test_cli_tasks_shows_task_list(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("tasks");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "cli") != NULL);
+}
+
+void test_cli_uptime_shows_time(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    mock_task_set_tick_count(3723000); /* 1h 2m 3s */
+    cli_test_inject_and_process("uptime");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "Uptime:") != NULL);
+}
+
+void test_cli_reset_triggers_system_reset(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("reset");
+    TEST_ASSERT_TRUE(mock_NVIC_SystemReset_called());
+}
+
+void test_cli_backspace_corrects_line(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    /* Type "ab", backspace, then "c", then enter.
+     * The resulting line should be "ac", which is unknown. */
+    cli_test_inject_str("ab\bc\r\n");
+    cli_test_simulate_one_command();
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "Unknown command: ac") != NULL);
+}
+
+void test_cli_empty_line_no_error(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    /* Inject just \r\n — no command to dispatch, just prompt */
+    cli_test_inject_str("\r\n");
+    cli_test_simulate_one_command();
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "Unknown command") == NULL);
+}
+
+void test_cli_custom_command_handler(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_register_command("mytest", "Custom test command", dummy_cmd_handler);
+    custom_cmd_called = false;
+    cli_test_inject_and_process("mytest");
+    TEST_ASSERT_TRUE(custom_cmd_called);
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "custom handler: OK") != NULL);
+}
+
+void test_cli_long_line_truncation(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    /* Build a command longer than CLI_MAX_CMD_LEN */
+    char long_cmd[CLI_MAX_CMD_LEN + 10];
+    memset(long_cmd, 'x', CLI_MAX_CMD_LEN + 2);
+    long_cmd[CLI_MAX_CMD_LEN + 2] = '\0';
+    cli_test_inject_str(long_cmd);
+    cli_test_inject_str("\r\n");
+    cli_test_simulate_one_command();
+    /* Should not crash */
+    TEST_ASSERT_TRUE(1);
+}
+
+/* ==================================================================
+ *  Conditional command registration tests
+ * ================================================================== */
+{% if has_rtc %}
+void test_cli_rtc_command_registered(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("help");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "rtc") != NULL);
+}
+
+void test_cli_rtc_time_subcommand(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("rtc time");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "RTC Time:") != NULL);
+}
+{% endif %}
+
+{% if has_modbus %}
+void test_cli_modbus_command_registered(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("help");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "modbus") != NULL);
+}
+{% endif %}
+
+{% if has_cellular %}
+void test_cli_cellular_command_registered(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("help");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "cellular") != NULL);
+}
+{% endif %}
+
+{% if has_mqtt %}
+void test_cli_mqtt_command_registered(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("help");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "mqtt") != NULL);
+}
+{% endif %}
+
+{% if has_fota %}
+void test_cli_fota_command_registered(void)
+{
+    cli_register_builtin_commands();
+    mock_HAL_UART_Transmit_reset();
+    cli_test_inject_and_process("help");
+    const char *tx = cli_test_get_output();
+    TEST_ASSERT(strstr(tx, "fota") != NULL);
+}
+{% endif %}
+
+/* ==================================================================
+ *  Main
+ * ================================================================== */
+
+int main(void)
+{
+    UNITY_BEGIN();
+
+    /* Ring buffer */
+    RUN_TEST(test_ringbuf_put_get_basic);
+    RUN_TEST(test_ringbuf_empty_returns_negative);
+    RUN_TEST(test_ringbuf_overflow_protection);
+    RUN_TEST(test_ringbuf_wraparound);
+
+    /* Tokenizer */
+    RUN_TEST(test_tokenize_simple);
+    RUN_TEST(test_tokenize_single_arg);
+    RUN_TEST(test_tokenize_empty_string);
+    RUN_TEST(test_tokenize_leading_whitespace);
+    RUN_TEST(test_tokenize_max_args_limit);
+
+    /* Command table */
+    RUN_TEST(test_register_and_find_command);
+    RUN_TEST(test_find_command_nonexistent);
+    RUN_TEST(test_register_command_overflow);
+
+    /* Output */
+    RUN_TEST(test_cli_output_simple);
+    RUN_TEST(test_cli_output_with_format);
+    RUN_TEST(test_cli_output_multiline);
+
+    /* Init */
+    RUN_TEST(test_cli_init_no_crash);
+
+    /* Full pipeline */
+    RUN_TEST(test_cli_help_shows_command_list);
+    RUN_TEST(test_cli_unknown_command_shows_error);
+    RUN_TEST(test_cli_version_shows_build_info);
+    RUN_TEST(test_cli_free_shows_heap_size);
+    RUN_TEST(test_cli_tasks_shows_task_list);
+    RUN_TEST(test_cli_uptime_shows_time);
+    RUN_TEST(test_cli_reset_triggers_system_reset);
+    RUN_TEST(test_cli_backspace_corrects_line);
+    RUN_TEST(test_cli_empty_line_no_error);
+    RUN_TEST(test_cli_custom_command_handler);
+    RUN_TEST(test_cli_long_line_truncation);
+
+    /* Conditional commands */
+{% if has_rtc %}
+    RUN_TEST(test_cli_rtc_command_registered);
+    RUN_TEST(test_cli_rtc_time_subcommand);
+{% endif %}
+{% if has_modbus %}
+    RUN_TEST(test_cli_modbus_command_registered);
+{% endif %}
+{% if has_cellular %}
+    RUN_TEST(test_cli_cellular_command_registered);
+{% endif %}
+{% if has_mqtt %}
+    RUN_TEST(test_cli_mqtt_command_registered);
+{% endif %}
+{% if has_fota %}
+    RUN_TEST(test_cli_fota_command_registered);
+{% endif %}
+
+    return UNITY_END();
+}

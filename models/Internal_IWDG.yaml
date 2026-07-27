@@ -1,0 +1,7 @@
+model: "STM32G0_IWDG"
+type: "Internal_IWDG"
+interface: "internal"
+driver_template: "drivers/drv_iwdg.c.j2"
+header_template: "drivers/drv_iwdg.h.j2"
+capabilities:
+  - watchdog

@@ -2,13 +2,15 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
-#include "stm32g0xx_hal_tim.h"
 
 /* Include driver headers for each peripheral */
 #include "drv_flash.h"
 
 /* Include event manager header (always present) */
 #include "event_mgr.h"
+
+
+
 
 /* GPIO initialization function */
 void MX_GPIO_Init(void);
@@ -22,6 +24,8 @@ void MX_GPIO_Init(void);
 /* ------- SPI Handles (if SPI peripherals are used) ------- */
 SPI_HandleTypeDef hspi1;
 
+/* ------- UART Handles (if UART peripherals are used) ------- */
+
 /* ------- Task handles ------- */
 TaskHandle_t flash_test_task_handle = NULL;
 TaskHandle_t led_task_handle = NULL;
@@ -29,6 +33,8 @@ TaskHandle_t led_task_handle = NULL;
 /* ------- Task prototypes ------- */
 void flash_test_task(void *pvParameters);
 void led_task(void *pvParameters);
+
+
 
 /* ------- System clock configuration (HSI 16MHz default) ------- */
 void SystemClock_Config(void)
@@ -47,10 +53,6 @@ void SystemClock_Config(void)
     RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
     if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) while(1);
-
-//    HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000);
-//    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-//    HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 }
 
 /* ------- I2C initialization (if peripherals with I2C are present) ------- */
@@ -72,6 +74,8 @@ static void MX_SPI1_Init(void)
     if (HAL_SPI_Init(&hspi1) != HAL_OK) while(1);
 }
 
+/* ------- UART initialization (if UART peripherals are present) ------- */
+
 /* ------- Main ------- */
 int main(void)
 {
@@ -80,33 +84,41 @@ int main(void)
     /* 使能调试模块在 STOP 模式下的时钟，保持 SWD 连接 */
     DBG->CR |= DBG_CR_DBG_STOP;
 
-    HAL_InitTick(TICK_INT_PRIORITY);
-    
     SystemClock_Config();
 
-    /* USER CODE BEGIN SysInit */
-    SystemCoreClockUpdate();
-    /* USER CODE END SysInit */
+    /* 系统时钟配置完成后，重新初始化 HAL 时基（TIM14），
+       确保 HAL_GetTick() 使用正确的时钟频率。
+       RTC_WakeUp_Config 内部调用 HAL_RTCEx_SetWakeUpTimer_IT 会用到 HAL_GetTick */
+    HAL_InitTick(TICK_INT_PRIORITY);
+
 
     /* Initialize all configured peripherals */
     MX_GPIO_Init();
 
+
     /* Initialize the event manager */
     EventMgr_Init();
+
     
     /* Initialize I2C and internal peripherals */
     MX_SPI1_Init();
-    flash_init(&hspi1);
+    spi_flash_init(&hspi1);
 
 
-    
 
     /* Create application tasks (user-defined) */
     xTaskCreate( flash_test_task, "flash_test_task", 512, NULL, 2, &flash_test_task_handle );
     xTaskCreate( led_task, "led_task", 128, NULL, 2, &led_task_handle );
 
+
+
+
+
     /* Create the central event manager task (highest priority) */
     xTaskCreate(EventMgr_Task, "event_mgr", 512, NULL, configMAX_PRIORITIES - 1, NULL);
+
+
+
 
     vTaskStartScheduler();
     while(1);
@@ -115,16 +127,21 @@ int main(void)
 /* ------- Task implementations ------- */
 void flash_test_task(void *pvParameters)
 {
-    /* Default empty task */
     while(1) {
         vTaskDelay(1000);
     }
 }
 void led_task(void *pvParameters)
 {
-    uint32_t ulNotifiedValue;
     while(1) {
-        xTaskNotifyWait( 0x00, 0xFFFFFFFF, &ulNotifiedValue, portMAX_DELAY );
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         HAL_GPIO_TogglePin( LED_GPIO_Port, LED_GPIO_Pin );
     }
 }
+
+void led_task_notify(void) {
+    if (led_task_handle) {
+        xTaskNotifyGive(led_task_handle);
+    }
+}
+

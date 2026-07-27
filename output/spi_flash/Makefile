@@ -13,39 +13,41 @@ CC      = arm-none-eabi-gcc
 AS      = arm-none-eabi-gcc -x assembler-with-cpp
 CP      = arm-none-eabi-objcopy
 SZ      = arm-none-eabi-size
-
 GDB     = arm-none-eabi-gdb
 
 # ---------------------------------------------------------------------------
 # Flash programming tools
 # ---------------------------------------------------------------------------
 ST_PROG ?= C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe
-
 OPENOCD ?= openocd
 OPENOCD_IFACE_CFG ?= -f interface/cmsis-dap.cfg
 OPENOCD_TARGET_CFG ?= -f target/stm32g0x.cfg
 OPENOCD_EXTRA ?=
 
 # ---------------------------------------------------------------------------
-# MCU Flags
+# MCU Flags (Cortex-M0+, no FPU)
 # ---------------------------------------------------------------------------
 MCU_FLAGS     = -mcpu=cortex-m0plus -mthumb
 CPU_DEFINE    = -DSTM32G0B1RET6
 CLOCK_DEFINE  = -DHSE_VALUE=8000000 -DHCLK_FREQ=64000000
 
 # ---------------------------------------------------------------------------
-# Directories
+# Directories (static library is set via environment if needed)
 # ---------------------------------------------------------------------------
 HARDWARE2CODE_STATIC ?= C:/Users/pc/Documents/PyWorkspace/Hardware2Code/static/stm32g0
 HAL_DIR             = $(HARDWARE2CODE_STATIC)/HAL
 CMSIS_DEVICE_DIR    = $(HARDWARE2CODE_STATIC)/CMSIS/Device/ST/STM32G0xx
 CMSIS_CORE_DIR      = $(HARDWARE2CODE_STATIC)/CMSIS/Core
-FREERTOS_DIR        = $(HARDWARE2CODE_STATIC)/FreeRTOS-Kernel
 STARTUP_DIR         = $(CMSIS_DEVICE_DIR)/Source/Templates/gcc
 LINKER_SCRIPT       = ./linker/STM32G0B1RETx_FLASH.ld
 
 # ---------------------------------------------------------------------------
-# Source files
+# FreeRTOS Kernel directory
+# ---------------------------------------------------------------------------
+FREERTOS_DIR        = $(HARDWARE2CODE_STATIC)/FreeRTOS-Kernel
+
+# ---------------------------------------------------------------------------
+# Source files (HAL + CMSIS + FreeRTOS + User + Startup)
 # ---------------------------------------------------------------------------
 C_SOURCES  = \
 $(HAL_DIR)/Src/stm32g0xx_hal.c \
@@ -83,17 +85,7 @@ C_SOURCES += \
 # Assembly startup
 ASM_SOURCES = $(STARTUP_DIR)/startup_stm32g0b1xx.s
 
-# ---------------------------------------------------------------------------
-# Object files
-# ---------------------------------------------------------------------------
-BUILD_DIR   = build
-C_OBJS      = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
-ASM_OBJS    = $(addprefix $(BUILD_DIR)/,$(notdir $(ASM_SOURCES:.s=.o)))
-OBJS        = $(C_OBJS) $(ASM_OBJS)
-
-# ---------------------------------------------------------------------------
 # Include paths
-# ---------------------------------------------------------------------------
 INCLUDES  = \
 -I$(HAL_DIR)/Inc \
 -I$(CMSIS_DEVICE_DIR)/Include \
@@ -104,43 +96,47 @@ INCLUDES  = \
 -I./src/drivers \
 -I./config
 
-# ---------------------------------------------------------------------------
 # Compiler / Linker flags
-# ---------------------------------------------------------------------------
-# 默认构建为 Release（无 DEBUG 宏）
-CFLAGS_EXTRA ?=
-
 CFLAGS   = $(MCU_FLAGS) $(CPU_DEFINE) $(CLOCK_DEFINE) \
            -Og -g3 -Wall -fdata-sections -ffunction-sections \
-           $(INCLUDES) -DSTM32G0B1xx -DUSE_HAL_DRIVER $(CFLAGS_EXTRA)
+           $(INCLUDES) -DSTM32G0B1xx -DUSE_HAL_DRIVER
 
+# ---------------------------------------------------------------------------
+# Linker flags (common)
+# ---------------------------------------------------------------------------
 LDFLAGS  = $(MCU_FLAGS) -T$(LINKER_SCRIPT) -specs=nano.specs -specs=nosys.specs \
            -Wl,--gc-sections -Wl,-Map=$(BUILD_DIR)/$(PROJECT_NAME).map
 
 # ---------------------------------------------------------------------------
+# Object files (flat structure inside build/)
+# ---------------------------------------------------------------------------
+BUILD_DIR   = build
+C_OBJS      = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
+ASM_OBJS    = $(addprefix $(BUILD_DIR)/,$(notdir $(ASM_SOURCES:.s=.o)))
+OBJS        = $(C_OBJS) $(ASM_OBJS)
+
+# ---------------------------------------------------------------------------
 # Build rules
 # ---------------------------------------------------------------------------
-# Debug 构建（定义 DEBUG，进入 SLEEP 模式）
-debug: CFLAGS_EXTRA += -DDEBUG
-debug: all
-
-# Release 构建（默认）
-.PHONY: all flash flash-daplink clean test debug
-
+.PHONY: all flash flash-daplink clean test coverage
 all: $(BUILD_DIR)/$(PROJECT_NAME).elf $(BUILD_DIR)/$(PROJECT_NAME).bin $(BUILD_DIR)/$(PROJECT_NAME).hex
 
+# ----- User source files -----
 $(BUILD_DIR)/%.o: ./src/%.c
 	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# ----- HAL source files -----
 $(BUILD_DIR)/%.o: $(HAL_DIR)/Src/%.c
 	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# ----- CMSIS Device system file -----
 $(BUILD_DIR)/system_stm32g0xx.o: $(CMSIS_DEVICE_DIR)/Source/Templates/system_stm32g0xx.c
 	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# ----- FreeRTOS Kernel source files -----
 $(BUILD_DIR)/%.o: $(FREERTOS_DIR)/%.c
 	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -157,34 +153,46 @@ $(BUILD_DIR)/heap_4.o: $(FREERTOS_DIR)/portable/MemMang/heap_4.c
 	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Driver source files
+# ----- Driver source files -----
 $(BUILD_DIR)/%.o: ./src/drivers/%.c
 	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Startup assembly
+
+# ----- Startup assembly -----
 $(BUILD_DIR)/%.o: $(STARTUP_DIR)/%.s
 	@if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
 	$(AS) $(MCU_FLAGS) -c $< -o $@
 
+# ----- Link -----
 $(BUILD_DIR)/$(PROJECT_NAME).elf: $(OBJS)
 	$(CC) $(LDFLAGS) $(OBJS) -o $@
 	$(SZ) $@
 
+# ----- Binary / Hex -----
 $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf
 	$(CP) -O binary $< $@
 
 $(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf
 	$(CP) -O ihex $< $@
 
+# ----- Flash (ST-Link) -----
 flash: $(BUILD_DIR)/$(PROJECT_NAME).bin
 	"$(ST_PROG)" -c port=SWD -w $< 0x08000000 -rst
 
+# ----- Flash (DAP-Link) -----
 flash-daplink: $(BUILD_DIR)/$(PROJECT_NAME).bin
 	"$(OPENOCD)" $(OPENOCD_IFACE_CFG) $(OPENOCD_TARGET_CFG) $(OPENOCD_EXTRA) -c "program $< 0x08000000 verify reset exit"
 
+
+# ----- Clean -----
 clean:
 	@if exist $(BUILD_DIR) rmdir /S /Q $(BUILD_DIR)
 
+# ----- Unit tests -----
 test:
 	python test/run_tests.py
+
+coverage:
+	python test/run_tests.py --coverage
+

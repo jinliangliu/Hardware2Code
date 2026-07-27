@@ -1,10 +1,8 @@
 #ifdef TEST
 #include "mock_hal.h"
-#include "drv_rtc.h"
 #else
 #include "FreeRTOS.h"
 #include "task.h"
-#include "drv_rtc.h"
 #endif
 
 #include "statemachine.h"
@@ -56,11 +54,14 @@ void statemachine_process(event_t *evt) {
         if (
             (evt->id == EVENT_BUTTON_PRESS)
         ) {
-            /* 停止当前状态的时间序列定时器 */
-            /* 停止所有 defer 定时器 */
+            /* 停止并删除当前状态的超时定时器 */
+            /* 停止并删除所有 defer 定时器 */
             
             current_state = STATE_BLINK;
             /* 执行目标状态的进入动作并启动时间序列 */
+            /* 若目标也是复合状态，初始化子状态（考虑历史） */
+            current_state_BLINK = STATE_BLINK_blinker_S1;
+            /* 执行初始子状态的进入动作并启动时间序列 */
         }
         break;
     case STATE_BLINK:
@@ -69,22 +70,26 @@ void statemachine_process(event_t *evt) {
             switch (current_state_BLINK) {
             case STATE_BLINK_blinker_S1:
                 if (evt->id == EVENT_RTC_TICK) {
-                            extern void led_task_notify(void);
-    led_task_notify();
-
+                    /* 停止并删除当前子状态的超时定时器 */
+                    /* 停止并删除所有 defer 定时器 */
+                    extern void led_task_notify(void);
+                    led_task_notify();
 
                     current_state_BLINK = STATE_BLINK_blinker_S2;
+                    /* 执行目标子状态的进入动作并启动时间序列 */
                     handled = 1;
                     break;
                 }
                 break;
             case STATE_BLINK_blinker_S2:
                 if (evt->id == EVENT_RTC_TICK) {
-                            extern void led_task_notify(void);
-    led_task_notify();
-
+                    /* 停止并删除当前子状态的超时定时器 */
+                    /* 停止并删除所有 defer 定时器 */
+                    extern void led_task_notify(void);
+                    led_task_notify();
 
                     current_state_BLINK = STATE_BLINK_blinker_S1;
+                    /* 执行目标子状态的进入动作并启动时间序列 */
                     handled = 1;
                     break;
                 }

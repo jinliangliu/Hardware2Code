@@ -1,0 +1,29 @@
+model: "STM32G0_CLI"
+type: "Internal_CLI"
+interface: "internal"
+driver_template: "drivers/drv_cli.c.j2"
+header_template: "drivers/drv_cli.h.j2"
+capabilities:
+  - command_line_interface
+  - uart_interactive
+extra_schema:
+  uart:
+    type: str
+    required: true
+    default: ""
+  prompt:
+    type: str
+    required: false
+    default: "> "
+  stack_size:
+    type: int
+    required: false
+    default: 512
+  priority:
+    type: int
+    required: false
+    default: 4
+  max_cmd_len:
+    type: int
+    required: false
+    default: 64

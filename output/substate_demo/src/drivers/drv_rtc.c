@@ -12,7 +12,7 @@
 #include "event_mgr.h"
 
 /* Private handle */
-static RTC_HandleTypeDef hrtc;
+RTC_HandleTypeDef hrtc;
 
 /* RTC tick 间隔 (毫秒) - 必须与 RTC_WakeUp_Config 配置的唤醒周期一致 */
 #define RTC_TICK_INTERVAL_MS    100

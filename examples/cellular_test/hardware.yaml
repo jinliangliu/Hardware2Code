@@ -1,0 +1,50 @@
+# cellular_test — 4G Cat.1 通信测试
+
+mcu:
+  part: STM32G0B1RET6
+  core_clock_mhz: 64
+
+# ========== 引脚配置 ==========
+pins:
+  - id: PA2
+    function: USART2_TX
+    af: 1
+    label: "CELL_TX"
+  - id: PA3
+    function: USART2_RX
+    af: 1
+    label: "CELL_RX"
+  - id: PC6
+    function: CELL_PWR
+    label: "CELL_PWR"
+  - id: PC7
+    function: CELL_RST
+    label: "CELL_RST"
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+
+# ========== 外设 ==========
+peripherals:
+  - name: "cellular"
+    type: "Cellular_4G"
+    interface: "uart"
+    extra:
+      uart: "uart2"
+      power_pin: "PC6"
+      reset_pin: "PC7"
+      apn: "CMNET"
+  - name: "uart2"
+    type: "UART_Serial"
+    instance: "USART2"
+    extra:
+      baudrate: 115200
+  - name: "mqtt"
+    type: "Protocol_MQTT"
+    interface: "protocol"
+    extra:
+      bearer: "cellular"
+      broker: "test.mosquitto.org"
+      client_id: "stm32g0_test"
+      keep_alive_s: 60

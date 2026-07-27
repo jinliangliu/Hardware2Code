@@ -1,15 +1,20 @@
-
 #include "stm32g0xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "event_mgr.h"
 
 /* External task handles for notifications */
 extern TaskHandle_t button_led_task_handle;
 
 void NMI_Handler(void) { while(1); }
-void HardFault_Handler(void) { while(1); }
+void HardFault_Handler(void) {
+    uint32_t sp;
+    __asm__("mov %0, sp" : "=r"(sp));
+    // 断点打在这里，查看sp指向的栈内存
+    while(1);
+}
 
-/* EXTI interrupt handlers (auto-generated) */
+/* EXTI interrupt handlers */
 
 void EXTI4_15_IRQHandler(void)
 {
@@ -17,7 +22,10 @@ void EXTI4_15_IRQHandler(void)
     if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
     {
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-        xTaskNotifyFromISR( button_led_task_handle, 0, eSetBits, &xHigherPriorityTaskWoken );
-        portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+        event_t evt = { .id = EVENT_BUTTON_PRESS, .param = 0 };
+        xQueueSendFromISR(event_queue, &evt, &xHigherPriorityTaskWoken);
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
 }
+
+

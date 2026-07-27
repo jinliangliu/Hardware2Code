@@ -1,0 +1,75 @@
+{#
+    drv_cli.h.j2 - CLI debug shell driver header
+    Provides typedefs, constants, and API for an interactive UART-based
+    command-line interface. Commands are registered at init time and
+    dispatched by the cli_task FreeRTOS task.
+#}
+#ifndef __DRV_{{ peripheral.name | upper }}_H
+#define __DRV_{{ peripheral.name | upper }}_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+/* ---------- Maximum dimensions ---------- */
+#define CLI_MAX_COMMANDS    32
+#define CLI_MAX_CMD_LEN     64
+#define CLI_RINGBUF_SIZE    256
+#define CLI_MAX_ARGS        8
+#define CLI_PROMPT_DEFAULT  "> "
+
+/* ---------- Callback typedefs ---------- */
+
+/**
+ * @brief  Output function passed to every command handler.
+ *         The handler writes output by calling out("text\r\n").
+ */
+typedef void (*cli_output_fn)(const char *fmt, ...);
+
+/**
+ * @brief  CLI command handler signature.
+ * @param  argc  Argument count (argv[0] is the command name)
+ * @param  argv  Null-terminated array of tokens
+ * @param  out   Output callback for writing responses
+ */
+typedef void (*cli_cmd_handler_t)(int argc, char *argv[], cli_output_fn out);
+
+/* ---------- Command table entry ---------- */
+typedef struct {
+    const char         *name;
+    const char         *help;
+    cli_cmd_handler_t   handler;
+} cli_command_t;
+
+/* ---------- Public API ---------- */
+
+/**
+ * @brief  Initialize the CLI subsystem on a pre-initialized UART.
+ * @param  huart  Pointer to UART_HandleTypeDef already configured by main.c
+ * @note   Configures NVIC, creates the RX semaphore, and starts interrupt RX.
+ *         Does NOT call HAL_UART_Init — the caller must do that first.
+ */
+void cli_init(void *huart);
+
+/**
+ * @brief  Register a user-defined command (called at init time).
+ * @param  name     Command name (e.g. "gpio")
+ * @param  help     Single-line help string
+ * @param  handler  Function to call when the command is entered
+ */
+void cli_register_command(const char *name, const char *help,
+                          cli_cmd_handler_t handler);
+
+/**
+ * @brief  FreeRTOS task entry point for the CLI loop.
+ *         Reads the ring buffer, edits a line, tokenizes, and dispatches.
+ * @param  arg  Unused (required by FreeRTOS TaskFunction_t)
+ */
+void cli_task(void *arg);
+
+/**
+ * @brief  Formatted output to the CLI UART (printf-style).
+ *         Safe for use from any task or command handler.
+ */
+void cli_output(const char *fmt, ...);
+
+#endif /* __DRV_{{ peripheral.name | upper }}_H */

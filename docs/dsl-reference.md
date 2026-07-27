@@ -8,6 +8,62 @@ Hardware2Code uses a YAML-based DSL (Domain-Specific Language) to describe:
 
 ---
 
+## Schema Reference
+
+Complete `hardware.yaml` top-level schema. Every key, its type, whether it is required, default value, and description.
+
+### Top-Level Keys
+
+| Key | Type | Required | Default | Description |
+|-----|------|----------|---------|-------------|
+| `mcu` | object | Yes | - | MCU configuration |
+| `mcu.part` | string | Yes | - | MCU part number (e.g. `STM32G0B1RET6`) |
+| `mcu.core_clock_mhz` | int | No | 64 | Core clock frequency in MHz |
+| `mcu.hse_freq` | int | No | 8000000 | HSE crystal frequency in Hz |
+| `pins` | list | No | `[]` | Pin configuration list |
+| `pins[].id` | string | Yes | - | Pin identifier (`PA0` – `PF15`) |
+| `pins[].function` | string | Yes | - | Pin function (see [Pin Function Enumeration](#12-pin-configuration)) |
+| `pins[].label` | string | No | `""` | Human-readable label |
+| `pins[].pull` | string | No | `none` | Pull resistor: `up` / `down` |
+| `pins[].af` | int | No | `0` | Alternate function number |
+| `pins[].notify_task` | string | No | `""` | FreeRTOS task to notify on EXTI |
+| `pins[].exti` | object | No | `{}` | EXTI interrupt configuration |
+| `pins[].exti.enable` | bool | No | `false` | Enable EXTI interrupt |
+| `pins[].exti.trigger` | string | No | `-` | Edge trigger: `rising` / `falling` / `both` |
+| `peripherals` | list | No | `[]` | Peripheral configurations |
+| `peripherals[].name` | string | Yes | - | Peripheral instance name |
+| `peripherals[].type` | string | Yes | - | Peripheral type (see [Peripheral Types](#15-peripherals)) |
+| `peripherals[].bus` | string | Varies | - | Bus instance (`I2C1`, `SPI1`, …) |
+| `peripherals[].bearer` | string | Varies | - | Communication bearer name (protocols) |
+| `peripherals[].broker` | string | Varies | - | MQTT broker URL |
+| `peripherals[].extra` | object | Varies | `{}` | Type-specific extra parameters (see below) |
+| `app_tasks` | list | No | `[]` | FreeRTOS task definitions |
+| `app_tasks[].name` | string | Yes | - | Task name |
+| `app_tasks[].priority` | int | No | `1` | Task priority (0–31) |
+| `app_tasks[].stack_size` | int | No | `128` | Stack size in words |
+| `sleep` | object | No | `{}` | Low-power configuration |
+| `sleep.mode` | string | No | `STOP0` | Sleep mode: `STOP0` / `STOP1` / `STOP2` / `STANDBY` / `SLEEP` |
+| `bootloader` | object | No | `{}` | Bootloader configuration |
+| `bootloader.enabled` | bool | No | `false` | Enable dual-slot bootloader |
+| `bootloader.size_kb` | int | No | `8` | Bootloader Flash size in KB (4–32) |
+| `bootloader.app_a_offset` | int | No | `0x2000` | App Slot A start offset |
+| `bootloader.app_b_offset` | int | No | `0x40000` | App Slot B start offset |
+| `bootloader.wdg_timeout_ms` | int | No | `5000` | Watchdog timeout in ms |
+| `bootloader.max_retries` | int | No | `3` | Max consecutive boot failures (1–10) |
+| `business_flow` | object | No | `{}` | State-machine DSL |
+| `business_flow.initial_state` | string | Varies | - | Initial state name |
+| `business_flow.states` | list | Varies | `[]` | State definitions |
+| `business_flow.regions` | list | Varies | `[]` | Parallel region definitions |
+| `business_flow.variables` | list | No | `[]` | Global variable declarations |
+| `business_flow.events` | list | No | `[]` | Custom event declarations |
+| `hil` | object | No | `{}` | HIL test configuration |
+| `hil.baudrate` | int | No | `115200` | HIL UART baudrate |
+| `hil.uart` | string | No | `UART2` | HIL UART instance |
+| `heap_size` | string | No | `0x200` | Heap size (hex literal) |
+| `stack_size` | string | No | `0x400` | Stack size (hex literal) |
+
+---
+
 ## 1. Hardware Configuration
 
 ### 1.1 MCU Configuration
@@ -37,22 +93,47 @@ pins:
     notify_task: "led_task"    # Optional: Task to notify on EXTI interrupt
 ```
 
-**Valid functions**:
-- `GPIO_Output`: General purpose output
-- `GPIO_Input`: General purpose input
-- `I2C_SCL`: I2C clock line
-- `I2C_SDA`: I2C data line
-- `SPI_SCK`: SPI clock
-- `SPI_MISO`: SPI master-in slave-out
-- `SPI_MOSI`: SPI master-out slave-in
-- `SPI_NSS`: SPI chip select
-- `UART_TX`: UART transmit
-- `UART_RX`: UART receive
-- `USART_TX`: USART transmit
-- `USART_RX`: USART receive
-- `LPUART_TX`: Low-power UART transmit
-- `LPUART_RX`: Low-power UART receive
-- `ADC_IN`: ADC input
+**Valid functions** — all supported `pins[].function` values:
+
+| Function | Description |
+|----------|-------------|
+| `GPIO_Output` | General-purpose output (push-pull) |
+| `GPIO_Input` | General-purpose input (floating) |
+| `I2C_SCL` | I2C clock line (any I2C bus) |
+| `I2C_SDA` | I2C data line (any I2C bus) |
+| `I2C1_SCL` | I2C1 clock line |
+| `I2C1_SDA` | I2C1 data line |
+| `I2C2_SCL` | I2C2 clock line |
+| `I2C2_SDA` | I2C2 data line |
+| `SPI_SCK` | SPI clock (any SPI bus) |
+| `SPI_MISO` | SPI master-in slave-out (any SPI bus) |
+| `SPI_MOSI` | SPI master-out slave-in (any SPI bus) |
+| `SPI_NSS` | SPI chip select (any SPI bus) |
+| `SPI1_SCK` | SPI1 clock |
+| `SPI1_MISO` | SPI1 MISO |
+| `SPI1_MOSI` | SPI1 MOSI |
+| `SPI1_NSS` | SPI1 NSS |
+| `SPI2_SCK` | SPI2 clock |
+| `SPI2_MISO` | SPI2 MISO |
+| `SPI2_MOSI` | SPI2 MOSI |
+| `SPI2_NSS` | SPI2 NSS |
+| `UART_TX` | UART transmit (any UART) |
+| `UART_RX` | UART receive (any UART) |
+| `USART_TX` | USART transmit (any USART) |
+| `USART_RX` | USART receive (any USART) |
+| `USART1_TX` | USART1 transmit |
+| `USART1_RX` | USART1 receive |
+| `USART2_TX` | USART2 transmit |
+| `USART2_RX` | USART2 receive |
+| `LPUART_TX` | Low-power UART transmit |
+| `LPUART_RX` | Low-power UART receive |
+| `RS485_DE` | RS485 direction-control (DE/RE) |
+| `ADC_IN` | Analog-to-digital input (general) |
+| `ADC_IN1` – `ADC_IN16` | ADC input channels 1–16 |
+| `IR_OUT` | Infrared transmitter output |
+| `IR_IN` | Infrared receiver input |
+| `CELL_PWR` | Cellular modem power key |
+| `CELL_RST` | Cellular modem reset |
 
 ### 1.3 Sleep Mode Configuration
 
@@ -92,14 +173,81 @@ peripherals:
 
 **Supported peripheral types**:
 
-| Type | Description | Required Fields |
-|------|-------------|----------------|
-| `Internal_RTC` | Internal real-time clock | interface, clock_source |
-| `Internal_PWM` | Internal PWM timer | - |
-| `Internal_ADC` | Internal analog-to-digital converter | - |
-| `UART_Serial` | UART serial communication | extra.baudrate |
-| `I2C_Sensor_MPU6050` | MPU6050 accelerometer via I2C | bus |
-| `SPI_Flash_W25Q32` | W25Q32 SPI flash | bus |
+| Type | Required Bus | `extra` Parameters | Description |
+|------|-------------|--------------------|-------------|
+| `Internal_RTC` | - | - | Internal real-time clock (LSE) |
+| `Internal_PWM` | - | `timer`, `channel`, `freq`, `duty` | Internal PWM output |
+| `Internal_ADC` | - | `channel`, `resolution` | Internal analog-to-digital converter |
+| `Internal_CLI` | - | `uart` (carrier name) | UART-based debug command shell |
+| `Internal_IR` | - | `carrier_freq` | Infrared NEC/SIR communication |
+| `Internal_IWDG` | - | `wdg_timeout_ms` | Independent watchdog timer |
+| `UART_Serial` | - | `baudrate` | UART serial communication |
+| `I2C_Sensor_MPU6050` | I2C bus | `update_interval_ms` | MPU6050 accelerometer via I2C |
+| `SPI_Flash_W25Q32` | SPI bus | `chip_select_pin` | W25Q32 SPI NOR Flash |
+| `SPI_Flash_Generic` | SPI bus | `chip_select_pin`, `total_size` | Generic SPI NOR Flash |
+| `I2C_EEPROM` | I2C bus | `i2c_addr`, `page_size`, `total_size` | I2C EEPROM storage |
+| `RS485` | - | `uart`, `de_pin`, `baudrate` | RS485 half-duplex transceiver |
+| `Cellular_4G` | - | `uart`, `apn`, `baudrate` | 4G Cat.1 cellular module |
+| `Protocol_Modbus` | - | `bearer`, `role` (master/slave), `slave_id` | Modbus RTU protocol |
+| `Protocol_MQTT` | - | `bearer`, `broker`, `client_id`, `topic` | MQTT 3.1.1 client |
+
+### 1.6 Communication Peripherals
+
+```yaml
+peripherals:
+  # RS485 example
+  - name: "rs485_1"
+    type: "RS485"
+    uart: "uart2"          # Reference to UART_Serial peripheral name
+    de_pin: "PA1"          # RS485 direction control pin (RE/DE)
+    extra:
+      baudrate: 9600
+
+  # Cellular 4G Cat.1 example
+  - name: "cellular"
+    type: "Cellular_4G"
+    uart: "uart2"
+    power_pin: "PC4"       # Optional: power control
+    reset_pin: "PC5"       # Optional: reset control
+    extra:
+      apn: "ctnet"         # APN for PDP activation
+
+  # IR NEC example
+  - name: "ir"
+    type: "Internal_IR"
+    mode: "nec"            # nec | sir (default: nec)
+    tx_pin: "PB0"
+    rx_pin: "PB1"
+
+  # Modbus RTU slave example
+  - name: "modbus"
+    type: "Protocol_Modbus"
+    bearer: "rs485_1"      # Reference to RS485 or UART peripheral
+    role: "slave"
+    slave_id: 1
+
+  # MQTT client example
+  - name: "mqtt"
+    type: "Protocol_MQTT"
+    bearer: "cellular"     # Reference to Cellular_4G peripheral
+    broker: "iot.telecom.com"
+    port: 1883
+    client_id: "device001"
+    extra:
+      username: "optional_user"
+      password: "optional_pass"
+      keep_alive_s: 60
+
+  # CLI debug shell example
+  - name: "cli"
+    type: "Internal_CLI"
+    uart: "uart_debug"     # Reference to UART_Serial peripheral
+    extra:
+      prompt: "h2c> "      # Optional: shell prompt, default "> "
+      stack_size: 512       # Optional: CLI task stack, default 512
+      priority: 4           # Optional: CLI task priority, default 4
+      max_cmd_len: 64       # Optional: max command length, default 64
+```
 
 ### 1.7 Bootloader Configuration
 
@@ -309,6 +457,45 @@ business_flow:
 |--------|-------------|---------|
 | `when <condition> => <action>` | Execute action conditionally | `- "when counter > 5 => toggle_led"` |
 
+### 3.6 Action Syntax Reference
+
+All actions support two equivalent formats: **string syntax** (compact, human-readable) and **dict syntax** (machine-friendly, YAML-native).
+
+#### String-Format Actions
+
+| Action String | Description | Example |
+|--------------|-------------|---------|
+| `toggle_led` | Toggle LED output | `toggle_led` |
+| `return` | Return from substate to parent | `return` |
+| `set VAR VALUE` | Set variable to value (`inc`/`dec` supported) | `set count 0`, `set count inc` |
+| `calc VAR = EXPR` | Evaluate C expression, assign to variable | `calc result = count * 2 + 1` |
+| `publish EVENT` | Synchronously publish event | `publish SENSOR_READY` |
+| `publish_async EVENT` | Asynchronously publish event | `publish_async ALERT` |
+| `start_timer NAME MS` | Start named one-shot timer | `start_timer exit_timer 3000` |
+| `stop_timer NAME` | Stop and delete named timer | `stop_timer exit_timer` |
+| `when COND => ACTION` | Conditional action execution | `when count > 5 => publish OVERFLOW` |
+| `defer MS => ACTION` | Deferred action after delay | `defer 1000 => toggle_led` |
+| `timeline: MS=>ACT, ...` | Timeline of deferred actions | `timeline: 100=>toggle_led, 500=>publish DONE` |
+| `send_to REGION EVENT` | Cross-region event (3 tokens) | `send_to region_a RESET` |
+
+#### Dict-Format Actions (Equivalent)
+
+| Dict Format | Equivalent String |
+|------------|-------------------|
+| `{toggle_led: null}` | `toggle_led` |
+| `{return: null}` | `return` |
+| `{set: {var: count, value: 5}}` | `set count 5` |
+| `{set: {var: count, value: inc}}` | `set count inc` |
+| `{calc: {var: r, expr: c * 2}}` | `calc r = c * 2` |
+| `{publish: {event: READY}}` | `publish READY` |
+| `{publish_async: {event: ALERT}}` | `publish_async ALERT` |
+| `{start_timer: {name: t, ms: 1000}}` | `start_timer t 1000` |
+| `{stop_timer: {name: t}}` | `stop_timer t` |
+| `{defer: {after: 1000, do: toggle_led}}` | `defer 1000 => toggle_led` |
+| `{timeline: [{ms: 100, do: toggle_led}, {ms: 500, do: publish DONE}]}` | `timeline: 100=>toggle_led, 500=>publish DONE` |
+| `{when: {condition: "count > 5", do: toggle_led}}` | `when count > 5 => toggle_led` |
+| `{send_to: {region: region_a, event: RESET}}` | `send_to region_a RESET` |
+
 ---
 
 ## 4. Events Reference
@@ -487,3 +674,30 @@ The generator validates the following:
 ### Info
 - Guard conditions: embedded as-is into C code without validation — errors surface at compile time
 - Published events: `publish`/`publish_async` events are collected into `EVENT_<name>` enum entries automatically
+
+---
+
+## 8. CLI Debug Shell Commands
+
+When `Internal_CLI` is enabled, the following commands are available at the UART prompt:
+
+| Command | Description | Availability |
+|---------|-------------|-------------|
+| `help` | List all available commands | Always |
+| `version` | Show firmware version and build time | Always |
+| `uptime` | Show system uptime | Always |
+| `free` | Show free heap memory | Always |
+| `tasks` | List FreeRTOS tasks | Always |
+| `reset` | Software reset MCU | Always |
+| `gpio read <pin>` | Read GPIO pin level | When pins configured |
+| `gpio write <pin> <0\|1>` | Set GPIO output | When pins configured |
+| `led on\|off\|toggle` | Control LED | When LED pin exists |
+| `rtc time` | Show RTC time | When RTC enabled |
+| `rtc set <HH:MM:SS>` | Set RTC time | When RTC enabled |
+| `modbus read <addr> <count>` | Read holding registers | When Modbus enabled |
+| `modbus write <addr> <value>` | Write single register | When Modbus enabled |
+| `cellular status\|imei\|csq` | Cellular modem info | When Cellular enabled |
+| `mqtt status` | MQTT connection status | When MQTT enabled |
+| `mqtt publish <topic> <payload>` | Publish MQTT message | When MQTT enabled |
+| `fota version` | Show firmware version | When FOTA enabled |
+| `fota start` | Enter FOTA receive mode | When FOTA enabled |

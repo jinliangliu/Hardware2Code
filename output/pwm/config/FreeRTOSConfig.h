@@ -37,8 +37,8 @@
 
 /* Run time and task stats */
 #define configGENERATE_RUN_TIME_STATS           0
-#define configUSE_TRACE_FACILITY                0
-#define configUSE_STATS_FORMATTING_FUNCTIONS    0
+#define configUSE_TRACE_FACILITY                1
+#define configUSE_STATS_FORMATTING_FUNCTIONS    1
 
 /* Co-routines */
 #define configUSE_CO_ROUTINES                   0
@@ -48,9 +48,7 @@
 #define configENABLE_MPU                        0
 
 /* Low power - Tickless idle with RTC wake-up */
-#define configUSE_TICKLESS_IDLE                 1
-#define portSUPPRESS_TICKS_AND_SLEEP( xExpectedIdleTime )  vPortSuppressTicksAndSleep( xExpectedIdleTime )
-void vPortSuppressTicksAndSleep( uint32_t xExpectedIdleTime );
+#define configUSE_TICKLESS_IDLE                 0
 
 /* Interrupt nesting */
 #ifdef __NVIC_PRIO_BITS

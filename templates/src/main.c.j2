@@ -1,4 +1,3 @@
-{% import 'macros.j2' as macros %}
 #include "stm32g0xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -30,8 +29,8 @@ void MX_GPIO_Init(void);
 /* ------- Auto-generated pin definitions ------- */
 {% for pin in pins %}
 {% if pin.label == 'LED' %}
-#define LED_GPIO_Port  GPIO{{ macros.pin_port(pin.id) }}
-#define LED_GPIO_Pin   GPIO_PIN_{{ macros.pin_number(pin.id) }}
+#define LED_GPIO_Port  GPIO{{ pin.id | pin_port }}
+#define LED_GPIO_Pin   GPIO_PIN_{{ pin.id | pin_number }}
 {% endif %}
 {% endfor %}
 
@@ -52,15 +51,25 @@ UART_HandleTypeDef huart_{{ p.name }};
 
 /* ------- Task handles ------- */
 {% for task in app_tasks %}
+{% if not (has_fota and task.name == 'fota_task') %}
 TaskHandle_t {{ task.name }}_handle = NULL;
+{% endif %}
 {% endfor %}
 
 /* ------- Task prototypes ------- */
 {% for task in app_tasks %}
+{% if not (has_fota and task.name == 'fota_task') %}
 void {{ task.name }}(void *pvParameters);
+{% endif %}
 {% endfor %}
 
+{% if has_cli %}
+void cli_task(void *arg);
+{% endif %}
 
+{% if has_fota %}
+void fota_task(void *arg);
+{% endif %}
 
 /* ------- System clock configuration (HSI 16MHz default) ------- */
 void SystemClock_Config(void)
@@ -149,6 +158,29 @@ int main(void)
     HAL_InitTick(TICK_INT_PRIORITY);
 
 {% if has_log %}
+    /* Enable global interrupts early so HAL_Delay (TIM14 tick ISR)
+       and USART2 TXE ISR (log ring-buffer drain) can fire. */
+    __enable_irq();
+
+{% if has_led %}
+    /* Quick LED heartbeat to confirm main() entry */
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    {
+        GPIO_InitTypeDef led_cfg = {0};
+        led_cfg.Pin = LED_GPIO_Pin;
+        led_cfg.Mode = GPIO_MODE_OUTPUT_PP;
+        led_cfg.Pull = GPIO_NOPULL;
+        led_cfg.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(LED_GPIO_Port, &led_cfg);
+        /* 3 quick blinks: main() alive before log_init */
+        for (int i = 0; i < 3; i++) {
+            HAL_GPIO_WritePin(LED_GPIO_Port, LED_GPIO_Pin, GPIO_PIN_RESET);
+            HAL_Delay(50);
+            HAL_GPIO_WritePin(LED_GPIO_Port, LED_GPIO_Pin, GPIO_PIN_SET);
+            HAL_Delay(50);
+        }
+    }
+{% endif %}
     /* Initialize logging subsystem — USART2 @ 115200, ring buffer, TXE IRQ */
     log_init();
     log_info("App main() entry, initialization starting...");
@@ -196,13 +228,22 @@ int main(void)
 {{ p.name }}_init(&hi2c{{ p.bus[-1] }});
 {% elif 'SPI' in p.model.interface %}
     MX_SPI{{ p.bus[-1] }}_Init();
+{% if p.type in ('SPI_Flash_W25Q32', 'SPI_Flash_Generic') %}
+    spi_flash_init(&hspi{{ p.bus[-1] }});
+{% else %}
 {{ p.name }}_init(&hspi{{ p.bus[-1] }});
+{% endif %}
 {% elif p.type == 'Internal_RTC' %}
     RTC_Init();
 {% elif p.type == 'UART_Serial' %}
     MX_{{ p.instance }}_UART_Init();
 {% endif %}
 {% endfor %}
+
+{% if has_cli %}
+    cli_init(&huart_{{ cli_uart_name }});
+{% endif %}
+
 {% if has_rtc %}
     RTC_Start();
 {% endif %}
@@ -212,8 +253,15 @@ int main(void)
 
     /* Create application tasks (user-defined) */
 {% for task in app_tasks %}
+{% if not (has_fota and task.name == 'fota_task') %}
     xTaskCreate( {{ task.name }}, "{{ task.name }}", {{ task.stack_size | default(128) }}, NULL, {{ task.priority }}, &{{ task.name }}_handle );
+{% endif %}
 {% endfor %}
+
+{% if has_cli %}
+    xTaskCreate(cli_task, "cli", {{ cli_stack_size|default(512) }}, NULL, {{ cli_priority|default(4) }}, NULL);
+{% endif %}
+
 {% if has_log %}
     log_info("App tasks created");
 {% endif %}
@@ -249,12 +297,19 @@ int main(void)
     boot_app_mark_ok();
 {% endif %}
 
+{% if sleep %}
+    /* Enable DBGMCU clock and keep debug interface active during STOP mode */
+    __HAL_RCC_DBGMCU_CLK_ENABLE();
+    HAL_DBGMCU_EnableDBGStopMode();
+{% endif %}
+
     vTaskStartScheduler();
     while(1);
 }
 
 /* ------- Task implementations ------- */
 {% for task in app_tasks %}
+{% if not (has_fota and task.name == 'fota_task') %}
 void {{ task.name }}(void *pvParameters)
 {
     {% if task.name == 'led_task' %}
@@ -290,6 +345,7 @@ void {{ task.name }}(void *pvParameters)
     }
     {% endif %}
 }
+{% endif %}
 {% endfor %}
 
 {% if has_led_task and not test_mode %}

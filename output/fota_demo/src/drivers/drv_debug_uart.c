@@ -1,0 +1,104 @@
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#endif
+#include "drv_debug_uart.h"
+#include <string.h>
+
+#ifndef TEST
+static UART_HandleTypeDef *huart_ptr;
+#endif
+
+void UART_Init(UART_HandleTypeDef *huart) {
+#ifndef TEST
+    huart_ptr = huart;
+#else
+    (void)huart;
+    HAL_UART_Init(NULL);   /* 测试环境：调用 mock 函数 */
+#endif
+}
+
+void UART_SendByte(uint8_t byte) {
+#ifndef TEST
+    HAL_UART_Transmit(huart_ptr, &byte, 1, 100);
+#else
+    (void)byte;
+#endif
+}
+
+void UART_SendString(const char *str) {
+#ifndef TEST
+    HAL_UART_Transmit(huart_ptr, (uint8_t *)str, strlen(str), 100);
+#else
+    (void)str;
+#endif
+}
+
+uint8_t UART_ReceiveByte(void) {
+#ifndef TEST
+    uint8_t byte;
+    HAL_UART_Receive(huart_ptr, &byte, 1, 100);
+    return byte;
+#else
+    return 0;
+#endif
+}
+
+/* ---- Interrupt-based receive ---- */
+
+#ifndef TEST
+static uint8_t  *rx_buf_ptr = NULL;
+static uint16_t  rx_buf_size = 0;
+static uint16_t  rx_count = 0;
+static bool      rx_complete = false;
+#endif
+
+void UART_StartRx_IT(uint8_t *buf, uint16_t size)
+{
+#ifndef TEST
+    rx_buf_ptr   = buf;
+    rx_buf_size  = size;
+    rx_count     = 0;
+    rx_complete  = false;
+    HAL_UART_Receive_IT(huart_ptr, buf, size);
+#else
+    (void)buf;
+    (void)size;
+#endif
+}
+
+uint16_t UART_GetRxCount(void)
+{
+#ifndef TEST
+    /*
+     * HAL_UART_Receive_IT decrements RxXferCount as bytes arrive.
+     * rx_count = requested_size - remaining_size
+     */
+    if (rx_buf_ptr == NULL) {
+        return 0;
+    }
+    return rx_buf_size - (uint16_t)huart_ptr->RxXferCount;
+#else
+    return 0;
+#endif
+}
+
+bool UART_IsRxComplete(void)
+{
+#ifndef TEST
+    return rx_complete;
+#else
+    return false;
+#endif
+}
+
+#ifndef TEST
+__attribute__((weak))
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    (void)huart;
+    rx_complete = true;
+    rx_count = rx_buf_size;
+}
+#endif

@@ -1,0 +1,74 @@
+#include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
+
+#include "../src/drivers/drv_eeprom.c"
+
+static I2C_HandleTypeDef hi2c_inst;
+
+void setUp(void)
+{
+}
+
+void tearDown(void)
+{
+}
+
+void test_eeprom_init_returns_ok(void)
+{
+    int ret = eeprom_init(&hi2c_inst);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+}
+
+void test_eeprom_init_null_handle(void)
+{
+    int ret = eeprom_init(NULL);
+    TEST_ASSERT_EQUAL_INT(-1, ret);
+}
+
+void test_eeprom_read_byte(void)
+{
+    uint8_t data = 0xFF;
+
+    eeprom_init(&hi2c_inst);
+    /* After init, read_byte should work (mock returns HAL_OK) */
+    int ret = eeprom_read_byte(0x0000, &data);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+}
+
+void test_eeprom_write_byte(void)
+{
+    eeprom_init(&hi2c_inst);
+    int ret = eeprom_write_byte(0x0000, 0x42);
+    TEST_ASSERT_EQUAL_INT(0, ret);
+}
+
+void test_eeprom_read_page(void)
+{
+    uint8_t buf[32];
+
+    eeprom_init(&hi2c_inst);
+    int ret = eeprom_read_page(0x0000, buf, sizeof(buf));
+    TEST_ASSERT_EQUAL_INT(0, ret);
+}
+
+void test_eeprom_write_page(void)
+{
+    uint8_t buf[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+
+    eeprom_init(&hi2c_inst);
+    int ret = eeprom_write_page(0x0000, buf, sizeof(buf));
+    TEST_ASSERT_EQUAL_INT(0, ret);
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_eeprom_init_returns_ok);
+    RUN_TEST(test_eeprom_init_null_handle);
+    RUN_TEST(test_eeprom_read_byte);
+    RUN_TEST(test_eeprom_write_byte);
+    RUN_TEST(test_eeprom_read_page);
+    RUN_TEST(test_eeprom_write_page);
+    return UNITY_END();
+}

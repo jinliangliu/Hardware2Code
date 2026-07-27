@@ -12,6 +12,12 @@ event_mgr.c.j2 - Central event manager task
 
 #include "event_mgr.h"
 
+{% if has_log %}
+#ifndef TEST
+#include "drv_log.h"
+#endif
+{% endif %}
+
 {% if has_business_flow %}
 #ifndef TEST
 #include "statemachine.h"
@@ -54,6 +60,9 @@ void EventMgr_Task(void *pvParameters)
         if( xQueueReceive(event_queue, &evt, portMAX_DELAY) == pdTRUE ) {
 #ifndef TEST
 {% if has_business_flow %}
+{% if has_log %}
+            log_debug("EventMgr: dispatching event #%d", (int)evt.id);
+{% endif %}
             if (evt.id == EVENT_RTC_TICK) {
 {% if has_rtc %}
                 RTC_ProcessTimers();

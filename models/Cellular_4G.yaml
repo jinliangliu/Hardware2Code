@@ -1,0 +1,27 @@
+model: "EC801E"
+type: "Cellular_4G"
+interface: "uart"
+driver_template: "drivers/drv_cellular.c.j2"
+header_template: "drivers/drv_cellular.h.j2"
+capabilities:
+  - lte_cat1
+  - tcp_ip
+  - at_commands
+default_params:
+  apn: ""
+  band: 0
+  at_timeout_ms: 5000
+extra_schema:
+  uart:
+    type: str
+    required: true
+  power_pin:
+    type: pin
+    required: false
+  reset_pin:
+    type: pin
+    required: false
+  apn:
+    type: str
+    required: false
+    default: ""

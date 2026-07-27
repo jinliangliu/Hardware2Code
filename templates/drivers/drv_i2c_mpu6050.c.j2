@@ -1,83 +1,84 @@
 {#
     drv_i2c_mpu6050.c.j2 - MPU6050 driver source template
     Generates: src/drivers/drv_{{ peripheral.name }}.c
-    Requires: peripheral (name, address, extra), model (registers)
-   #}
-   #include "drv_{{ peripheral.name }}.h"
-   
-   static I2C_HandleTypeDef *i2c_handle = NULL;
-   
-   /* MPU6050 register definitions */
-   #define MPU6050_PWR_MGMT_1   {{ model.registers.PWR_MGMT_1 }}
-   #define MPU6050_GYRO_CONFIG  {{ model.registers.GYRO_CONFIG }}
-   #define MPU6050_ACCEL_CONFIG {{ model.registers.ACCEL_CONFIG }}
-   #define MPU6050_SMPLRT_DIV   {{ model.registers.SMPLRT_DIV }}
-   #define MPU6050_ACCEL_XOUT_H {{ model.registers.ACCEL_XOUT_H }}
-   
-   void {{ peripheral.name }}_init(I2C_HandleTypeDef *hi2c) {
-       i2c_handle = hi2c;
-   
-       /* Wake up the sensor */
-       uint8_t init_data[2] = { MPU6050_PWR_MGMT_1, 0x00 };
-       HAL_I2C_Master_Transmit(i2c_handle, {{ peripheral.address }} << 1, init_data, 2, 100);
-   
-       /* Configure gyroscope full scale */
-       uint8_t gyro_fs_val;
-       {% if peripheral.extra.gyro_fs == 250 %}
-       gyro_fs_val = 0x00;
-       {% elif peripheral.extra.gyro_fs == 500 %}
-       gyro_fs_val = 0x08;
-       {% elif peripheral.extra.gyro_fs == 1000 %}
-       gyro_fs_val = 0x10;
-       {% elif peripheral.extra.gyro_fs == 2000 %}
-       gyro_fs_val = 0x18;
-       {% else %}
-       gyro_fs_val = 0x00;
-       {% endif %}
-       uint8_t gyro_data[2] = { MPU6050_GYRO_CONFIG, gyro_fs_val };
-       HAL_I2C_Master_Transmit(i2c_handle, {{ peripheral.address }} << 1, gyro_data, 2, 100);
-   
-       /* Configure accelerometer full scale */
-       uint8_t accel_fs_val;
-       {% if peripheral.extra.accel_fs == 2 %}
-       accel_fs_val = 0x00;
-       {% elif peripheral.extra.accel_fs == 4 %}
-       accel_fs_val = 0x08;
-       {% elif peripheral.extra.accel_fs == 8 %}
-       accel_fs_val = 0x10;
-       {% elif peripheral.extra.accel_fs == 16 %}
-       accel_fs_val = 0x18;
-       {% else %}
-       accel_fs_val = 0x00;
-       {% endif %}
-       uint8_t accel_data[2] = { MPU6050_ACCEL_CONFIG, accel_fs_val };
-       HAL_I2C_Master_Transmit(i2c_handle, {{ peripheral.address }} << 1, accel_data, 2, 100);
-   
-       /* Set sample rate divider */
-       uint8_t rate_data[2] = { MPU6050_SMPLRT_DIV, {{ peripheral.extra.sample_rate_div | default(0) }} };
-       HAL_I2C_Master_Transmit(i2c_handle, {{ peripheral.address }} << 1, rate_data, 2, 100);
-   }
-   
-   void {{ peripheral.name }}_read({{ peripheral.name }}_data_t *data) {
-       uint8_t buffer[14];
-       HAL_I2C_Mem_Read(i2c_handle, {{ peripheral.address }} << 1, MPU6050_ACCEL_XOUT_H,
-                        I2C_MEMADD_SIZE_8BIT, buffer, 14, 100);
-   
-       /* Extract raw values */
-       int16_t ax = (buffer[0] << 8) | buffer[1];
-       int16_t ay = (buffer[2] << 8) | buffer[3];
-       int16_t az = (buffer[4] << 8) | buffer[5];
-       int16_t gx = (buffer[8] << 8) | buffer[9];
-       int16_t gy = (buffer[10] << 8) | buffer[11];
-       int16_t gz = (buffer[12] << 8) | buffer[13];
-   
-       /* Scale factors (match full-scale configuration) */
-       float accel_scale = 16384.0f;  /* ±2g */
-       float gyro_scale = 131.0f;     /* ±250°/s */
-       data->accel_x = ax / accel_scale;
-       data->accel_y = ay / accel_scale;
-       data->accel_z = az / accel_scale;
-       data->gyro_x = gx / gyro_scale;
-       data->gyro_y = gy / gyro_scale;
-       data->gyro_z = gz / gyro_scale;
-   }
+    Requires context variables: peripheral (name, address, extra), model (registers)
+#}
+{% set i2c_addr = peripheral.get('address', model.get('address', 0x68)) %}
+#include "drv_{{ peripheral.name }}.h"
+
+static I2C_HandleTypeDef *i2c_handle = NULL;
+
+/* MPU6050 register definitions */
+#define MPU6050_PWR_MGMT_1   {{ model.registers.PWR_MGMT_1 }}
+#define MPU6050_GYRO_CONFIG  {{ model.registers.GYRO_CONFIG }}
+#define MPU6050_ACCEL_CONFIG {{ model.registers.ACCEL_CONFIG }}
+#define MPU6050_SMPLRT_DIV   {{ model.registers.SMPLRT_DIV }}
+#define MPU6050_ACCEL_XOUT_H {{ model.registers.ACCEL_XOUT_H }}
+
+void {{ peripheral.name }}_init(I2C_HandleTypeDef *hi2c) {
+    i2c_handle = hi2c;
+
+    /* Wake up the sensor */
+    uint8_t init_data[2] = { MPU6050_PWR_MGMT_1, 0x00 };
+    HAL_I2C_Master_Transmit(i2c_handle, {{ i2c_addr }} << 1, init_data, 2, 100);
+
+    /* Configure gyroscope full scale */
+    uint8_t gyro_fs_val;
+    {% if peripheral.extra.gyro_fs == 250 %}
+    gyro_fs_val = 0x00;
+    {% elif peripheral.extra.gyro_fs == 500 %}
+    gyro_fs_val = 0x08;
+    {% elif peripheral.extra.gyro_fs == 1000 %}
+    gyro_fs_val = 0x10;
+    {% elif peripheral.extra.gyro_fs == 2000 %}
+    gyro_fs_val = 0x18;
+    {% else %}
+    gyro_fs_val = 0x00;
+    {% endif %}
+    uint8_t gyro_data[2] = { MPU6050_GYRO_CONFIG, gyro_fs_val };
+    HAL_I2C_Master_Transmit(i2c_handle, {{ i2c_addr }} << 1, gyro_data, 2, 100);
+
+    /* Configure accelerometer full scale */
+    uint8_t accel_fs_val;
+    {% if peripheral.extra.accel_fs == 2 %}
+    accel_fs_val = 0x00;
+    {% elif peripheral.extra.accel_fs == 4 %}
+    accel_fs_val = 0x08;
+    {% elif peripheral.extra.accel_fs == 8 %}
+    accel_fs_val = 0x10;
+    {% elif peripheral.extra.accel_fs == 16 %}
+    accel_fs_val = 0x18;
+    {% else %}
+    accel_fs_val = 0x00;
+    {% endif %}
+    uint8_t accel_data[2] = { MPU6050_ACCEL_CONFIG, accel_fs_val };
+    HAL_I2C_Master_Transmit(i2c_handle, {{ i2c_addr }} << 1, accel_data, 2, 100);
+
+    /* Set sample rate divider */
+    uint8_t rate_data[2] = { MPU6050_SMPLRT_DIV, {{ peripheral.extra.sample_rate_div | default(0) }} };
+    HAL_I2C_Master_Transmit(i2c_handle, {{ i2c_addr }} << 1, rate_data, 2, 100);
+}
+
+void {{ peripheral.name }}_read({{ peripheral.name }}_data_t *data) {
+    uint8_t buffer[14];
+    HAL_I2C_Mem_Read(i2c_handle, {{ i2c_addr }} << 1, MPU6050_ACCEL_XOUT_H,
+                    I2C_MEMADD_SIZE_8BIT, buffer, 14, 100);
+
+    /* Extract raw values */
+    int16_t ax = (buffer[0] << 8) | buffer[1];
+    int16_t ay = (buffer[2] << 8) | buffer[3];
+    int16_t az = (buffer[4] << 8) | buffer[5];
+    int16_t gx = (buffer[8] << 8) | buffer[9];
+    int16_t gy = (buffer[10] << 8) | buffer[11];
+    int16_t gz = (buffer[12] << 8) | buffer[13];
+
+    /* Scale factors (match full-scale configuration) */
+    float accel_scale = 16384.0f;  /* ±2g */
+    float gyro_scale = 131.0f;     /* ±250°/s */
+    data->accel_x = ax / accel_scale;
+    data->accel_y = ay / accel_scale;
+    data->accel_z = az / accel_scale;
+    data->gyro_x = gx / gyro_scale;
+    data->gyro_y = gy / gyro_scale;
+    data->gyro_z = gz / gyro_scale;
+}

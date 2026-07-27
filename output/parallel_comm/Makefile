@@ -100,7 +100,6 @@ CFLAGS   = $(MCU_FLAGS) $(CPU_DEFINE) $(CLOCK_DEFINE) \
            -Og -g3 -Wall -fdata-sections -ffunction-sections \
            $(INCLUDES) -DSTM32G0B1xx -DUSE_HAL_DRIVER
 
-
 # ---------------------------------------------------------------------------
 # Linker flags (common)
 # ---------------------------------------------------------------------------
@@ -195,3 +194,4 @@ test:
 
 coverage:
 	python test/run_tests.py --coverage
+

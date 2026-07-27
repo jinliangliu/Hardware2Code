@@ -1,0 +1,91 @@
+#ifndef __DRV_{{ peripheral.name | upper }}_H
+#define __DRV_{{ peripheral.name | upper }}_H
+
+#ifndef TEST
+#include "stm32g0xx_hal.h"
+#endif
+#include <stdint.h>
+
+/* NEC timing constants (in microseconds) */
+#define IR_NEC_LEADER_HIGH_US   9000
+#define IR_NEC_LEADER_LOW_US    4500
+#define IR_NEC_BIT_HIGH_US      560
+#define IR_NEC_BIT0_LOW_US      565
+#define IR_NEC_BIT1_LOW_US      1690
+#define IR_NEC_STOP_US          560
+#define IR_NEC_REPEAT_LOW_US    2250
+#define IR_NEC_REPEAT_STOP_US   560
+
+/* NEC frame mask */
+#define IR_NEC_FRAME_READY      0x01U
+#define IR_NEC_REPEAT_FLAG      0x02U
+
+/**
+ * @brief  Initialize IR module with timer for PWM carrier and GPIO for TX
+ * @param  tim: Timer handle for 38kHz PWM carrier generation
+ * @param  tx_port: GPIO port used for IR TX pin
+ * @param  tx_pin: GPIO pin number for IR TX
+ */
+void ir_init(TIM_HandleTypeDef *tim, GPIO_TypeDef *tx_port, uint16_t tx_pin);
+
+/**
+ * @brief  Send a complete NEC frame (address + command)
+ * @param  address: 8-bit device address
+ * @param  command: 8-bit command code
+ */
+void ir_send_nec(uint8_t address, uint8_t command);
+
+/**
+ * @brief  Send NEC repeat code (9ms burst + 2.25ms space + 560us burst)
+ */
+void ir_send_nec_repeat(void);
+
+/**
+ * @brief  IR decode ISR callback - feed capture values from timer ISR
+ * @param  capture_value: Timer capture value (in timer ticks)
+ * @param  edge: 0 = falling edge, 1 = rising edge
+ * @note   Call this from timer input capture ISR context
+ */
+void ir_decode_isr_callback(uint32_t capture_value, uint8_t edge);
+
+/**
+ * @brief  Retrieve last decoded NEC frame
+ * @param  addr: Output buffer for 8-bit address
+ * @param  cmd: Output buffer for 8-bit command
+ * @return 1 if valid frame available, 0 if no frame ready
+ */
+int ir_get_received(uint8_t *addr, uint8_t *cmd);
+
+/**
+ * @brief  Check if a complete NEC frame has been decoded
+ * @return 1 if frame ready, 0 otherwise
+ */
+int ir_is_frame_ready(void);
+
+/* ========== SIR mode (UART passthrough) ========== */
+
+/**
+ * @brief  Initialize SIR mode using a UART instance
+ * @param  huart: UART handle to use for SIR communication
+ */
+void ir_sir_init(UART_HandleTypeDef *huart);
+
+/**
+ * @brief  Send raw byte over SIR (UART passthrough)
+ * @param  data: Byte to send
+ */
+void ir_sir_send_byte(uint8_t data);
+
+/**
+ * @brief  Check if SIR data is available for reading
+ * @return Number of bytes available in receive buffer
+ */
+int ir_sir_available(void);
+
+/**
+ * @brief  Read a byte from SIR receive buffer
+ * @return Received byte (0 if buffer empty)
+ */
+uint8_t ir_sir_read_byte(void);
+
+#endif /* __DRV_{{ peripheral.name | upper }}_H */

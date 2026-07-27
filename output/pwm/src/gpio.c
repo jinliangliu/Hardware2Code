@@ -1,4 +1,3 @@
-
 #ifdef TEST
 #include "mock_hal.h"
 #else
@@ -8,6 +7,9 @@
 void MX_GPIO_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    /* SYSCFG clock must be enabled for EXTI line mapping (STM32G0) */
+    __HAL_RCC_SYSCFG_CLK_ENABLE();
 
     /* PWM_OUT (PA8) */
     __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -30,6 +32,8 @@ void MX_GPIO_Init(void)
 
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+    /* 初始输出高电平，LED 熄灭（低电平有效） */
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET);
     /* Enable NVIC if EXTI is configured */
     /* BUTTON (PC13) */
     __HAL_RCC_GPIOC_CLK_ENABLE();

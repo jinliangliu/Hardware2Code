@@ -9,6 +9,7 @@
 
 #include "event_mgr.h"
 
+
 #ifndef TEST
 #include "statemachine.h"
 #endif
@@ -34,6 +35,9 @@ void EventMgr_Task(void *pvParameters)
     while(1) {
         if( xQueueReceive(event_queue, &evt, portMAX_DELAY) == pdTRUE ) {
 #ifndef TEST
+            if (evt.id == EVENT_RTC_TICK) {
+                RTC_ProcessTimers();
+            }
             statemachine_process(&evt);
 #else
             /* 测试模式：仅标记事件已处理 */

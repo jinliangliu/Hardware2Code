@@ -1,0 +1,19 @@
+model: "RS485"
+type: "RS485"
+interface: "uart"
+driver_template: "drivers/drv_rs485.c.j2"
+header_template: "drivers/drv_rs485.h.j2"
+capabilities:
+  - half_duplex
+  - direction_control
+default_params:
+  baudrate: 9600
+  parity: "none"
+extra_schema:
+  de_pin:
+    type: pin
+    required: true
+  uart:
+    type: str
+    required: false
+    default: ""

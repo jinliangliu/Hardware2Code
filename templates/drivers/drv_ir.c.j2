@@ -1,0 +1,308 @@
+{#
+    drv_ir.c.j2 - IR driver with NEC protocol encode/decode and SIR support
+    Mode: nec (38kHz carrier modulation) or sir (UART passthrough)
+    Template variables: peripheral.mode, peripheral.extra.tx_pin, peripheral.extra.rx_pin
+#}
+
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#endif
+
+#include "drv_{{ peripheral.name }}.h"
+#include <string.h>
+
+/* ---------- Module state ---------- */
+static TIM_HandleTypeDef *ir_tim = NULL;
+static GPIO_TypeDef       *ir_tx_port = NULL;
+static uint16_t            ir_tx_pin = 0;
+static uint8_t             ir_mode = 0;  /* 0 = NEC, 1 = SIR */
+
+/* SIR mode UART handle */
+static UART_HandleTypeDef *ir_sir_huart = NULL;
+
+/* NEC decode state machine */
+#define IR_DEC_STATE_IDLE       0
+#define IR_DEC_STATE_LEADER     1
+#define IR_DEC_STATE_DATA       2
+#define IR_DEC_STATE_STOP       3
+
+static uint8_t  ir_dec_state = IR_DEC_STATE_IDLE;
+static uint8_t  ir_dec_flags = 0;       /* IR_NEC_FRAME_READY | IR_NEC_REPEAT_FLAG */
+static uint8_t  ir_dec_bit_count = 0;
+static uint32_t ir_dec_raw_data = 0;    /* 32-bit NEC frame (4 bytes) */
+static uint8_t  ir_dec_addr = 0;
+static uint8_t  ir_dec_cmd = 0;
+static uint8_t  ir_dec_skip_burst = 0;  /* 1 = next capture is a burst (skip) */
+
+/* Tolerance margin for timing: +/- 30% */
+#define IR_TOLERANCE_PCT    30
+
+static uint8_t ir_check_timing(uint32_t measured, uint32_t expected)
+{
+    uint32_t margin = (expected * IR_TOLERANCE_PCT) / 100;
+    return (measured >= (expected - margin)) && (measured <= (expected + margin));
+}
+
+/* ========== NEC encode ========== */
+
+static void ir_modulate_bit(uint32_t high_us, uint32_t low_us)
+{
+    /* Enable PWM output on the TX pin by starting the timer channel */
+#ifndef TEST
+    HAL_TIM_PWM_Start(ir_tim, TIM_CHANNEL_1);
+#else
+    (void)high_us;
+    (void)low_us;
+#endif
+}
+
+static void ir_space_bit(uint32_t duration_us)
+{
+    /* Stop PWM to create space (no carrier) */
+#ifndef TEST
+    HAL_TIM_PWM_Stop(ir_tim, TIM_CHANNEL_1);
+#else
+    (void)duration_us;
+#endif
+}
+
+static void ir_delay_us(uint32_t us)
+{
+#ifndef TEST
+    uint32_t start = HAL_GetTick();
+    uint32_t target_ms = (us + 999) / 1000;
+    if (target_ms == 0) target_ms = 1;
+    while ((HAL_GetTick() - start) < target_ms);
+#else
+    (void)us;
+#endif
+}
+
+static void ir_send_bit(uint8_t bit)
+{
+    /* Start: 560us carrier burst */
+    ir_modulate_bit(IR_NEC_BIT_HIGH_US, 0);
+    ir_delay_us(IR_NEC_BIT_HIGH_US);
+
+    /* Space depends on bit value */
+    if (bit) {
+        ir_space_bit(IR_NEC_BIT1_LOW_US);
+        ir_delay_us(IR_NEC_BIT1_LOW_US);
+    } else {
+        ir_space_bit(IR_NEC_BIT0_LOW_US);
+        ir_delay_us(IR_NEC_BIT0_LOW_US);
+    }
+}
+
+static void ir_send_byte(uint8_t data)
+{
+    for (int i = 0; i < 8; i++) {
+        ir_send_bit((data >> i) & 0x01);
+    }
+}
+
+void ir_init(TIM_HandleTypeDef *tim, GPIO_TypeDef *tx_port, uint16_t tx_pin)
+{
+    ir_tim = tim;
+    ir_tx_port = tx_port;
+    ir_tx_pin = tx_pin;
+    ir_mode = 0;
+
+    /* Ensure PWM is stopped initially */
+#ifndef TEST
+    HAL_TIM_PWM_Stop(ir_tim, TIM_CHANNEL_1);
+#endif
+
+    /* Reset decode state */
+    ir_dec_state = IR_DEC_STATE_IDLE;
+    ir_dec_raw_data = 0;
+    ir_dec_bit_count = 0;
+    ir_dec_flags = 0;
+    ir_dec_skip_burst = 0;
+}
+
+void ir_send_nec(uint8_t address, uint8_t command)
+{
+    /* Leader pulse: 9ms carrier + 4.5ms space */
+    ir_modulate_bit(IR_NEC_LEADER_HIGH_US, 0);
+    ir_delay_us(IR_NEC_LEADER_HIGH_US);
+    ir_space_bit(IR_NEC_LEADER_LOW_US);
+    ir_delay_us(IR_NEC_LEADER_LOW_US);
+
+    /* Address byte */
+    ir_send_byte(address);
+
+    /* Address complement */
+    ir_send_byte((uint8_t)(~address));
+
+    /* Command byte */
+    ir_send_byte(command);
+
+    /* Command complement */
+    ir_send_byte((uint8_t)(~command));
+
+    /* Stop bit: 560us carrier burst */
+    ir_modulate_bit(IR_NEC_STOP_US, 0);
+    ir_delay_us(IR_NEC_STOP_US);
+    ir_space_bit(0);
+}
+
+void ir_send_nec_repeat(void)
+{
+    /* 9ms carrier burst */
+    ir_modulate_bit(IR_NEC_LEADER_HIGH_US, 0);
+    ir_delay_us(IR_NEC_LEADER_HIGH_US);
+
+    /* 2.25ms space */
+    ir_space_bit(IR_NEC_REPEAT_LOW_US);
+    ir_delay_us(IR_NEC_REPEAT_LOW_US);
+
+    /* 560us stop burst */
+    ir_modulate_bit(IR_NEC_REPEAT_STOP_US, 0);
+    ir_delay_us(IR_NEC_REPEAT_STOP_US);
+    ir_space_bit(0);
+}
+
+/* ========== NEC decode (timer capture ISR callback) ========== */
+
+/* Calculate the space duration from the edge timing.
+ * In test mode: the calling test provides the duration directly.
+ * In real hardware: calculate from the rising -> falling edge difference.
+ */
+static int ir_parse_edge(uint32_t capture_value, uint8_t edge)
+{
+    (void)edge;
+
+    /* Detect leader burst: ~9000us */
+    if (ir_check_timing(capture_value, IR_NEC_LEADER_HIGH_US)) {
+        ir_dec_state = IR_DEC_STATE_LEADER;
+        return 0;
+    }
+
+    /* Space detection: check leader low (4500us) vs repeat low (2250us) */
+    if (ir_dec_state == IR_DEC_STATE_LEADER) {
+        if (ir_check_timing(capture_value, IR_NEC_REPEAT_LOW_US)) {
+            ir_dec_flags = IR_NEC_REPEAT_FLAG | IR_NEC_FRAME_READY;
+            ir_dec_state = IR_DEC_STATE_IDLE;
+            return 1;
+        } else if (ir_check_timing(capture_value, IR_NEC_LEADER_LOW_US)) {
+            ir_dec_state = IR_DEC_STATE_DATA;
+            ir_dec_raw_data = 0;
+            ir_dec_bit_count = 0;
+            ir_dec_skip_burst = 1;  /* next capture is the first bit burst */
+            return 0;
+        }
+        ir_dec_state = IR_DEC_STATE_IDLE;
+        return 0;
+    }
+
+    /* Data bit decoding: skip burst duration (560us), decode space duration */
+    if (ir_dec_state == IR_DEC_STATE_DATA) {
+        if (ir_dec_skip_burst) {
+            /* Skip the 560us burst that precedes each data bit */
+            ir_dec_skip_burst = 0;
+            return 0;
+        }
+        if (ir_check_timing(capture_value, IR_NEC_BIT0_LOW_US)) {
+            /* Bit 0 */
+            ir_dec_bit_count++;
+            ir_dec_skip_burst = 1;
+        } else if (ir_check_timing(capture_value, IR_NEC_BIT1_LOW_US)) {
+            /* Bit 1: shift in a 1 at the current position */
+            ir_dec_raw_data |= (1UL << ir_dec_bit_count);
+            ir_dec_bit_count++;
+            ir_dec_skip_burst = 1;
+        }
+
+        /* Check if frame complete (32 bits) */
+        if (ir_dec_bit_count >= 32) {
+            uint8_t addr = (uint8_t)(ir_dec_raw_data & 0xFF);
+            uint8_t addr_inv = (uint8_t)((ir_dec_raw_data >> 8) & 0xFF);
+            uint8_t cmd = (uint8_t)((ir_dec_raw_data >> 16) & 0xFF);
+            uint8_t cmd_inv = (uint8_t)((ir_dec_raw_data >> 24) & 0xFF);
+
+            if (((uint8_t)(~addr) == addr_inv) && ((uint8_t)(~cmd) == cmd_inv)) {
+                ir_dec_addr = addr;
+                ir_dec_cmd = cmd;
+                ir_dec_flags = IR_NEC_FRAME_READY;
+            }
+            ir_dec_state = IR_DEC_STATE_STOP;
+            return 1;
+        }
+        return 0;
+    }
+
+    return 0;
+}
+
+void ir_decode_isr_callback(uint32_t capture_value, uint8_t edge)
+{
+    (void)ir_parse_edge(capture_value, edge);
+}
+
+int ir_get_received(uint8_t *addr, uint8_t *cmd)
+{
+    if (!(ir_dec_flags & IR_NEC_FRAME_READY)) {
+        return 0;
+    }
+
+    if (addr) *addr = ir_dec_addr;
+    if (cmd) *cmd = ir_dec_cmd;
+
+    /* Clear flags after read - keep repeat flag if set */
+    ir_dec_flags &= IR_NEC_REPEAT_FLAG;
+    return 1;
+}
+
+int ir_is_frame_ready(void)
+{
+    return (ir_dec_flags & IR_NEC_FRAME_READY) ? 1 : 0;
+}
+
+/* ========== SIR mode (UART passthrough) ========== */
+
+#define IR_SIR_RX_BUF_SIZE  64
+
+static uint8_t ir_sir_rx_buf[IR_SIR_RX_BUF_SIZE];
+static volatile uint8_t ir_sir_rx_head = 0;
+static volatile uint8_t ir_sir_rx_tail = 0;
+
+void ir_sir_init(UART_HandleTypeDef *huart)
+{
+    ir_sir_huart = huart;
+    ir_mode = 1;
+    ir_sir_rx_head = 0;
+    ir_sir_rx_tail = 0;
+    memset(ir_sir_rx_buf, 0, sizeof(ir_sir_rx_buf));
+}
+
+void ir_sir_send_byte(uint8_t data)
+{
+#ifndef TEST
+    if (ir_sir_huart) {
+        HAL_UART_Transmit(ir_sir_huart, &data, 1, 10);
+    }
+#else
+    (void)data;
+#endif
+}
+
+int ir_sir_available(void)
+{
+    if (ir_sir_rx_head >= ir_sir_rx_tail) {
+        return ir_sir_rx_head - ir_sir_rx_tail;
+    }
+    return (IR_SIR_RX_BUF_SIZE - ir_sir_rx_tail) + ir_sir_rx_head;
+}
+
+uint8_t ir_sir_read_byte(void)
+{
+    if (ir_sir_rx_head == ir_sir_rx_tail) {
+        return 0;
+    }
+    uint8_t data = ir_sir_rx_buf[ir_sir_rx_tail];
+    ir_sir_rx_tail = (ir_sir_rx_tail + 1) % IR_SIR_RX_BUF_SIZE;
+    return data;
+}

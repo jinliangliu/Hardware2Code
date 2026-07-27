@@ -15,6 +15,24 @@ TEST_PROGS += test_rtc test_event_mgr
 {% if has_fota %}
 TEST_PROGS += test_fota_protocol test_fota_bspatch
 {% endif %}
+{% if has_rs485 %}
+TEST_PROGS += test_rs485
+{% endif %}
+{% if has_modbus %}
+TEST_PROGS += test_modbus
+{% endif %}
+{% if has_ir %}
+TEST_PROGS += test_ir
+{% endif %}
+{% if has_cellular %}
+TEST_PROGS += test_cellular
+{% endif %}
+{% if has_mqtt %}
+TEST_PROGS += test_mqtt
+{% endif %}
+{% if has_cli %}
+TEST_PROGS += test_cli
+{% endif %}
 {% for p in peripherals %}
 {% if p.type == 'I2C_Sensor_MPU6050' %}
 TEST_PROGS += test_mpu6050
@@ -34,6 +52,31 @@ test_rtc: $(UNITY_SRC) $(MOCK_SRC) test_rtc.c
 	$(CC) $(CFLAGS) $^ -o $@
 
 test_event_mgr: $(UNITY_SRC) $(MOCK_SRC) test_event_mgr.c
+	$(CC) $(CFLAGS) $^ -o $@
+{% endif %}
+
+{% if has_rs485 %}
+test_rs485: $(UNITY_SRC) $(MOCK_SRC) test_rs485.c
+	$(CC) $(CFLAGS) $^ -o $@
+{% endif %}
+{% if has_modbus %}
+test_modbus: $(UNITY_SRC) $(MOCK_SRC) test_modbus.c
+	$(CC) $(CFLAGS) $^ -o $@
+{% endif %}
+{% if has_ir %}
+test_ir: $(UNITY_SRC) $(MOCK_SRC) test_ir.c
+	$(CC) $(CFLAGS) $^ -o $@
+{% endif %}
+{% if has_cellular %}
+test_cellular: $(UNITY_SRC) test_cellular.c
+	$(CC) $(CFLAGS) $^ -o $@
+{% endif %}
+{% if has_mqtt %}
+test_mqtt: $(UNITY_SRC) mock_hal.c test_mqtt.c
+	$(CC) $(CFLAGS) $^ -o $@
+{% endif %}
+{% if has_cli %}
+test_cli: $(UNITY_SRC) $(MOCK_SRC) test_cli.c
 	$(CC) $(CFLAGS) $^ -o $@
 {% endif %}
 

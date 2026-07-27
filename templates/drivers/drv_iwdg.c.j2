@@ -30,14 +30,7 @@ void IWDG_Init(void)
      */
     hiwdg.Init.Prescaler = IWDG_PRESCALER_256;
 
-    uint32_t reload = IWDG_TIMEOUT_MS / 8;
-    if (reload > 0xFFF) {
-        reload = 0xFFF;
-    }
-    if (reload < 1) {
-        reload = 1;
-    }
-    hiwdg.Init.Reload = reload;
+    hiwdg.Init.Reload = {{ iwdg_reload_value if iwdg_reload_value is not none else 625 }};
 
     /*
      * Window option disabled — the refresh window is the full countdown range,

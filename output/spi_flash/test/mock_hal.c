@@ -3,15 +3,38 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* ======================================================================
- * External variables
- * ====================================================================== */
-TaskHandle_t led_task_handle = NULL;
-QueueHandle_t event_queue = NULL;
+/* ========== CMSIS register mocks (static storage) ========== */
+static volatile CRC_TypeDef  mock_crc_regs;
+static volatile PWR_TypeDef  mock_pwr_regs;
+static volatile RCC_TypeDef  mock_rcc_regs;
+static volatile TAMP_TypeDef mock_tamp_regs;
+static volatile SCB_TypeDef  mock_scb_regs;
+static volatile NVIC_TypeDef mock_nvic_regs;
+static volatile SysTick_TypeDef mock_systick_regs;
 
-/* ======================================================================
- * GPIO mock state (history based)
- * ====================================================================== */
+volatile CRC_TypeDef  *CRC  = &mock_crc_regs;
+volatile PWR_TypeDef  *PWR  = &mock_pwr_regs;
+volatile RCC_TypeDef  *RCC  = &mock_rcc_regs;
+volatile TAMP_TypeDef *TAMP = &mock_tamp_regs;
+volatile SCB_TypeDef  *SCB  = &mock_scb_regs;
+volatile NVIC_TypeDef *NVIC = &mock_nvic_regs;
+volatile SysTick_TypeDef *SysTick = &mock_systick_regs;
+
+void mock_cmsis_reset(void)
+{
+    memset((void *)&mock_crc_regs, 0, sizeof(mock_crc_regs));
+    memset((void *)&mock_pwr_regs, 0, sizeof(mock_pwr_regs));
+    memset((void *)&mock_rcc_regs, 0, sizeof(mock_rcc_regs));
+    memset((void *)&mock_tamp_regs, 0, sizeof(mock_tamp_regs));
+    memset((void *)&mock_scb_regs, 0, sizeof(mock_scb_regs));
+    memset((void *)&mock_nvic_regs, 0, sizeof(mock_nvic_regs));
+    memset((void *)&mock_systick_regs, 0, sizeof(mock_systick_regs));
+}
+
+/* External variables */
+TaskHandle_t led_task_handle = NULL;
+
+/* ========== GPIO mock (history based) ========== */
 static GPIO_InitTypeDef gpio_history[MAX_GPIO_PINS];
 static uint32_t gpio_call_count = 0;
 
@@ -29,20 +52,13 @@ uint32_t mock_HAL_GPIO_Init_get_count(void) {
 }
 
 uint32_t mock_HAL_GPIO_Init_get_pin(uint32_t index) {
-    if (index < gpio_call_count) {
-        return gpio_history[index].Pin;
-    }
-    return 0;
+    return index < gpio_call_count ? gpio_history[index].Pin : 0;
 }
 
 uint32_t mock_HAL_GPIO_Init_get_mode(uint32_t index) {
-    if (index < gpio_call_count) {
-        return gpio_history[index].Mode;
-    }
-    return 0;
+    return index < gpio_call_count ? gpio_history[index].Mode : 0;
 }
 
-/* Called by the HAL_GPIO_Init stub */
 static void record_gpio_init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *init) {
     (void)GPIOx;
     if (gpio_call_count < MAX_GPIO_PINS) {
@@ -51,29 +67,64 @@ static void record_gpio_init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *init) {
     }
 }
 
-/* ======================================================================
- * RTC mock state
- * ====================================================================== */
-static bool rtc_init_called = false;
+void HAL_GPIO_Init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *init) {
+    record_gpio_init(GPIOx, init);
+}
 
-void mock_HAL_RTC_Init_reset(void) { rtc_init_called = false; }
-bool mock_HAL_RTC_Init_called(void) { return rtc_init_called; }
+static uint32_t gpio_write_last_pin = 0;
+static uint32_t gpio_write_last_state = 0;
+static uint32_t gpio_write_call_count = 0;
 
-/* ======================================================================
- * I2C mock state
- * ====================================================================== */
-static bool i2c_init_called = false;
+void mock_HAL_GPIO_WritePin_set(uint32_t pin, uint32_t state) {
+    gpio_write_last_pin = pin;
+    gpio_write_last_state = state;
+    gpio_write_call_count++;
+}
 
-void mock_HAL_I2C_Init_reset(void) { i2c_init_called = false; }
-bool mock_HAL_I2C_Init_called(void) { return i2c_init_called; }
+void mock_HAL_GPIO_WritePin_reset(void) {
+    gpio_write_last_pin = 0;
+    gpio_write_last_state = 0;
+    gpio_write_call_count = 0;
+}
 
-/* ======================================================================
- * NVIC mock state
- * ====================================================================== */
+uint32_t mock_HAL_GPIO_WritePin_get_last_pin(void) {
+    return gpio_write_last_pin;
+}
+
+uint32_t mock_HAL_GPIO_WritePin_get_last_state(void) {
+    return gpio_write_last_state;
+}
+
+uint32_t mock_HAL_GPIO_WritePin_get_count(void) {
+    return gpio_write_call_count;
+}
+
+void HAL_GPIO_WritePin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, uint16_t PinState) {
+    (void)GPIOx;
+    gpio_write_last_pin = GPIO_Pin;
+    gpio_write_last_state = PinState;
+    gpio_write_call_count++;
+}
+
+void HAL_GPIO_TogglePin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin) {
+    (void)GPIOx; (void)GPIO_Pin;
+}
+
+GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin) {
+    (void)GPIOx;
+    /* Return 0 for unconnected pins, 1 for PC13 (BUTTON internal pull-up) */
+    return (GPIO_Pin == GPIO_PIN_13) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+}
+
+/* ========== NVIC mock ========== */
 static IRQn_Type last_irq = -1;
 static bool nvic_called = false;
 
-void mock_HAL_NVIC_EnableIRQ_reset(void) { last_irq = -1; nvic_called = false; }
+void mock_HAL_NVIC_EnableIRQ_reset(void) {
+    last_irq = -1;
+    nvic_called = false;
+}
+
 bool mock_HAL_NVIC_EnableIRQ_called_with(IRQn_Type IRQn) {
     return nvic_called && (last_irq == IRQn);
 }
@@ -81,13 +132,6 @@ bool mock_HAL_NVIC_EnableIRQ_called_with(IRQn_Type IRQn) {
 static void record_nvic(IRQn_Type IRQn) {
     last_irq = IRQn;
     nvic_called = true;
-}
-
-/* ======================================================================
- * Real HAL function stubs (call the internal recorders)
- * ====================================================================== */
-void HAL_GPIO_Init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *init) {
-    record_gpio_init(GPIOx, init);
 }
 
 void HAL_NVIC_EnableIRQ(IRQn_Type IRQn) {
@@ -98,6 +142,7 @@ void HAL_NVIC_SetPriority(IRQn_Type IRQn, uint32_t prio, uint32_t subprio) {
     (void)IRQn; (void)prio; (void)subprio;
 }
 
+/* ========== RCC stubs ========== */
 int HAL_RCC_OscConfig(RCC_OscInitTypeDef *osc) {
     (void)osc;
     return HAL_OK;
@@ -113,98 +158,330 @@ int HAL_RCCEx_PeriphCLKConfig(RCC_PeriphCLKInitTypeDef *pclk) {
     return HAL_OK;
 }
 
+/* ========== RTC hardware init mock ========== */
+static bool rtc_init_called = false;
+
+void mock_HAL_RTC_Init_reset(void) {
+    rtc_init_called = false;
+}
+
+bool mock_HAL_RTC_Init_called(void) {
+    return rtc_init_called;
+}
+
 int HAL_RTC_Init(RTC_HandleTypeDef *hrtc) {
     rtc_init_called = true;
     (void)hrtc;
     return HAL_OK;
 }
 
-void HAL_I2C_Init(I2C_HandleTypeDef *hi2c) {
-    i2c_init_called = true;
-    (void)hi2c;
-}
-
-void HAL_PWR_EnableBkUpAccess(void) {}
-
 void HAL_RTCEx_WakeUpTimerIRQHandler(RTC_HandleTypeDef *hrtc) { (void)hrtc; }
 void HAL_RTCEx_DeactivateWakeUpTimer(RTC_HandleTypeDef *hrtc) { (void)hrtc; }
 void HAL_RTCEx_SetWakeUpTimer_IT(RTC_HandleTypeDef *hrtc, uint32_t wakeup_counter, uint32_t clock) {
     (void)hrtc; (void)wakeup_counter; (void)clock;
 }
-
 void HAL_RTC_GetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, uint32_t format) {
     (void)hrtc; (void)format;
     if (sTime) memset(sTime, 0, sizeof(*sTime));
 }
-
 void HAL_RTC_SetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, uint32_t format) {
     (void)hrtc; (void)sTime; (void)format;
 }
-
 void HAL_RTC_GetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDate, uint32_t format) {
     (void)hrtc; (void)format;
     if (sDate) memset(sDate, 0, sizeof(*sDate));
 }
-
 void HAL_RTC_SetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDate, uint32_t format) {
     (void)hrtc; (void)sDate; (void)format;
 }
-
 void HAL_RTCEx_SetSmoothCalib(RTC_HandleTypeDef *hrtc, uint32_t period, uint32_t pulse, uint32_t ppm) {
     (void)hrtc; (void)period; (void)pulse; (void)ppm;
 }
-
+void HAL_PWR_EnableBkUpAccess(void) {}
 void HAL_SuspendTick(void) {}
 void HAL_ResumeTick(void) {}
 void vTaskStepTick(uint32_t ticks) { (void)ticks; }
 
-/* ======================================================================
- * FreeRTOS stubs
- * ====================================================================== */
+/* ========== I2C mock ========== */
+static bool i2c_init_called = false;
+
+void mock_HAL_I2C_Init_reset(void) { i2c_init_called = false; }
+bool mock_HAL_I2C_Init_called(void) { return i2c_init_called; }
+void HAL_I2C_Init(I2C_HandleTypeDef *hi2c) {
+    i2c_init_called = true;
+    (void)hi2c;
+}
+
+/* ========== SPI mock ========== */
+static bool spi_init_called = false;
+
+void HAL_SPI_Init(SPI_HandleTypeDef *hspi) {
+    (void)hspi;
+    spi_init_called = true;
+}
+void HAL_SPI_Transmit(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint16_t Size, uint32_t Timeout) {
+    (void)hspi; (void)pTxData; (void)Size; (void)Timeout;
+}
+void HAL_SPI_Receive(SPI_HandleTypeDef *hspi, uint8_t *pRxData, uint16_t Size, uint32_t Timeout) {
+    (void)hspi; (void)Timeout;
+    if (pRxData) memset(pRxData, 0, Size);
+}
+void HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint8_t *pRxData, uint16_t Size, uint32_t Timeout) {
+    (void)hspi; (void)pTxData; (void)Size; (void)Timeout;
+    if (pRxData) memset(pRxData, 0, Size);
+}
+bool mock_HAL_SPI_Init_called(void) { return spi_init_called; }
+
+/* ========== TIM mock for PWM ========== */
+static bool pwm_init_called = false;
+
+void HAL_TIM_PWM_Init(TIM_HandleTypeDef *htim) {
+    (void)htim;
+    pwm_init_called = true;
+}
+void HAL_TIM_PWM_ConfigChannel(TIM_HandleTypeDef *htim, TIM_OC_InitTypeDef *sConfig, uint32_t Channel) {
+    (void)htim; (void)sConfig; (void)Channel;
+}
+void HAL_TIM_PWM_Start(TIM_HandleTypeDef *htim, uint32_t Channel) {
+    (void)htim; (void)Channel;
+}
+bool mock_HAL_TIM_PWM_Init_called(void) { return pwm_init_called; }
+
+/* ========== ADC mock ========== */
+static bool adc_init_called = false;
+
+void HAL_ADC_Init(ADC_HandleTypeDef *hadc) {
+    (void)hadc;
+    adc_init_called = true;
+}
+void HAL_ADC_ConfigChannel(ADC_HandleTypeDef *hadc, ADC_ChannelConfTypeDef *sConfig) {
+    (void)hadc; (void)sConfig;
+}
+void HAL_ADC_Start(ADC_HandleTypeDef *hadc) { (void)hadc; }
+void HAL_ADC_PollForConversion(ADC_HandleTypeDef *hadc, uint32_t Timeout) {
+    (void)hadc; (void)Timeout;
+}
+uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef *hadc) {
+    (void)hadc;
+    return 0;
+}
+bool mock_HAL_ADC_Init_called(void) { return adc_init_called; }
+
+/* ========== UART mock ========== */
+static bool uart_init_called = false;
+static bool uart_transmit_called = false;
+static bool uart_receive_called = false;
+static uint8_t uart_tx_buf[MOCK_UART_TX_BUF_SIZE];
+static uint16_t uart_tx_len = 0;
+
+void HAL_UART_Init(UART_HandleTypeDef *huart) {
+    (void)huart;
+    uart_init_called = true;
+}
+void HAL_UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout) {
+    (void)huart; (void)Timeout;
+    uart_transmit_called = true;
+    if (uart_tx_len + Size <= sizeof(uart_tx_buf)) {
+        memcpy(&uart_tx_buf[uart_tx_len], pData, Size);
+        uart_tx_len += Size;
+    }
+}
+void HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout) {
+    (void)huart; (void)pData; (void)Size; (void)Timeout;
+    uart_receive_called = true;
+}
+void HAL_UART_Receive_IT(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size) {
+    (void)huart; (void)pData; (void)Size;
+    /* Callback is triggered by the real UART ISR;
+     * tests should call HAL_UART_RxCpltCallback directly. */
+}
+bool mock_HAL_UART_Init_called(void) { return uart_init_called; }
+bool mock_HAL_UART_Transmit_called(void) { return uart_transmit_called; }
+void mock_HAL_UART_Transmit_reset(void) {
+    uart_transmit_called = false;
+    uart_tx_len = 0;
+    memset(uart_tx_buf, 0, sizeof(uart_tx_buf));
+}
+void mock_HAL_UART_Transmit_get_tx_data(uint8_t **buf, uint16_t *len) {
+    *buf = uart_tx_buf;
+    *len = uart_tx_len;
+}
+bool mock_HAL_UART_Receive_called(void) { return uart_receive_called; }
+void mock_HAL_UART_Receive_reset(void) { uart_receive_called = false; }
+
+/* ========== IWDG mock ========== */
+static bool iwdg_init_called = false;
+static bool iwdg_refresh_called = false;
+
+HAL_StatusTypeDef HAL_IWDG_Init(IWDG_HandleTypeDef *hiwdg) {
+    (void)hiwdg;
+    iwdg_init_called = true;
+    return HAL_OK;
+}
+HAL_StatusTypeDef HAL_IWDG_Refresh(IWDG_HandleTypeDef *hiwdg) {
+    (void)hiwdg;
+    iwdg_refresh_called = true;
+    return HAL_OK;
+}
+bool mock_HAL_IWDG_Init_called(void) { return iwdg_init_called; }
+bool mock_HAL_IWDG_Refresh_called(void) { return iwdg_refresh_called; }
+
+void mock_HAL_IWDG_reset(void) {
+    iwdg_init_called = false;
+    iwdg_refresh_called = false;
+}
+
+/* ========== Flash mock (FOTA) ========== */
+static bool flash_erase_called = false;
+static bool flash_locked = true;
+static uint32_t flash_program_count = 0;
+
+HAL_StatusTypeDef HAL_FLASH_Unlock(void) {
+    flash_locked = false;
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_FLASH_Lock(void) {
+    flash_locked = true;
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_FLASH_Program(uint32_t TypeProgram, uint32_t Address, uint64_t Data) {
+    (void)TypeProgram;
+    (void)Address;
+    (void)Data;
+    flash_program_count++;
+    return HAL_OK;
+}
+
+void HAL_FLASHEx_Erase(FLASH_EraseInitTypeDef *pEraseInit, uint32_t *PageError) {
+    (void)pEraseInit;
+    if (PageError) *PageError = 0xFFFFFFFF;
+    flash_erase_called = true;
+}
+
+void mock_flash_reset(void) {
+    flash_erase_called = false;
+    flash_locked = true;
+    flash_program_count = 0;
+}
+
+bool mock_flash_get_erase_called(void) { return flash_erase_called; }
+uint32_t mock_flash_get_program_count(void) { return flash_program_count; }
+
+/* ========== FreeRTOS stubs ========== */
 QueueHandle_t xQueueCreate(uint32_t length, uint32_t itemSize) {
     (void)length; (void)itemSize;
     return (QueueHandle_t)1;
 }
-
 BaseType_t xQueueReceive(QueueHandle_t queue, void *buffer, TickType_t wait) {
     (void)queue; (void)buffer; (void)wait;
     return pdFALSE;
 }
-
 BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t wait) {
     (void)queue; (void)item; (void)wait;
     return pdPASS;
 }
-
 BaseType_t xQueueSendFromISR(QueueHandle_t queue, const void *item, BaseType_t *pxWoken) {
     (void)queue; (void)item;
     if (pxWoken) *pxWoken = pdFALSE;
     return pdPASS;
 }
-
 BaseType_t xTaskNotify(TaskHandle_t task, uint32_t value, eNotifyAction action) {
     (void)task; (void)value; (void)action;
     return pdPASS;
 }
-
 BaseType_t xTaskNotifyFromISR(TaskHandle_t task, uint32_t value, eNotifyAction action, BaseType_t *pxWoken) {
     (void)task; (void)value; (void)action;
     if (pxWoken) *pxWoken = pdFALSE;
     return pdPASS;
 }
-
 void portYIELD_FROM_ISR(BaseType_t xWoken) { (void)xWoken; }
-
 void taskENTER_CRITICAL(void) {}
 void taskEXIT_CRITICAL(void) {}
-
 void *pvPortMalloc(size_t size) { return malloc(size); }
 void vPortFree(void *ptr) { free(ptr); }
 void vTaskDelay(TickType_t ticks) { (void)ticks; }
 
-uint32_t HAL_GetTick(void) {
-    return 0;   /* simple stub, not used in current tests */
+/* ========== Semaphore stubs (for CLI driver) ========== */
+static bool mock_sem_given = false;
+
+SemaphoreHandle_t xSemaphoreCreateBinary(void) {
+    mock_sem_given = false;
+    return (SemaphoreHandle_t)1;
 }
 
+BaseType_t xSemaphoreGiveFromISR(SemaphoreHandle_t sem, BaseType_t *pxHigherPriorityTaskWoken) {
+    (void)sem;
+    mock_sem_given = true;
+    if (pxHigherPriorityTaskWoken) *pxHigherPriorityTaskWoken = pdFALSE;
+    return pdPASS;
+}
+
+BaseType_t xSemaphoreTake(SemaphoreHandle_t sem, TickType_t xTicksToWait) {
+    (void)sem; (void)xTicksToWait;
+    if (mock_sem_given) {
+        mock_sem_given = false;
+        return pdPASS;
+    }
+    return pdFALSE;
+}
+
+/* ========== Task info stubs (for CLI built-in commands) ========== */
+static TickType_t mock_tick_count = 0;
+
+TickType_t xTaskGetTickCount(void) {
+    return mock_tick_count;
+}
+
+void mock_task_set_tick_count(TickType_t ticks) {
+    mock_tick_count = ticks;
+}
+
+uint32_t xPortGetFreeHeapSize(void) {
+    return 4096;
+}
+
+void vTaskList(char *pcWriteBuffer) {
+    if (pcWriteBuffer) {
+        strcpy(pcWriteBuffer, "cli\tR\t4\t200\r\nIDLE\tR\t0\t50\r\n");
+    }
+}
+
+/* ========== CMSIS system reset stub ========== */
+static bool mock_reset_called = false;
+
+void NVIC_SystemReset(void) {
+    mock_reset_called = true;
+}
+
+bool mock_NVIC_SystemReset_called(void) {
+    return mock_reset_called;
+}
+
+void mock_NVIC_SystemReset_reset(void) {
+    mock_reset_called = false;
+}
+
+/* ========== Other HAL stubs ========== */
+uint32_t HAL_GetTick(void) { return 0; }
+void HAL_Delay(uint32_t ms) { (void)ms; }
 void HAL_InitTick(uint32_t TickPriority) { (void)TickPriority; }
 void HAL_TIM_Base_Start_IT(TIM_HandleTypeDef *htim) { (void)htim; }
+
+/* ========== I2C Mem Read/Write stubs (for EEPROM) ========== */
+HAL_StatusTypeDef HAL_I2C_Mem_Read(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
+                                   uint16_t MemAddress, uint16_t MemAddSize,
+                                   uint8_t *pData, uint16_t Size, uint32_t Timeout) {
+    (void)hi2c; (void)DevAddress; (void)MemAddress; (void)MemAddSize; (void)Timeout;
+    if (pData) memset(pData, 0xFF, Size);
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
+                                    uint16_t MemAddress, uint16_t MemAddSize,
+                                    uint8_t *pData, uint16_t Size, uint32_t Timeout) {
+    (void)hi2c; (void)DevAddress; (void)MemAddress; (void)MemAddSize;
+    (void)pData; (void)Size; (void)Timeout;
+    return HAL_OK;
+}
