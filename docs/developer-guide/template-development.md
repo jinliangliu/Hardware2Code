@@ -49,8 +49,9 @@ templates/
 │   ├── app_slot_a.ld.j2           # App Slot A linker script
 │   └── app_slot_b.ld.j2           # App Slot B linker script
 ├── project/
-│   ├── Makefile.j2                # App Makefile
-│   └── bootloader_makefile.j2     # Bootloader standalone Makefile
+│   ├── CMakeLists.txt.j2          # App CMake build script
+│   ├── bootloader_CMakeLists.txt.j2 # Bootloader standalone CMake script
+│   └── toolchain.cmake            # ARM GCC cross-compilation toolchain (static)
 ├── config/
 │   ├── FreeRTOSConfig.h.j2        # FreeRTOS kernel config
 │   └── stm32g0xx_hal_conf.h.j2    # HAL module enable/disable
@@ -69,7 +70,7 @@ templates/
 │   ├── test_spi_flash.c.j2        # SPI Flash unit test
 │   ├── test_mpu6050.c.j2          # MPU6050 unit test
 │   ├── hil_test.c.j2              # HIL (Hardware-in-Loop) test
-│   └── Makefile.j2                # Test Makefile
+│   └── CMakeLists_test.txt.j2     # Test CMake build
 └── vscode/
     ├── settings.json.j2           # VSCode C/C++ settings
     ├── tasks.json.j2              # VSCode build tasks
@@ -526,23 +527,33 @@ App Slot B linker script (0x08040000 to 0x08080000).
 
 ## Project Templates
 
-### `project/Makefile.j2`
+### `project/CMakeLists.txt.j2`
 
-**Output:** `Makefile`
+**Output:** `CMakeLists.txt`
 
-App Makefile with targets:
-- `make` / `make all` — build firmware
-- `make flash` — ST-Link flash
-- `make flash-daplink` — OpenOCD DAP-Link flash
-- `make clean` — clean build artifacts
+Cross-platform CMake build script with targets:
+- `cmake --build build` — build firmware (default target)
+- `cmake --build build --target flash` — ST-Link flash via STM32_Programmer_CLI
+- `cmake --build build --target flash-daplink` — OpenOCD DAP-Link flash
+- `cmake --build build --target test` — run unit tests
+- `cmake --build build --target clean` — clean build artifacts
 
 Uses `HARDWARE2CODE_STATIC` to reference HAL/CMSIS/FreeRTOS from `static/` directory.
+Requires `cmake -B build -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake` to configure before building.
 
-### `project/bootloader_makefile.j2`
+### `project/toolchain.cmake` (static)
 
-**Output:** `bootloader/Makefile`
+**Output:** `toolchain.cmake`
 
-Standalone Makefile for building the Bootloader independently.
+ARM GCC cross-compilation toolchain file. Defines Cortex-M0+ flags, finds
+`arm-none-eabi-gcc` in PATH, sets nano.specs linker options.
+
+### `project/bootloader_CMakeLists.txt.j2`
+
+**Output:** `bootloader/CMakeLists.txt`
+
+Standalone CMake script for building the Bootloader independently (bare-metal,
+no FreeRTOS). Uses `-Os -g0` for minimal footprint.
 
 ---
 

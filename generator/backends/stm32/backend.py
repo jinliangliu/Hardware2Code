@@ -56,7 +56,7 @@ class STM32Backend(TargetBackend):
 
         These are referenced from the static STM32 directory and compiled
         as part of every project. The actual paths are resolved at build time
-        via the Makefile.
+        via the CMakeLists.txt.
         """
         return [
             "stm32g0xx_hal.c",

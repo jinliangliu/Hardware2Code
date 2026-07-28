@@ -1,0 +1,25 @@
+#ifndef __DRV_MODBUS1_H
+#define __DRV_MODBUS1_H
+#include <stdint.h>
+
+/* Modbus function codes */
+#define MODBUS_FC_READ_HOLDING_REGS    0x03
+#define MODBUS_FC_WRITE_SINGLE_REG     0x06
+#define MODBUS_FC_WRITE_MULTIPLE_REGS  0x10
+
+/* Exception codes */
+#define MODBUS_EX_ILLEGAL_FUNCTION     0x01
+#define MODBUS_EX_ILLEGAL_ADDRESS      0x02
+#define MODBUS_EX_ILLEGAL_DATA         0x03
+
+/* Broadcast address */
+#define MODBUS_BROADCAST_ADDR          0x00
+
+/* Frame timeout in milliseconds (3.5 characters at 9600 baud) */
+#define MODBUS_FRAME_TIMEOUT_MS        4
+
+void modbus_init(uint8_t slave_id, void *tx_func, void *rx_func,
+                 void *read_cb, void *write_cb);
+void modbus_process(void);
+
+#endif

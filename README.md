@@ -53,7 +53,7 @@ flowchart LR
     subgraph Output["固件输出"]
         E1[("src/<br>.c .h")]
         E2[("test/<br>Unity")]
-        E3[("Makefile<br>arm-gcc")]
+        E3[("CMakeLists.txt<br>arm-gcc")]
     end
 
     Input --> Parse --> Config --> Engine --> Output
@@ -133,7 +133,7 @@ flowchart TB
 
     Inputs --> Merge --> Validate --> Context
 
-    Context --> J2["Jinja2 模板引擎<br>62 个 .j2 → .c/.h/Makefile"]
+    Context --> J2["Jinja2 模板引擎<br>62 个 .j2 → .c/.h/CMakeLists.txt"]
 ```
 
 > 无论旧格式（单体 YAML）还是新格式（三层拆分），`mapper.py` 确保上游零改动。
@@ -153,7 +153,7 @@ flowchart TB
 | **FOTA** | BSDIFF 差分升级，减小 OTA 传输体积，完整性校验 + 回滚 |
 | **测试** | Unity 框架 + Mock HAL，PC 端脱离硬件运行，覆盖率报告 |
 | **通信** | Modbus RTU / MQTT 3.1.1 / RS485 半双工 / Cellular 4G Cat.1 |
-| **工具链** | `arm-none-eabi-gcc` + Makefile，VSCode launch/tasks 自动生成，ST-Link + DAP-Link 烧录 |
+| **工具链** | `arm-none-eabi-gcc` + CMake + Ninja，VSCode launch/tasks 自动生成，ST-Link + DAP-Link 烧录 |
 
 ---
 
@@ -175,7 +175,8 @@ hw2c parse parser/hardware_design/stm32g0b1_demo.enet \
 hw2c gen -i hardware.yaml --task task.yaml --bind bind.yaml -o output/my_project
 
 # 5. 编译烧录
-cd output/my_project && make && make flash
+cd output/my_project && cmake -B build -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake && cmake --build build
+cmake --build build --target flash
 ```
 
 > Web 可视化配置台：[hw2c-web](https://github.com/jinliangliu/hw2c-web) — 提供拖拽式任务编排、引脚封装预览、时钟树配置与 YAML 实时编辑。
@@ -233,7 +234,7 @@ behavior:
 hw2c
 ├── parser/          # 网表/BOM 解析管线
 ├── generator/       # 代码生成引擎（mapper / context / schemas / builders）
-├── templates/       # 62 个 Jinja2 模板（驱动 / 测试 / 配置 / 链接脚本）
+├── templates/       # 62 个 Jinja2 模板（驱动 / 测试 / 配置 / CMake / 链接脚本）
 ├── models/          # 17 个外设模型 YAML
 ├── examples/        # 22 个示例项目（从 blinky 到 FOTA）
 ├── docs/            # MkDocs 文档（用户指南 / 开发者指南 / 路线图）

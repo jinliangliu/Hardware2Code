@@ -135,12 +135,19 @@ def render_hil_project(env: Environment, context: dict, output_dir: str,
     standard = {
         "config/stm32g0xx_hal_conf.h.j2": os.path.join(output_dir, "config", "stm32g0xx_hal_conf.h"),
         "linker/STM32G0B1RETx_FLASH.ld.j2": os.path.join(output_dir, "linker", "STM32G0B1RETx_FLASH.ld"),
-        "project/Makefile.j2": os.path.join(output_dir, "Makefile"),
+        "project/CMakeLists.txt.j2": os.path.join(output_dir, "CMakeLists.txt"),
     }
     for tmpl, out in standard.items():
         template = env.get_template(tmpl)
         rendered = template.render(context)
         _write_file(out, rendered, dry_run, show_diff)
+
+    # Copy static toolchain file
+    toolchain_src = os.path.join(TEMPLATES_DIR, "project", "toolchain.cmake")
+    if os.path.exists(toolchain_src):
+        if not dry_run:
+            shutil.copy(toolchain_src, os.path.join(output_dir, "toolchain.cmake"))
+        logger.info("Copied toolchain.cmake")
 
     # 复制 hil_runner.py
     hil_runner_src = HIL_RUNNER_PATH
@@ -172,13 +179,20 @@ def render_templates(env: Environment, context: dict, output_dir: str,
         "config/FreeRTOSConfig.h.j2": os.path.join(output_dir, "config", "FreeRTOSConfig.h"),
         "config/stm32g0xx_hal_conf.h.j2": os.path.join(output_dir, "config", "stm32g0xx_hal_conf.h"),
         "linker/STM32G0B1RETx_FLASH.ld.j2": os.path.join(output_dir, "linker", "STM32G0B1RETx_FLASH.ld"),
-        "project/Makefile.j2": os.path.join(output_dir, "Makefile"),
+        "project/CMakeLists.txt.j2": os.path.join(output_dir, "CMakeLists.txt"),
     }
 
     for template_name, out_path in standard_templates.items():
         template = env.get_template(template_name)
         rendered = template.render(context)
         _write_file(out_path, rendered, dry_run, show_diff)
+
+    # Copy static toolchain file
+    toolchain_src = os.path.join(TEMPLATES_DIR, "project", "toolchain.cmake")
+    if os.path.exists(toolchain_src):
+        if not dry_run:
+            shutil.copy(toolchain_src, os.path.join(output_dir, "toolchain.cmake"))
+        logger.info("Copied toolchain.cmake")
 
     # ---------- 事件管理器 ----------
     event_mgr_templates = {
@@ -401,10 +415,15 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             out_path = os.path.join(boot_dir, fname)
             _write_file(out_path, rendered, dry_run, show_diff)
 
-        # Bootloader Makefile
-        boot_makefile = env.get_template("project/bootloader_makefile.j2")
-        rendered = boot_makefile.render(context)
-        _write_file(os.path.join(boot_dir, "Makefile"), rendered, dry_run, show_diff)
+        # Bootloader CMakeLists
+        boot_cmake = env.get_template("project/bootloader_CMakeLists.txt.j2")
+        rendered = boot_cmake.render(context)
+        _write_file(os.path.join(boot_dir, "CMakeLists.txt"), rendered, dry_run, show_diff)
+
+        # Copy toolchain to bootloader dir too (it references ../linker/bootloader.ld)
+        toolchain_src = os.path.join(TEMPLATES_DIR, "project", "toolchain.cmake")
+        if os.path.exists(toolchain_src) and not dry_run:
+            shutil.copy(toolchain_src, os.path.join(boot_dir, "toolchain.cmake"))
 
         # App 端启动标记文件
         boot_app_templates = {
@@ -425,40 +444,57 @@ def render_templates(env: Environment, context: dict, output_dir: str,
 
 
 def _run_compile_check(staging_dir: str, verbose: bool = False) -> tuple[bool, str]:
-    """Run `make` in staging directory to verify generated code compiles.
+    """Run cmake --build in staging directory to verify generated code compiles.
 
     Returns:
-        (success: bool, output: str) - combined stdout+stderr from make.
+        (success: bool, output: str) - combined stdout+stderr from cmake.
     """
-    logger.info("Running compile check: make -j8 ...")
+    logger.info("Running compile check: cmake configure + build ...")
     try:
-        result = subprocess.run(
-            ["make", "-j8"],
+        # Step 1: Configure
+        build_dir = os.path.join(staging_dir, "build")
+        result_cfg = subprocess.run(
+            ["cmake", "-B", build_dir,
+             "-DCMAKE_TOOLCHAIN_FILE=toolchain.cmake",
+             "-G", "Ninja"],
+            cwd=staging_dir,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result_cfg.returncode != 0:
+            output = result_cfg.stdout + result_cfg.stderr
+            for line in output.splitlines():
+                logger.error(f"[cmake configure] {line}")
+            return False, output
+
+        # Step 2: Build
+        result_build = subprocess.run(
+            ["cmake", "--build", build_dir, "-j"],
             cwd=staging_dir,
             capture_output=True,
             text=True,
             timeout=120,
         )
-        output = result.stdout + result.stderr
-        success = result.returncode == 0
+        output = result_build.stdout + result_build.stderr
+        success = result_build.returncode == 0
 
         if verbose or not success:
-            # In verbose mode, stream the output; on failure, always show
             for line in output.splitlines():
                 if verbose:
-                    logger.debug(f"[make] {line}")
+                    logger.debug(f"[cmake build] {line}")
                 elif not success:
-                    logger.error(f"[make] {line}")
+                    logger.error(f"[cmake build] {line}")
 
         if success:
             logger.info("Compile check PASSED")
         else:
-            logger.error(f"Compile check FAILED (exit code {result.returncode})")
+            logger.error(f"Compile check FAILED (exit code {result_build.returncode})")
 
         return success, output
     except FileNotFoundError:
-        logger.warning("Skipping compile check: 'make' not found in PATH")
-        return True, ""  # skip check if make not available
+        logger.warning("Skipping compile check: 'cmake' or 'ninja' not found in PATH")
+        return True, ""  # skip check if cmake not available
     except subprocess.TimeoutExpired:
         logger.error("Compile check timed out after 120s")
         return False, "TIMEOUT"

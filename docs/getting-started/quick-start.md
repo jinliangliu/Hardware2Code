@@ -60,7 +60,8 @@ This generates:
 - `src/statemachine.c/h` — Business flow state machine
 - `src/stm32g0xx_it.c` — Interrupt handlers
 - `config/FreeRTOSConfig.h` — FreeRTOS kernel configuration
-- `Makefile` — GCC build system
+- `CMakeLists.txt` — CMake build system with cross-platform support
+- `toolchain.cmake` — ARM GCC cross-compilation toolchain
 - `test/` — Unity-based unit tests with Mock HAL
 - `.vscode/` — VS Code debug configuration
 
@@ -68,7 +69,8 @@ This generates:
 
 ```bash
 cd output/my_project
-make
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake
+cmake --build build
 ```
 
 ## Step 4: Run Unit Tests (PC)
