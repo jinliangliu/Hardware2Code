@@ -11,6 +11,7 @@
 
 
 
+/* ========== 自定义类型定义 / Custom Type Definitions ========== */
 /* ========== 全局变量 ========== */
 static uint32_t press_count = 0;
 

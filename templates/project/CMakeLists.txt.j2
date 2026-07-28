@@ -75,7 +75,6 @@ add_library(hal OBJECT
 )
 target_include_directories(hal PRIVATE ${COMMON_INCLUDES})
 target_compile_options(hal PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:${CMAKE_C_FLAGS}>
 {% if hil_mode %}
     -Og -g3
 {% else %}
@@ -174,8 +173,6 @@ endif()
 # Build bootloader first, then run CRC patch, then flash
 add_custom_target(flash
     COMMAND ${CMAKE_COMMAND} -E echo "Flashing combined image..."
-    # Actual flash logic is handled by Makefile-style wrapper or external script
-    # For CMake, we rely on the generated patch_crc.py combined with cmake --build
     COMMENT "Flash via STM32_Programmer_CLI"
 )
 {% else %}

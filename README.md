@@ -1,6 +1,6 @@
-# Hardware2Code
+# hw2c
 
-**从 EDA 设计文件到可编译嵌入式固件，一键直达。**
+**Hardware to Code** — 从 EDA 设计文件到可编译嵌入式固件代码，一键直达。
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
@@ -255,7 +255,3 @@ hw2c
 详见：[ROADMAP.md](ROADMAP.md) | [three-layer-split.md](docs/plans/three-layer-split.md)
 
 ---
-
-## 许可证
-
-MIT © hw2c contributors

@@ -13,7 +13,6 @@ pins:
     exti:
       enable: true
       trigger: falling
-    notify_task: "led_task"
   - id: PA2
     function: USART2_TX
     label: "UART2_TX"
@@ -24,17 +23,8 @@ pins:
     af: 1
 log:
   enable: true
-
 sleep:
   mode: STOP1
-app_tasks:
-  - name: led_task
-    priority: 2
-    stack_size: 128
-  - name: rtc_demo_task
-    priority: 3
-    stack_size: 512
-
 peripherals:
   - name: "rtc"
     type: "Internal_RTC"
@@ -49,49 +39,3 @@ peripherals:
       baudrate: 115200
       tx_pin: "PA2"
       rx_pin: "PA3"
-
-behavior:
-  initial_state: "IDLE"
-  variables:
-    - name: "press_count"
-      type: "uint32_t"
-      initial: 0
-  states:
-    - name: "IDLE"
-      after: 5000   # 5秒无事件自动超时
-      on_entry:
-        - "toggle_led"   # 进入时闪灯提示（演示 on_entry）
-      on_exit:
-        - "toggle_led"   # 退出时闪灯提示（演示 on_exit）
-      transitions:
-        - event: "BUTTON_PRESS"
-          target: "ACTIVE"
-          guard: "press_count < 3"
-          actions:
-            - "defer 3000 => toggle_led"
-            - "set press_count inc"
-        - event: "BUTTON_PRESS"
-          target: "RESET"
-          # 无 guard，当前一个转换不匹配时触发
-          actions:
-            - "set press_count 0"   # 变量重置
-        - event: "TIMER_EXPIRED_IDLE_timeout"  # 时间序列超时
-          target: "TIMEOUT"
-    - name: "ACTIVE"
-      on_entry:
-        - "start_timer exit_timer 3000"  # 进入时启动3秒定时器
-      on_exit:
-        - "stop_timer exit_timer"        # 退出时停止定时器
-      transitions:
-        - event: "RTC_TICK"
-          target: "IDLE"
-        - event: "TIMER_EXPIRED_exit_timer"  # 定时器到期自动返回
-          target: "IDLE"
-    - name: "RESET"
-      transitions:
-        - event: "RTC_TICK"
-          target: "IDLE"
-    - name: "TIMEOUT"
-      transitions:
-        - event: "RTC_TICK"
-          target: "IDLE"

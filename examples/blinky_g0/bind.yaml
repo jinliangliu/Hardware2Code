@@ -1,0 +1,7 @@
+version: 1
+hardware: hardware.yaml
+task: task.yaml
+interrupt:
+  - pin: PC13
+    task: button_led_task
+    event: EXTI13

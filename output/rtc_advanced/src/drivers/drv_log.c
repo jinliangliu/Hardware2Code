@@ -254,20 +254,40 @@ void log_system_info(void)
 }
 
 /* ================================================================
- * Flush — block until ring buffer is drained
+ * Flush — actively drain ring buffer (blocking, bypasses ISR)
+ *
+ * On Cortex-M0+ the TXE ISR may not fire promptly during early init
+ * (e.g. before HAL tick or when NVIC priorities are being set up).
+ * To guarantee the banner and log messages are transmitted before
+ * proceeding, the flush routine polls the ring buffer and writes
+ * each byte directly to the USART TDR.
  * ================================================================ */
 void log_flush(void)
 {
-    /* Poll until ring empty and USART TX complete */
-    uint32_t timeout = 100000;
-    while (!ring_empty() && timeout > 0) {
-        timeout--;
+    uint8_t byte;
+
+    /* Disable TXE interrupt to prevent ISR from racing with
+     * ring_get() → TDR write sequence. On Cortex-M0+, the ISR
+     * can preempt this function and consume bytes from the ring,
+     * causing data corruption. */
+    __HAL_UART_DISABLE_IT(&log_huart, UART_IT_TXE);
+
+    /* Actively drain ring buffer: read each byte and transmit */
+    while (ring_get(&byte)) {
+        /* Wait for TXE (Transmit Data Register Empty) */
+        while (!__HAL_UART_GET_FLAG(&log_huart, UART_FLAG_TXE)) {
+            /* Spin — on STM32G0 at 16-64 MHz this is ~10 us per byte */
+        }
+        LOG_USART->TDR = byte;
     }
-    /* Wait for last byte to finish shifting out */
-    timeout = 100000;
-    while (!(LOG_USART->ISR & USART_ISR_TC) && timeout > 0) {
-        timeout--;
+
+    /* Wait for last byte to finish shifting out of shift register */
+    while (!(LOG_USART->ISR & USART_ISR_TC)) {
+        /* Spin until Transmission Complete */
     }
+
+    /* Re-enable TXE interrupt for normal interrupt-driven TX */
+    __HAL_UART_ENABLE_IT(&log_huart, UART_IT_TXE);
 }
 
 /* ================================================================

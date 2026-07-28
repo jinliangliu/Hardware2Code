@@ -18,8 +18,6 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#if ( configUSE_TICKLESS_IDLE == 1 )
-
 /* RTC handle - must be initialized by main before scheduler starts */
 extern RTC_HandleTypeDef hrtc;
 
@@ -156,5 +154,3 @@ void vPortSuppressTicksAndSleep(TickType_t xExpectedIdleTime)
     }
     vTaskStepTick(ticks_elapsed);
 }
-
-#endif /* configUSE_TICKLESS_IDLE == 1 */

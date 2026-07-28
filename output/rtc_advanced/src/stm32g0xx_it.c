@@ -5,7 +5,6 @@
 #include "drv_log.h"
 
 /* External task handles for notifications */
-extern TaskHandle_t led_task_handle;
 
 void NMI_Handler(void) { while(1); }
 void HardFault_Handler(void) {
@@ -29,8 +28,8 @@ void EXTI4_15_IRQHandler(void)
     }
 }
 
-/* TIM14 用作 HAL 时基，中断内调用 HAL_TIM_IRQHandler，
-   最终触发 HAL_TIM_PeriodElapsedCallback → HAL_IncTick() */
+/* TIM14 used as HAL timebase — HAL_TIM_IRQHandler →
+   HAL_TIM_PeriodElapsedCallback → HAL_IncTick() */
 extern TIM_HandleTypeDef TimHandle;
 
 void TIM14_IRQHandler(void)

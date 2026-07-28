@@ -347,7 +347,7 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             shutil.copy(run_tests_script, os.path.join(test_dir, "run_tests.py"))
         logger.info("Copied run_tests.py to test/")
     else:
-        logger.warning("run_tests.py not found in generator/. Tests will not be executable via make test.")
+        logger.warning("run_tests.py not found in generator/. Tests will not be executable via cmake --build build --target test.")
 
     # ---------- .vscode 编辑器配置 ----------
     vscode_dir = os.path.join(output_dir, ".vscode")
@@ -784,9 +784,9 @@ def generate_project(
     logger.info(f"SUCCESS! Project '{project_name}' generated in '{actual_output}'")
     logger.info(banner)
     logger.info("\nNext steps:")
-    logger.info(f"  1. cd {actual_output}")
-    logger.info(f"  2. make")
-    logger.info(f"  3. make flash")
+    logger.info(f"  1. cmake -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake")
+    logger.info(f"  2. cmake --build build")
+    logger.info(f"  3. cmake --build build --target flash")
     logger.info(f"\nTo run tests:")
     logger.info(f"  cd {actual_output}/test")
     logger.info(f"  python run_tests.py")

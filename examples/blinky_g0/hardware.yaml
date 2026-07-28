@@ -14,7 +14,6 @@ pins:
     exti:
       enable: true
       trigger: falling
-    notify_task: "button_led_task"
   - id: PA2
     function: USART2_TX
     af: 1
@@ -25,7 +24,3 @@ log:
   enable: true
 sleep:
   mode: STOP1
-app_tasks:
-  - name: button_led_task
-    priority: 2
-    stack_size: 128

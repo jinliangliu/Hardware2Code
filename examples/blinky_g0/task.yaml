@@ -1,0 +1,14 @@
+project:
+  name: blinky_g0
+  version: '0.1.0'
+  heap_size: 16384
+event_task:
+  name: event_task
+  entry: vEventTask
+  priority: 3
+  stack_size: 1024
+  queue_depth: 32
+app_tasks:
+  - name: button_led_task
+    priority: 2
+    stack_size: 128

@@ -1,6 +1,7 @@
-# rtc_advanced — 守卫条件与用户定时器
+# rtc_advanced -- 守卫条件与用户定时器
 
 演示 `guard`（守卫条件）路由、`start_timer`/`stop_timer` 用户定时器、`defer` 延迟动作。
+使用三层 YAML 格式（hardware.yaml + task.yaml + bind.yaml）。
 
 ## 硬件
 
@@ -20,9 +21,9 @@ IDLE ──[按键, press_count<3]──► ACTIVE ──[exit_timer到期|RTC_T
 
 ## 行为
 
-1. **按 1~3 次** → 进入 ACTIVE：启动 3 秒 `exit_timer`，3 秒后自动回 IDLE
-2. **按 4 次及以上** → 进入 RESET：`press_count` 清零，下一个 RTC_TICK 回 IDLE
-3. **5 秒无操作** → 进入 TIMEOUT：下一个 RTC_TICK 回 IDLE
+1. **按 1~3 次** -> 进入 ACTIVE：启动 3 秒 `exit_timer`，3 秒后自动回 IDLE
+2. **按 4 次及以上** -> 进入 RESET：`press_count` 清零，下一个 RTC_TICK 回 IDLE
+3. **5 秒无操作** -> 进入 TIMEOUT：下一个 RTC_TICK 回 IDLE
 4. 每次进出 IDLE 都会翻转 LED（`on_entry`/`on_exit`）
 
 ## 板上观察
@@ -30,13 +31,21 @@ IDLE ──[按键, press_count<3]──► ACTIVE ──[exit_timer到期|RTC_T
 | 阶段 | LED 状态 | 说明 |
 |------|---------|------|
 | 上电 | 亮 | IDLE `on_entry: toggle_led` |
-| 按第 1 次 | 灭 | IDLE `on_exit: toggle_led` → ACTIVE |
-| ~3s 后 | 亮 | `exit_timer` 到期 → IDLE `on_entry: toggle_led` |
-| 快速按 4 次 | 灭→亮 | 进入 RESET（press_count≥4），counter 清零，下一 tick 回 IDLE |
-| 等 5s 不按 | 灭→亮 | `after: 5000` 超时 → TIMEOUT → IDLE |
+| 按第 1 次 | 灭 | IDLE `on_exit: toggle_led` -> ACTIVE |
+| ~3s 后 | 亮 | `exit_timer` 到期 -> IDLE `on_entry: toggle_led` |
+| 快速按 4 次 | 灭->亮 | 进入 RESET（press_count>=4），counter 清零，下一 tick 回 IDLE |
+| 等 5s 不按 | 灭->亮 | `after: 5000` 超时 -> TIMEOUT -> IDLE |
 | IDLE 下按键 | 每次翻转 | `on_exit` + 目标态 `on_entry` 各 toggle 一次 |
 
 > **注意**：每次按键后需等当前转换完成再按，否则 `press_count` 累计可能跳过 ACTIVE 直接进入 RESET。
+
+## 三层 YAML 格式
+
+| 文件 | 内容 |
+|------|------|
+| `hardware.yaml` | MCU、引脚、RTC 外设、UART、低功耗、日志 |
+| `task.yaml` | 项目信息、事件分发任务、应用任务（led_task + rtc_demo_task）、状态机行为 |
+| `bind.yaml` | PC13 EXTI13 -> led_task 中断绑定 |
 
 ## 测试特性
 
@@ -52,5 +61,12 @@ IDLE ──[按键, press_count<3]──► ACTIVE ──[exit_timer到期|RTC_T
 ## 生成
 
 ```bash
-python generator/generate.py -i examples/rtc_advanced/hardware.yaml -o output/rtc_advanced
+# 三层格式（推荐）
+python -m generator.generate -i examples/rtc_advanced/hardware.yaml \
+    --task examples/rtc_advanced/task.yaml \
+    --bind examples/rtc_advanced/bind.yaml \
+    -o output/rtc_advanced
+
+# 旧版单文件（向后兼容）
+python -m generator.generate -i examples/rtc_advanced/hardware.yaml -o output/rtc_advanced
 ```

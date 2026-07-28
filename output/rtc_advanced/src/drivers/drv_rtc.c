@@ -319,9 +319,9 @@ void RTC_ProcessTimers(void)
 {
     rtc_timer_t *t = timer_head;
     while (t) {
-        /* Save next pointer BEFORE callback, in case callback deletes current timer.
-         * Also save mode — callback may RTC_TimerDelete(t), making t->mode a
-         * use-after-free if accessed after the callback returns. */
+        /* Save next pointer BEFORE callback — callback may delete current timer.
+         * Also save mode — callback may RTC_TimerDelete(t), making t->mode
+         * a use-after-free if accessed after the callback returns. */
         rtc_timer_t *next = t->next;
         uint8_t saved_mode = t->mode;
         if (t->remaining_ms > 0) {
@@ -331,8 +331,8 @@ void RTC_ProcessTimers(void)
                 /* Do NOT dereference t after callback — it may have been freed.
                  * Use saved_mode instead. */
                 if (saved_mode == RTC_TIMER_MODE_PERIODIC) {
-                    /* t is still valid here because periodic timers are never
-                     * deleted by their own callback; they remain in the list. */
+                    /* t is still valid: periodic timers are never deleted
+                     * by their own callback; they remain in the list. */
                     t->remaining_ms = t->period_ms;
                 }
             } else {

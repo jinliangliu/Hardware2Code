@@ -5,7 +5,6 @@
 #include "drv_log.h"
 
 /* External task handles for notifications */
-extern TaskHandle_t button_led_task_handle;
 
 void NMI_Handler(void) { while(1); }
 void HardFault_Handler(void) {
