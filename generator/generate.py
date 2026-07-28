@@ -523,6 +523,8 @@ def generate_project(
     validate_pins: bool = True,
     allocate_pins: bool = True,
     pin_db: Optional[str] = None,
+    task_yaml_path: Optional[str] = None,
+    bind_yaml_path: Optional[str] = None,
     validate_fn: Callable[[dict], list] = validate_hardware,
     build_context_fn: Callable[[dict, str, bool], dict] = build_context,
     load_yaml_fn: Callable[[str], dict] = load_yaml,
@@ -564,9 +566,35 @@ def generate_project(
         logger.info(f"Dry-run output: {output_dir}")
 
     try:
-        # ---------- YAML loading and validation ----------
+        # ---------- YAML loading and merging ----------
         hw_raw = load_yaml_fn(yaml_path)
-        logger.info("[OK] YAML file loaded successfully")
+        logger.info("[OK] Hardware YAML loaded successfully")
+
+        # Load optional task and bind YAMLs
+        task_raw = None
+        bind_raw = None
+        if task_yaml_path:
+            try:
+                task_raw = load_yaml_fn(task_yaml_path)
+                logger.info("[OK] Task YAML loaded: %s", task_yaml_path)
+            except (FileNotFoundError, ValueError) as e:
+                logger.warning("Task YAML not found or parse error: %s", e)
+
+        if bind_yaml_path:
+            try:
+                bind_raw = load_yaml_fn(bind_yaml_path)
+                logger.info("[OK] Bind YAML loaded: %s", bind_yaml_path)
+            except (FileNotFoundError, ValueError) as e:
+                logger.warning("Bind YAML not found or parse error: %s", e)
+
+        # Merge via mapper (handles backward compat)
+        from generator.mapper import merge as merge_yamls
+        merged = merge_yamls(
+            yaml.dump(hw_raw, default_flow_style=False, sort_keys=False),
+            yaml.dump(task_raw, default_flow_style=False, sort_keys=False) if task_raw else "",
+            yaml.dump(bind_raw, default_flow_style=False, sort_keys=False) if bind_raw else "",
+        )
+        logger.info("[OK] Three-layer merge complete")
 
         # Pydantic model validation
         hw_model = HardwareModel.model_validate(hw_raw)
@@ -627,6 +655,14 @@ def generate_project(
                 logger.info("Pin auto-allocation: nothing to allocate")
         elif not allocate_pins:
             logger.info("Pin allocation skipped (--no-allocate-pins)")
+
+        # Inject merged software fields into hw for build_context
+        if "app_tasks" in merged:
+            hw["app_tasks"] = merged["app_tasks"]
+        if "business_flow" in merged:
+            hw["business_flow"] = merged["business_flow"]
+        if "bind_routings" in merged:
+            hw["bind_routings"] = merged["bind_routings"]
 
         # Context building
         project_name = os.path.basename(actual_output) or "hw2code"
@@ -767,12 +803,14 @@ def _report_validation_errors(errors: list) -> None:
 def generate(hardware_yaml: str, output_dir: str, hil_mode: bool = False,
              dry_run: bool = False, show_diff: bool = False, force: bool = False,
              target: str = "stm32", validate_pins: bool = True,
-             allocate_pins: bool = True, pin_db: Optional[str] = None):
+             allocate_pins: bool = True, pin_db: Optional[str] = None,
+             task_yaml: Optional[str] = None, bind_yaml: Optional[str] = None):
     """Backward-compatible wrapper around generate_project with default deps."""
     return generate_project(hardware_yaml, output_dir, hil_mode, dry_run,
                             show_diff, force, target=target,
                             validate_pins=validate_pins,
-                            allocate_pins=allocate_pins, pin_db=pin_db)
+                            allocate_pins=allocate_pins, pin_db=pin_db,
+                            task_yaml_path=task_yaml, bind_yaml_path=bind_yaml)
 
 
 def main():
@@ -796,6 +834,10 @@ def main():
                         help="Disable automatic pin allocation")
     parser.add_argument("--pin-db", type=str, default=None,
                         help="Path to custom MCU pin database directory")
+    parser.add_argument("--task", type=str, default=None,
+                        help="Path to task YAML file (task.yaml)")
+    parser.add_argument("--bind", type=str, default=None,
+                        help="Path to bind YAML file (bind.yaml)")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Enable debug-level logging")
     args = parser.parse_args()
@@ -805,7 +847,8 @@ def main():
     generate(args.input, args.output, args.hil,
              dry_run=args.dry_run, show_diff=args.diff, force=args.force,
              target=args.target, validate_pins=not args.no_validate_pins,
-             allocate_pins=not args.no_allocate_pins, pin_db=args.pin_db)
+             allocate_pins=not args.no_allocate_pins, pin_db=args.pin_db,
+             task_yaml=args.task, bind_yaml=args.bind)
 
 
 if __name__ == "__main__":

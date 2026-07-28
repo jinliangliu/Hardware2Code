@@ -54,7 +54,14 @@ class PipelineResult:
     """Aggregated output of the full hardware analysis pipeline."""
 
     yaml: str = ""
-    """Enriched hardware YAML merging netlist, BOM, and annotations."""
+    """[DEPRECATED] Full monolithic YAML (kept for backward compatibility).
+    Prefer ``hardware_yaml`` and ``task_yaml`` for new code."""
+
+    hardware_yaml: str = ""
+    """Hardware-only YAML (mcu, pins, peripherals, sleep, clock, bootloader, hil)."""
+
+    task_yaml: str = ""
+    """Software-only YAML (project, app_tasks, business_flow)."""
 
     report: CrossReport = field(default_factory=CrossReport)
     """Cross-validation report (empty if no user YAML provided)."""
@@ -225,6 +232,11 @@ class HardwarePipeline:
         result.yaml = self._embed_annotations(result.yaml, result.annotations,
                                                result.passive_constraints)
 
+        # ---- 8. Split into hardware / task YAML ----
+        hw_yaml, task_yaml = self._split_hw_task(result.yaml)
+        result.hardware_yaml = hw_yaml
+        result.task_yaml = task_yaml
+
         return result
 
     # ------------------------------------------------------------------
@@ -366,8 +378,62 @@ class HardwarePipeline:
         return sorted(names)
 
     # ------------------------------------------------------------------
-    # YAML merging
+    # YAML merging & splitting
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _split_hw_task(monolithic_yaml: str) -> tuple:
+        """Split monolithic YAML into hardware-only and task-only YAML.
+
+        Returns:
+            (hardware_yaml: str, task_yaml: str)
+        """
+        doc = yaml.safe_load(monolithic_yaml) or {}
+
+        # Software keys to extract
+        sw_keys = ("app_tasks", "business_flow")
+        hardware_keys = ("mcu", "pins", "peripherals", "sleep",
+                         "clock", "bootloader", "hil", "heap_size", "stack_size")
+
+        # Build hardware-only doc (strip notify_task from pins)
+        hw_doc: dict = {}
+        for key in hardware_keys:
+            if key in doc:
+                if key == "pins":
+                    clean_pins = []
+                    for p in doc["pins"]:
+                        clean = {k: v for k, v in p.items() if k != "notify_task"}
+                        clean_pins.append(clean)
+                    hw_doc[key] = clean_pins
+                else:
+                    hw_doc[key] = doc[key]
+
+        # Build task-only doc with project metadata
+        task_doc: dict = {
+            "project": {
+                "name": "untitled",
+                "version": "0.1.0",
+            },
+        }
+        for key in sw_keys:
+            if key in doc:
+                task_doc[key] = doc[key]
+
+        # Strip triggers/signals/run_mode from app_tasks (moved to bind.yaml)
+        if "app_tasks" in task_doc:
+            clean_tasks = []
+            for t in task_doc["app_tasks"]:
+                clean = {"name": t.get("name", ""),
+                         "priority": t.get("priority", 1),
+                         "stack_size": t.get("stack_size", 128)}
+                clean_tasks.append(clean)
+            task_doc["app_tasks"] = clean_tasks
+
+        hw_str = yaml.dump(hw_doc, default_flow_style=False,
+                           sort_keys=False, allow_unicode=True)
+        task_str = yaml.dump(task_doc, default_flow_style=False,
+                             sort_keys=False, allow_unicode=True)
+        return hw_str, task_str
 
     @staticmethod
     def _merge_yamls(netlist_yaml: str, bom_yaml: str) -> str:

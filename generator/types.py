@@ -35,6 +35,7 @@ class McuConfig(TypedDict):
     MCU configuration section.
     """
     part: str
+    core: NotRequired[str]
     core_clock_mhz: int
     hse_freq: int
 

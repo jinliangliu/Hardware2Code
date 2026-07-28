@@ -1,16 +1,17 @@
-# hw2c DSL Reference
+# hardware.yaml Reference
 
 ## Overview
 
-hw2c uses a YAML-based DSL (Domain-Specific Language) to describe:
-1. **Hardware Configuration**: MCU, pins, peripherals, tasks, sleep mode
-2. **Business Flow**: State machines, transitions, actions, variables
+`hardware.yaml` describes the **physical hardware capabilities** of the target board.
+It is the output of netlist/BOM parsing and contains only hardware facts:
+MCU model, pin assignments, peripherals, clock tree, and power configuration.
+
+Software concerns (tasks, state machines, variables) are in [`task.yaml`](task-yaml.md).
+The wiring between hardware and software is in [`bind.yaml`](bind-yaml.md).
 
 ---
 
 ## Schema Reference
-
-Complete `hardware.yaml` top-level schema. Every key, its type, whether it is required, default value, and description.
 
 ### Top-Level Keys
 
@@ -18,15 +19,19 @@ Complete `hardware.yaml` top-level schema. Every key, its type, whether it is re
 |-----|------|----------|---------|-------------|
 | `mcu` | object | Yes | - | MCU configuration |
 | `mcu.part` | string | Yes | - | MCU part number (e.g. `STM32G0B1RET6`) |
+| `mcu.core` | string | No | `Cortex-M0+` | CPU core model (e.g. `Cortex-M0+`, `Cortex-M4`) |
 | `mcu.core_clock_mhz` | int | No | 64 | Core clock frequency in MHz |
+| `mcu.ram_kb` | int | No | 144 | On-chip SRAM in KB |
+| `mcu.flash_kb` | int | No | 512 | On-chip Flash in KB |
+| `mcu.dual_bank` | bool | No | true | Flash is dual-bank |
 | `mcu.hse_freq` | int | No | 8000000 | HSE crystal frequency in Hz |
 | `pins` | list | No | `[]` | Pin configuration list |
 | `pins[].id` | string | Yes | - | Pin identifier (`PA0` – `PF15`) |
-| `pins[].function` | string | Yes | - | Pin function (see [Pin Function Enumeration](#12-pin-configuration)) |
+| `pins[].function` | string | Yes | - | Pin function (see [Pin Functions](#12-pin-configuration)) |
 | `pins[].label` | string | No | `""` | Human-readable label |
+| `pins[].active_level` | string | No | `high` | Active level: `high` / `low` |
 | `pins[].pull` | string | No | `none` | Pull resistor: `up` / `down` |
 | `pins[].af` | int | No | `0` | Alternate function number |
-| `pins[].notify_task` | string | No | `""` | FreeRTOS task to notify on EXTI |
 | `pins[].exti` | object | No | `{}` | EXTI interrupt configuration |
 | `pins[].exti.enable` | bool | No | `false` | Enable EXTI interrupt |
 | `pins[].exti.trigger` | string | No | `-` | Edge trigger: `rising` / `falling` / `both` |
@@ -34,23 +39,36 @@ Complete `hardware.yaml` top-level schema. Every key, its type, whether it is re
 | `peripherals[].name` | string | Yes | - | Peripheral instance name |
 | `peripherals[].type` | string | Yes | - | Peripheral type (see [Peripheral Types](#15-peripherals)) |
 | `peripherals[].bus` | string | Varies | - | Bus instance (`I2C1`, `SPI1`, …) |
+| `peripherals[].interface` | string | Varies | - | Interface type (`internal` for RTC, etc.) |
+| `peripherals[].clock_source` | string | Varies | - | Clock source (for RTC: `LSE` / `LSI`) |
+| `peripherals[].features` | list | Varies | `[]` | Feature flags (e.g. `[calendar]` for RTC) |
 | `peripherals[].bearer` | string | Varies | - | Communication bearer name (protocols) |
 | `peripherals[].broker` | string | Varies | - | MQTT broker URL |
-| `peripherals[].extra` | object | Varies | `{}` | Type-specific extra parameters (see below) |
-| `app_tasks` | list | No | `[]` | FreeRTOS task definitions |
-| `app_tasks[].name` | string | Yes | - | Task name |
-| `app_tasks[].priority` | int | No | `1` | Task priority (0–31) |
-| `app_tasks[].stack_size` | int | No | `128` | Stack size in words |
-| `app_tasks[].run_mode` | string | No | `loop` | Execution mode: `loop` (continuous) or `once` (single-shot) |
-| `app_tasks[].triggers` | list | No | `[]` | Task wake-up triggers (timer / event / interrupt) |
-| `app_tasks[].triggers[].type` | string | Yes | - | Trigger type: `timer` / `event` / `interrupt` |
-| `app_tasks[].triggers[].source` | string | Varies | - | Event name or GPIO pin ID (for `event` / `interrupt` types) |
-| `app_tasks[].triggers[].period_ms` | int | Varies | - | Period in ms (for `timer` type) |
-| `app_tasks[].signals` | list | No | `[]` | Signals this task can emit |
-| `app_tasks[].signals[].name` | string | Yes | - | Signal / event name |
-| `app_tasks[].signals[].target` | string | No | - | Target task name (empty = broadcast) |
+| `peripherals[].extra` | object | Varies | `{}` | Type-specific extra parameters |
 | `sleep` | object | No | `{}` | Low-power configuration |
 | `sleep.mode` | string | No | `STOP0` | Sleep mode: `STOP0` / `STOP1` / `STOP2` / `STANDBY` / `SLEEP` |
+| `clock` | object | No | `{}` | Clock tree configuration |
+| `clock.hsi_hz` | int | No | `16000000` | HSI oscillator frequency |
+| `clock.lsi_hz` | int | No | `32000` | LSI oscillator frequency |
+| `clock.hse` | object | No | - | HSE configuration |
+| `clock.hse.present` | bool | No | `false` | HSE crystal present |
+| `clock.hse.frequency_hz` | int | No | `8000000` | HSE frequency in Hz |
+| `clock.lse` | object | No | - | LSE configuration |
+| `clock.lse.present` | bool | No | `false` | LSE crystal present |
+| `clock.lse.frequency_hz` | int | No | `32768` | LSE frequency in Hz |
+| `clock.pll` | object | No | - | PLL configuration |
+| `clock.pll.source` | string | No | `HSI` | PLL source: `HSI` / `HSE` |
+| `clock.pll.m` | int | No | `1` | PLL input divider |
+| `clock.pll.n` | int | No | `8` | PLL multiplier |
+| `clock.pll.r` | int | No | `2` | PLL output divider (SYSCLK) |
+| `clock.sysclk` | object | No | - | System clock configuration |
+| `clock.sysclk.source` | string | No | `PLL` | SYSCLK source: `HSI` / `HSE` / `PLL` |
+| `clock.sysclk.frequency_hz` | int | No | `64000000` | SYSCLK frequency in Hz |
+| `clock.apb` | object | No | - | APB bus prescaler |
+| `clock.apb.prescaler` | int | No | `1` | APB prescaler value |
+| `clock.freertos_tick` | object | No | - | FreeRTOS tick source |
+| `clock.freertos_tick.source` | string | No | `SysTick` | Tick source |
+| `clock.freertos_tick.frequency_hz` | int | No | `1000` | Tick frequency |
 | `bootloader` | object | No | `{}` | Bootloader configuration |
 | `bootloader.enabled` | bool | No | `false` | Enable dual-slot bootloader |
 | `bootloader.size_kb` | int | No | `8` | Bootloader Flash size in KB (4–32) |
@@ -58,12 +76,6 @@ Complete `hardware.yaml` top-level schema. Every key, its type, whether it is re
 | `bootloader.app_b_offset` | int | No | `0x40000` | App Slot B start offset |
 | `bootloader.wdg_timeout_ms` | int | No | `5000` | Watchdog timeout in ms |
 | `bootloader.max_retries` | int | No | `3` | Max consecutive boot failures (1–10) |
-| `business_flow` | object | No | `{}` | State-machine DSL |
-| `business_flow.initial_state` | string | Varies | - | Initial state name |
-| `business_flow.states` | list | Varies | `[]` | State definitions |
-| `business_flow.regions` | list | Varies | `[]` | Parallel region definitions |
-| `business_flow.variables` | list | No | `[]` | Global variable declarations |
-| `business_flow.events` | list | No | `[]` | Custom event declarations |
 | `hil` | object | No | `{}` | HIL test configuration |
 | `hil.baudrate` | int | No | `115200` | HIL UART baudrate |
 | `hil.uart` | string | No | `UART2` | HIL UART instance |
@@ -79,8 +91,12 @@ Complete `hardware.yaml` top-level schema. Every key, its type, whether it is re
 ```yaml
 mcu:
   part: STM32G0B1RET6        # Required: MCU part number
-  core_clock_mhz: 64         # Optional: Core clock frequency (default: 64)
-  hse_freq: 8000000          # Optional: HSE crystal frequency (default: 8000000)
+  core: Cortex-M0+            # Optional: CPU core model (default: Cortex-M0+)
+  core_clock_mhz: 64          # Optional: Core clock frequency (default: 64)
+  ram_kb: 144                 # Optional: On-chip SRAM (default: 144)
+  flash_kb: 512               # Optional: On-chip Flash (default: 512)
+  dual_bank: true             # Optional: Flash dual-bank (default: true)
+  hse_freq: 8000000           # Optional: HSE crystal frequency (default: 8000000)
 ```
 
 **Valid MCU parts**: STM32G0B1RET6 (currently only STM32G0 series supported)
@@ -98,8 +114,9 @@ pins:
     exti:                      # Optional: EXTI interrupt configuration
       enable: true
       trigger: falling         # rising/falling/both
-    notify_task: "led_task"    # Optional: Task to notify on EXTI interrupt
 ```
+
+> **Note**: `notify_task` has been removed. Pin-to-task interrupt binding is now defined in [`bind.yaml`](bind-yaml.md).
 
 **Valid functions** — all supported `pins[].function` values:
 
@@ -150,42 +167,32 @@ sleep:
   mode: STOP1                  # STOP0/STOP1/STOP2/STANDBY/SLEEP
 ```
 
-### 1.4 Application Tasks
+### 1.4 Clock Tree Configuration
 
 ```yaml
-app_tasks:
-  - name: led_task             # Required: Task name
-    priority: 2                # Optional: FreeRTOS priority (0-31, default: 1)
-    stack_size: 128            # Optional: Stack size in words (default: 128)
-    run_mode: loop             # Optional: loop (continuous) or once (single-shot, default: loop)
-    triggers:                  # Optional: Wake-up triggers
-      - type: timer            # timer | event | interrupt
-        period_ms: 1000        # Timer period in ms
-      - type: event
-        source: "BUTTON_PRESS" # Event name from business_flow or another task
-      - type: interrupt
-        source: "PC13"         # GPIO pin ID (EXTI-capable pin)
-    signals:                   # Optional: Signals this task emits
-      - name: "DATA_READY"     # Signal / event name
-        target: "mqtt_task"    # Target task (empty = broadcast)
+clock:
+  hsi_hz: 16000000            # HSI oscillator (default: 16000000)
+  lsi_hz: 32000               # LSI oscillator (default: 32000)
+  hse:
+    present: true             # HSE crystal detected from BOM
+    frequency_hz: 8000000     # HSE frequency in Hz
+  lse:
+    present: true             # LSE crystal detected from BOM
+    frequency_hz: 32768       # LSE frequency (default: 32768)
+  pll:
+    source: HSE               # PLL clock source (HSE / HSI)
+    m: 1                      # Input divider
+    n: 8                      # Multiplier
+    r: 2                      # Output divider (SYSCLK)
+  sysclk:
+    source: PLL               # System clock source (HSI / HSE / PLL)
+    frequency_hz: 64000000    # SYSCLK frequency
+  apb:
+    prescaler: 1              # APB prescaler (1, 2, 4, 8, 16)
+  freertos_tick:
+    source: SysTick           # FreeRTOS tick timer source
+    frequency_hz: 1000        # Tick rate (default: 1000)
 ```
-
-**Trigger types**:
-| Type | Description | Required field |
-|------|-------------|----------------|
-| `timer` | Periodic wake-up at `period_ms` interval | `period_ms` |
-| `event` | Wake on event/semaphore from another task | `source` (event name) |
-| `interrupt` | Wake on GPIO EXTI interrupt | `source` (pin ID, e.g. `PC13`) |
-
-**Signal types**:
-| Field | Description |
-|-------|-------------|
-| `name` | Event/semaphore name emitted by this task |
-| `target` | Target task name to receive the signal (empty = broadcast to all) |
-
-**Special task names**:
-- `led_task`: LED control task (requires a pin labeled "LED")
-- `rtc_demo_task`: RTC demo task (requires Internal_RTC peripheral)
 
 ### 1.5 Peripherals
 
@@ -313,285 +320,16 @@ Supported CRC methods:
 
 ---
 
-## 2. Business Flow DSL
-
-### 2.1 Basic State Machine
-
-```yaml
-business_flow:
-  initial_state: "IDLE"        # Required: Initial state name
-  variables:                   # Optional: Global variables
-    - name: "counter"          # Required: Variable name
-      type: "uint32_t"         # Required: C data type
-      initial: 0               # Optional: Initial value (default: 0)
-  states:
-    - name: "IDLE"             # Required: State name
-      on_entry:                # Optional: Actions on entry
-        - "toggle_led"
-      on_exit:                 # Optional: Actions on exit
-        - "toggle_led"
-      after: 5000              # Optional: Timeout in ms
-      history: false           # Optional: History mode (default: false)
-      transitions:
-        - event: "BUTTON_PRESS"    # Required: Triggering event
-          target: "ACTIVE"         # Required: Target state
-          guard: "counter < 3"     # Optional: Guard condition
-          actions:                 # Optional: Actions on transition
-            - "set counter inc"
-            - "defer 3000 => toggle_led"
-```
-
-### 2.2 Compound States (Substates)
-
-```yaml
-business_flow:
-  initial_state: "PROCESS"
-  states:
-    - name: "PROCESS"
-      initial_state: "STEP1"    # Required for compound states
-      states:                   # Substates
-        - name: "STEP1"
-          on_entry:
-            - "defer 3000 => toggle_led"
-          transitions:
-            - event: "RTC_TICK"
-              target: "STEP2"
-        - name: "STEP2"
-          transitions:
-            - event: "RTC_TICK"
-              actions:
-                - "return"      # Return to parent state
-      transitions:              # Parent-level transitions
-        - event: "RETURN"
-          target: "IDLE"
-```
-
-### 2.3 Parallel Regions
-
-```yaml
-business_flow:
-  regions:                     # Parallel regions instead of states
-    - name: "led_control"      # Required: Region name
-      initial_state: "OFF"     # Required: Initial state
-      states:
-        - name: "OFF"
-          transitions:
-            - event: "BUTTON_PRESS"
-              target: "ON"
-              actions:
-                - "toggle_led"
-        - name: "ON"
-          transitions:
-            - event: "BUTTON_PRESS"
-              target: "OFF"
-              actions:
-                - "toggle_led"
-
-    - name: "counter"
-      initial_state: "COUNTING"
-      variables:
-        - name: "count"
-          type: "uint32_t"
-          initial: 0
-      states:
-        - name: "COUNTING"
-          transitions:
-            - event: "RTC_TICK"
-              target: "COUNTING"    # Self-loop
-              actions:
-                - "set count inc"
-```
-
-### 2.4 State References (Subflow)
-
-```yaml
-business_flow:
-  initial_state: "IDLE"
-  states:
-    - name: "IDLE"
-      transitions:
-        - event: "BUTTON_PRESS"
-          target: "BLINK"
-    - name: "BLINK"
-      type: "ref"              # Mark as reference
-      ref: "common_subflow.yaml"  # Required: Path to subflow YAML
-      namespace: "blinker"     # Required: Namespace prefix for variables/states
-      transitions:              # Additional transitions at parent level
-        - event: "STOP"
-          target: "IDLE"
-```
-
-**Subflow file format** (`common_subflow.yaml`):
-```yaml
-business_flow:
-  initial_state: "S1"
-  states:
-    - name: "S1"
-      transitions:
-        - event: "RTC_TICK"
-          target: "S2"
-          actions:
-            - "toggle_led"
-    - name: "S2"
-      transitions:
-        - event: "RTC_TICK"
-          target: "S1"
-          actions:
-            - "toggle_led"
-```
-
----
-
-## 3. Actions Reference
-
-### 3.1 Built-in Actions
-
-| Action | Description | Example |
-|--------|-------------|---------|
-| `toggle_led` | Toggle the LED state | `- "toggle_led"` |
-| `return` | Return from substate to parent (fires `EVENT_RETURN`) | `- "return"` |
-
-### 3.2 Variable Actions
-
-| Action | Description | Example |
-|--------|-------------|---------|
-| `set <var> inc` | Increment variable | `- "set counter inc"` |
-| `set <var> dec` | Decrement variable | `- "set counter dec"` |
-| `set <var> <value>` | Set variable to value | `- "set counter 0"` |
-| `calc <expression>` | Arbitrary C expression | `- "calc counter = counter + 1"` |
-
-### 3.3 Timer Actions
-
-| Action | Description | Example |
-|--------|-------------|---------|
-| `defer <ms> => <action>` | Execute action after delay | `- "defer 3000 => toggle_led"` |
-| `timeline: <ms1>=>action1, <ms2>=>action2` | Multiple deferred actions | `- "timeline: 1000=>toggle_led, 2000=>toggle_led"` |
-| `start_timer <name> <ms>` | Start named one-shot timer | `- "start_timer my_timer 5000"` |
-| `stop_timer <name>` | Stop and delete named timer | `- "stop_timer my_timer"` |
-
-**Notes**:
-- `defer` and `timeline` are syntactic sugar: they auto-generate timer names (`defer_0`, `defer_1`, ...) and convert to `start_timer defer_N <ms>` internally.
-- Each `start_timer` automatically creates a callback that fires `EVENT_TIMER_EXPIRED_<name>` when the timer expires.
-- `after: <ms>` on a state also auto-creates a timer named `<state>_timeout`, firing `EVENT_TIMER_EXPIRED_<state>_timeout` on expiry.
-- All defer timers are automatically stopped and deleted on state exit.
-
-### 3.4 Event Actions
-
-| Action | Description | Example |
-|--------|-------------|---------|
-| `publish <event>` | Synchronously publish event | `- "publish HIGH_COUNT"` |
-| `publish_async <event>` | Asynchronously publish event | `- "publish_async HIGH_COUNT"` |
-| `send_to <region> <event>` | Cross-region async publish (3 parts: region name + event) | `- "send_to led_region LED_ON"` |
-
-### 3.5 Conditional Actions
-
-| Action | Description | Example |
-|--------|-------------|---------|
-| `when <condition> => <action>` | Execute action conditionally | `- "when counter > 5 => toggle_led"` |
-
-### 3.6 Action Syntax Reference
-
-All actions support two equivalent formats: **string syntax** (compact, human-readable) and **dict syntax** (machine-friendly, YAML-native).
-
-#### String-Format Actions
-
-| Action String | Description | Example |
-|--------------|-------------|---------|
-| `toggle_led` | Toggle LED output | `toggle_led` |
-| `return` | Return from substate to parent | `return` |
-| `set VAR VALUE` | Set variable to value (`inc`/`dec` supported) | `set count 0`, `set count inc` |
-| `calc VAR = EXPR` | Evaluate C expression, assign to variable | `calc result = count * 2 + 1` |
-| `publish EVENT` | Synchronously publish event | `publish SENSOR_READY` |
-| `publish_async EVENT` | Asynchronously publish event | `publish_async ALERT` |
-| `start_timer NAME MS` | Start named one-shot timer | `start_timer exit_timer 3000` |
-| `stop_timer NAME` | Stop and delete named timer | `stop_timer exit_timer` |
-| `when COND => ACTION` | Conditional action execution | `when count > 5 => publish OVERFLOW` |
-| `defer MS => ACTION` | Deferred action after delay | `defer 1000 => toggle_led` |
-| `timeline: MS=>ACT, ...` | Timeline of deferred actions | `timeline: 100=>toggle_led, 500=>publish DONE` |
-| `send_to REGION EVENT` | Cross-region event (3 tokens) | `send_to region_a RESET` |
-
-#### Dict-Format Actions (Equivalent)
-
-| Dict Format | Equivalent String |
-|------------|-------------------|
-| `{toggle_led: null}` | `toggle_led` |
-| `{return: null}` | `return` |
-| `{set: {var: count, value: 5}}` | `set count 5` |
-| `{set: {var: count, value: inc}}` | `set count inc` |
-| `{calc: {var: r, expr: c * 2}}` | `calc r = c * 2` |
-| `{publish: {event: READY}}` | `publish READY` |
-| `{publish_async: {event: ALERT}}` | `publish_async ALERT` |
-| `{start_timer: {name: t, ms: 1000}}` | `start_timer t 1000` |
-| `{stop_timer: {name: t}}` | `stop_timer t` |
-| `{defer: {after: 1000, do: toggle_led}}` | `defer 1000 => toggle_led` |
-| `{timeline: [{ms: 100, do: toggle_led}, {ms: 500, do: publish DONE}]}` | `timeline: 100=>toggle_led, 500=>publish DONE` |
-| `{when: {condition: "count > 5", do: toggle_led}}` | `when count > 5 => toggle_led` |
-| `{send_to: {region: region_a, event: RESET}}` | `send_to region_a RESET` |
-
----
-
-## 4. Events Reference
-
-### 4.1 Built-in Events
-
-| Event | Trigger |
-|-------|---------|
-| `EVENT_NONE` | Sentinel (value 0) |
-| `EVENT_BUTTON_PRESS` | EXTI interrupt from button pin |
-| `EVENT_RTC_TICK` | RTC wake-up timer tick (100ms period) |
-| `EVENT_RTC_ALARM` | RTC alarm interrupt |
-| `EVENT_RETURN` | Generated by `return` action (substate → parent) |
-
-### 4.2 RTC Auto-Generated Events
-
-When `Internal_RTC` is present, these are auto-created by the RTC driver:
-
-| Event | Period |
-|-------|--------|
-| `EVENT_MINUTE_TICK` | Every 60 seconds |
-| `EVENT_HOUR_TICK` | Every 3600 seconds |
-
-### 4.3 Timer Auto-Generated Events
-
-These are automatically created based on DSL usage:
-
-| Source | Event Name | Notes |
-|--------|-----------|-------|
-| `after: <ms>` on state | `EVENT_TIMER_EXPIRED_<state>_timeout` | One-shot |
-| `start_timer <name> <ms>` | `EVENT_TIMER_EXPIRED_<name>` | One-shot |
-| `defer <ms> => action` | `EVENT_TIMER_EXPIRED_defer_N` | `defer_0`, `defer_1`, ... |
-| `timeline: <ms1>=>action, ...` | `EVENT_TIMER_EXPIRED_defer_0`, ... | Same as defer pattern |
-
-**Example**: For a state `PLAYING` with `after: 5000`, use event `TIMER_EXPIRED_PLAYING_timeout` in transitions to react to the timeout.
-
-### 4.4 Custom Events
-
-Custom events are defined through `publish` or `publish_async` actions:
-
-```yaml
-actions:
-  - "publish HIGH_COUNT"       # Creates EVENT_HIGH_COUNT
-  - "publish_async TIMEOUT"    # Creates EVENT_TIMEOUT
-```
-
----
-
-## 5. Variable Types
-
-**Recommended types**:
-- `uint8_t`, `uint16_t`, `uint32_t` - Unsigned integers
-- `int8_t`, `int16_t`, `int32_t` - Signed integers
-- `float` - Floating point
-- `bool` - Boolean (true/false)
-
----
-
-## 6. Example: Complete Hardware YAML
+## 2. Example: Complete hardware.yaml
 
 ```yaml
 mcu:
   part: STM32G0B1RET6
+  core: Cortex-M0+
   core_clock_mhz: 64
+  ram_kb: 144
+  flash_kb: 512
+  dual_bank: true
 
 pins:
   - id: PC0
@@ -605,27 +343,32 @@ pins:
     exti:
       enable: true
       trigger: falling
-    notify_task: "led_task"
 
 sleep:
   mode: STOP1
 
-app_tasks:
-  - name: led_task
-    priority: 2
-    stack_size: 128
-    triggers:
-      - type: event
-        source: "BUTTON_PRESS"
-  - name: rtc_demo_task
-    priority: 3
-    stack_size: 512
-    triggers:
-      - type: timer
-        period_ms: 1000
-    signals:
-      - name: "HEARTBEAT"
-        target: "led_task"
+clock:
+  hsi_hz: 16000000
+  lsi_hz: 32000
+  hse:
+    present: true
+    frequency_hz: 8000000
+  lse:
+    present: true
+    frequency_hz: 32768
+  pll:
+    source: HSE
+    m: 1
+    n: 8
+    r: 2
+  sysclk:
+    source: PLL
+    frequency_hz: 64000000
+  apb:
+    prescaler: 1
+  freertos_tick:
+    source: SysTick
+    frequency_hz: 1000
 
 peripherals:
   - name: "rtc"
@@ -634,111 +377,32 @@ peripherals:
     clock_source: "LSE"
     features:
       - calendar
-
-business_flow:
-  initial_state: "IDLE"
-  variables:
-    - name: "press_count"
-      type: "uint32_t"
-      initial: 0
-  states:
-    - name: "IDLE"
-      after: 5000
-      on_entry:
-        - "toggle_led"
-      transitions:
-        - event: "BUTTON_PRESS"
-          target: "ACTIVE"
-          guard: "press_count < 3"
-          actions:
-            - "defer 3000 => toggle_led"
-            - "set press_count inc"
-        - event: "BUTTON_PRESS"
-          target: "RESET"
-          guard: "press_count >= 3"
-          actions:
-            - "set press_count 0"
-    - name: "ACTIVE"
-      on_entry:
-        - "start_timer exit_timer 10000"
-      transitions:
-        - event: "RTC_TICK"
-          target: "IDLE"
-          actions:
-            - "stop_timer exit_timer"
-        - event: "TIMER_EXPIRED_exit_timer"
-          target: "IDLE"
-          actions:
-            - "stop_timer exit_timer"
-    - name: "RESET"
-      transitions:
-        - event: "RTC_TICK"
-          target: "IDLE"
-    - name: "TIMEOUT"
-      transitions:
-        - event: "RTC_TICK"
-          target: "IDLE"
 ```
 
 ---
 
-## 7. Validation Rules
+## 3. Validation Rules
 
-The generator validates the following:
+The generator validates the following hardware constraints:
 
 ### Critical Errors (Cannot continue)
 - Missing `mcu.part`
 - YAML parsing errors
 
 ### Errors (Recommended to fix)
-- Missing required fields (pin id, function, state name, event, target)
+- Missing required fields (pin id, function)
 - Invalid formats (pin ID regex `^P[A-F][0-9]{1,2}$`, MCU part number)
-- Invalid pin functions (must be one of 15 supported functions)
+- Invalid pin functions (must be one of supported functions)
 - Invalid EXTI trigger values (must be `rising`/`falling`/`both`)
+- Invalid `sleep.mode` (valid: `STOP0`/`STOP1`/`STOP2`/`STANDBY`/`SLEEP`)
 - Duplicate pin IDs
-- Missing LED pin when `led_task` is defined in `app_tasks`
-- Missing `bus` field for I2C (`I2C_Sensor_MPU6050`) and SPI (`SPI_Flash_W25Q32`) peripherals
-- Compound state (has `states`) missing `initial_state`
-- `initial_state` missing in region definitions
-- Ref type state missing `ref` path or ref file not found
-- `business_flow` defined with neither `states` nor `regions`
-- Unknown actions in `on_entry`/`on_exit`/transition `actions`
+- Missing `bus` field for I2C and SPI peripherals
+- Invalid clock source values (`HSI`/`HSE`/`PLL`)
+- Clock frequencies inconsistent with selected dividers/multipliers
 
 ### Warnings (May cause unexpected behavior)
 - No pins defined
 - Invalid pull values (only `up`/`down` valid)
-- Unknown variable types (recommended: `uint8_t`..`uint32_t`, `int8_t`..`int32_t`, `float`, `bool`)
-- Missing namespace for reference states (may cause name conflicts)
 - Missing model files for peripheral types
-- Invalid `sleep.mode` (valid: `STOP0`/`STOP1`/`STOP2`/`STANDBY`/`SLEEP`)
-
-### Info
-- Guard conditions: embedded as-is into C code without validation — errors surface at compile time
-- Published events: `publish`/`publish_async` events are collected into `EVENT_<name>` enum entries automatically
-
----
-
-## 8. CLI Debug Shell Commands
-
-When `Internal_CLI` is enabled, the following commands are available at the UART prompt:
-
-| Command | Description | Availability |
-|---------|-------------|-------------|
-| `help` | List all available commands | Always |
-| `version` | Show firmware version and build time | Always |
-| `uptime` | Show system uptime | Always |
-| `free` | Show free heap memory | Always |
-| `tasks` | List FreeRTOS tasks | Always |
-| `reset` | Software reset MCU | Always |
-| `gpio read <pin>` | Read GPIO pin level | When pins configured |
-| `gpio write <pin> <0\|1>` | Set GPIO output | When pins configured |
-| `led on\|off\|toggle` | Control LED | When LED pin exists |
-| `rtc time` | Show RTC time | When RTC enabled |
-| `rtc set <HH:MM:SS>` | Set RTC time | When RTC enabled |
-| `modbus read <addr> <count>` | Read holding registers | When Modbus enabled |
-| `modbus write <addr> <value>` | Write single register | When Modbus enabled |
-| `cellular status\|imei\|csq` | Cellular modem info | When Cellular enabled |
-| `mqtt status` | MQTT connection status | When MQTT enabled |
-| `mqtt publish <topic> <payload>` | Publish MQTT message | When MQTT enabled |
-| `fota version` | Show firmware version | When FOTA enabled |
-| `fota start` | Enter FOTA receive mode | When FOTA enabled |
+- HSE/LSE declared present but no crystal detected from BOM
+- APB prescaler results in APB clock exceeding max rated frequency

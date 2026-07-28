@@ -510,6 +510,7 @@ def _build_yaml(
     doc = {
         "mcu": {
             "part": mcu_value,
+            "core": "Cortex-M0+",
             "core_clock_mhz": 64,
             "ram_kb": 144,
             "flash_kb": 512,

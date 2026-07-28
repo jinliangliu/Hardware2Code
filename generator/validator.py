@@ -44,6 +44,77 @@ def _collect_all_variables(hw: dict) -> dict[str, str]:
     return variables
 
 
+def _collect_custom_types(hw: dict) -> set[str]:
+    """Collect all custom type names from business_flow.types."""
+    bf = hw.get('business_flow', {})
+    if not bf:
+        return set()
+    return {t['name'] for t in bf.get('types', []) if 'name' in t}
+
+
+def _validate_custom_types(bf: dict) -> list[str]:
+    """Validate business_flow.types entries."""
+    errors = []
+    custom_types = set()
+    for i, tdef in enumerate(bf.get('types', [])):
+        name = tdef.get('name', f'#{i}')
+        if not tdef.get('name'):
+            errors.append(f"[ERROR] TypeDef #{i} has no 'name' field.")
+            continue
+        if tdef['name'] in custom_types:
+            errors.append(f"[ERROR] Duplicate type name '{tdef['name']}'.")
+        custom_types.add(tdef['name'])
+
+        kind = None
+        if 'struct' in tdef:
+            kind = 'struct'
+        elif 'enum' in tdef:
+            kind = 'enum'
+        elif 'union' in tdef:
+            kind = 'union'
+        elif 'bitfield' in tdef:
+            kind = 'bitfield'
+
+        if kind is None:
+            errors.append(f"[ERROR] Type '{name}' must have one of: struct, enum, union, bitfield.")
+            continue
+
+        if kind == 'enum':
+            values_seen = set()
+            for j, ev in enumerate(tdef.get('enum', [])):
+                if 'name' not in ev:
+                    errors.append(f"[ERROR] Enum value #{j} in '{name}' has no 'name' field.")
+                if 'value' in ev and ev['value'] in values_seen:
+                    errors.append(f"[ERROR] Duplicate enum value {ev['value']} in '{name}'.")
+                if 'value' in ev:
+                    values_seen.add(ev['value'])
+
+        if kind == 'bitfield':
+            total_width = 0
+            for j, bf_member in enumerate(tdef.get('bitfield', [])):
+                if 'name' not in bf_member:
+                    errors.append(f"[ERROR] Bitfield member #{j} in '{name}' has no 'name' field.")
+                if 'width' in bf_member:
+                    total_width += bf_member['width']
+            if total_width > 64:
+                errors.append(f"[WARNING] Bitfield '{name}' total width ({total_width}) exceeds 64 bits.")
+
+        if kind in ('struct', 'union'):
+            for j, field in enumerate(tdef.get(kind, [])):
+                if 'name' not in field:
+                    errors.append(f"[ERROR] {kind.capitalize()} field #{j} in '{name}' has no 'name' field.")
+                if 'type' not in field and 'fields' not in field:
+                    errors.append(f"[ERROR] {kind.capitalize()} field '{field.get('name', f'#{j}')}' in '{name}' has no 'type' field (required unless it has nested 'fields').")
+                if kind == 'struct' and 'fields' in field:
+                    for k, nested in enumerate(field.get('fields', [])):
+                        if 'name' not in nested:
+                            errors.append(f"[ERROR] Nested struct field #{k} in '{name}.{field['name']}' has no 'name' field.")
+                        if 'type' not in nested:
+                            errors.append(f"[ERROR] Nested struct field '{nested.get('name', f'#{k}')}' in '{name}.{field['name']}' has no 'type' field.")
+
+    return errors
+
+
 def _validate_guard(guard_str: str, variables: dict[str, str], location: str) -> list[str]:
     """
     Validate a guard condition string.
@@ -517,14 +588,18 @@ def validate_hardware(hw: dict) -> list[ValidationError]:
                                 validate_actions(trans['actions'], f"transition #{k} of state '{state_full_name}'")
                                 validate_expressions_in_actions(trans['actions'], f"transition #{k} of state '{state_full_name}'")
 
+        # Validate custom type definitions
+        errors += _validate_custom_types(bf)
+
         if 'variables' in bf:
+            custom_type_names = _collect_custom_types(hw)
             for i, var in enumerate(bf['variables']):
                 if 'name' not in var or not var['name']:
                     errors.append(f"[ERROR] Variable #{i} in business_flow has no 'name' field.")
                 if 'type' not in var or not var['type']:
                     errors.append(f"[ERROR] Variable '{var.get('name', 'unknown')}' has no 'type' field.")
                 else:
-                    if var['type'] not in _VALID_C_TYPES:
-                        errors.append(f"[WARNING] Variable '{var.get('name', 'unknown')}' has type '{var['type']}' which is not in the recommended list: {sorted(_VALID_C_TYPES)}")
+                    if var['type'] not in _VALID_C_TYPES and var['type'] not in custom_type_names:
+                        errors.append(f"[WARNING] Variable '{var.get('name', 'unknown')}' has type '{var['type']}' which is not in the recommended list: {sorted(_VALID_C_TYPES)} and not a custom type.")
 
     return [_parse_error(e) for e in errors]

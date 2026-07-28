@@ -59,10 +59,17 @@ def _cmd_parse(args: argparse.Namespace) -> int:
             print(f"  Cross-validation: no user YAML to compare")
 
     if output_path:
-        Path(output_path).write_text(result.yaml, encoding="utf-8")
-        print(f"Enriched YAML written to {output_path}")
+        Path(output_path).write_text(result.hardware_yaml or result.yaml, encoding="utf-8")
+        print(f"Hardware YAML written to {output_path}")
     else:
+        # stdout: print monolithic yaml for backward compat
         print(result.yaml)
+
+    # Write task.yaml if --task specified
+    task_path = getattr(args, 'task', None)
+    if task_path and result.task_yaml:
+        Path(task_path).write_text(result.task_yaml, encoding="utf-8")
+        print(f"Task YAML written to {task_path}")
 
     return 0
 
@@ -91,6 +98,10 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         sys.argv.append("--no-validate-pins")
     if args.no_allocate_pins:
         sys.argv.append("--no-allocate-pins")
+    if args.task:
+        sys.argv.extend(["--task", args.task])
+    if args.bind:
+        sys.argv.extend(["--bind", args.bind])
 
     gen_main()
     return 0
@@ -124,7 +135,11 @@ def main() -> None:
     )
     p_parse.add_argument(
         "-o", "--output", default=None,
-        help="Output YAML file path (default: stdout)",
+        help="Output hardware YAML file path (default: stdout)",
+    )
+    p_parse.add_argument(
+        "--task", default=None,
+        help="Output task YAML file path (default: none)",
     )
     p_parse.add_argument(
         "--summary", action="store_true",
@@ -168,6 +183,14 @@ def main() -> None:
     p_gen.add_argument(
         "--no-allocate-pins", action="store_true",
         help="Skip auto pin allocation",
+    )
+    p_gen.add_argument(
+        "--task", default=None,
+        help="Path to task YAML file (task.yaml)",
+    )
+    p_gen.add_argument(
+        "--bind", default=None,
+        help="Path to bind YAML file (bind.yaml)",
     )
 
     args = parser.parse_args()

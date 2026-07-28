@@ -245,9 +245,9 @@ def parse_bom_string(csv_text: str) -> str:
     doc: dict = {}
 
     if mcu_part:
-        doc["mcu"] = {"part": mcu_part, "core_clock_mhz": 64, "ram_kb": 144, "flash_kb": 512, "dual_bank": True}
+        doc["mcu"] = {"part": mcu_part, "core": "Cortex-M0+", "core_clock_mhz": 64, "ram_kb": 144, "flash_kb": 512, "dual_bank": True}
     else:
-        doc["mcu"] = {"part": "STM32G0B1RET6", "core_clock_mhz": 64, "ram_kb": 144, "flash_kb": 512, "dual_bank": True}
+        doc["mcu"] = {"part": "STM32G0B1RET6", "core": "Cortex-M0+", "core_clock_mhz": 64, "ram_kb": 144, "flash_kb": 512, "dual_bank": True}
 
     # Add pins section for LEDs and buttons (without specific MCU pin assignments)
     pins: List[dict] = []

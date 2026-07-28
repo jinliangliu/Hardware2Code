@@ -15,16 +15,63 @@
 
 
 
+/* ========== 自定义类型定义 / Custom Type Definitions ========== */
+{%- if business_flow.types %}
+{%- for tdef in business_flow.types %}
+
+{%- if tdef.struct is defined and tdef.struct %}
+#pragma pack(push, 1)
+typedef struct {
+{%- for field in tdef.struct %}
+{%- if field.fields is defined and field.fields %}
+    struct {
+{%- for nested in field.fields %}
+        {{ nested.type }} {{ nested.name }};
+{%- endfor %}
+    } {{ field.name }};
+{%- else %}
+    {{ field.type }} {{ field.name }}{% if field.array is defined and field.array %}[{{ field.array }}]{% endif %};
+{%- endif %}
+{%- endfor %}
+} {{ tdef.name }};
+#pragma pack(pop)
+
+{%- elif tdef.enum is defined and tdef.enum %}
+typedef enum {
+{%- for ev in tdef.enum %}
+    {{ ev.name }}{% if ev.value is defined %} = {{ ev.value }}{% endif %},
+{%- endfor %}
+} {{ tdef.name }};
+
+{%- elif tdef.union is defined and tdef.union %}
+typedef union {
+{%- for field in tdef.union %}
+    {{ field.type }} {{ field.name }}{% if field.array is defined and field.array %}[{{ field.array }}]{% endif %};
+{%- endfor %}
+} {{ tdef.name }};
+
+{%- elif tdef.bitfield is defined and tdef.bitfield %}
+typedef struct {
+    {%- set current_byte = namespace(used=0) %}
+{%- for bf in tdef.bitfield %}
+    uint8_t {{ bf.name }} : {{ bf.width }};
+{%- endfor %}
+} {{ tdef.name }};
+
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
 /* ========== 全局变量 ========== */
 {% for var in business_flow.get('variables', []) %}
-static {{ var.type }} {{ var.name }} = {{ var.initial }};
+static {{ var.type }} {{ var.name }}{% if var.array is defined and var.array %}[{{ var.array }}]{% endif %} = {{ var.initial }};
 {% endfor %}
 
 /* ========== 区域级变量 ========== */
 {% if business_flow.regions %}
 {% for region in business_flow.regions %}
 {% for var in region.get('variables', []) %}
-static {{ var.type }} {{ region.name }}_{{ var.name }} = {{ var.initial }};
+static {{ var.type }} {{ region.name }}_{{ var.name }}{% if var.array is defined and var.array %}[{{ var.array }}]{% endif %} = {{ var.initial }};
 {% endfor %}
 {% endfor %}
 {% endif %}

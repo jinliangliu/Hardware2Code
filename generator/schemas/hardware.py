@@ -146,6 +146,7 @@ _MCU_PART_RE = re.compile(r"^STM32[A-Z0-9]+$")
 class McuModel(BaseModel):
     model_config = ConfigDict(extra="allow")
     part: str
+    core: str = ""
     core_clock_mhz: int = 64
     hse_freq: int = 8_000_000
 
@@ -294,6 +295,47 @@ class VariableModel(BaseModel):
     name: str
     type: str
     initial: Any = None
+    array: Optional[int] = None
+
+
+class StructFieldModel(BaseModel):
+    """A field within a struct or nested struct (max 2 levels)."""
+    model_config = ConfigDict(extra="allow")
+    name: str
+    type: Optional[str] = None  # omit for nested struct (detected by 'fields')
+    array: Optional[int] = None
+    fields: Optional[list["StructFieldModel"]] = None  # nested struct (level 2 only)
+
+
+class EnumValueModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    name: str
+    value: int = 0
+
+
+class UnionFieldModel(BaseModel):
+    """A member field within a union."""
+    model_config = ConfigDict(extra="allow")
+    name: str
+    type: str
+    array: Optional[int] = None
+
+
+class BitfieldFieldModel(BaseModel):
+    """A bitfield member."""
+    model_config = ConfigDict(extra="allow")
+    name: str
+    width: int = Field(ge=1, le=32)
+
+
+class TypeDefModel(BaseModel):
+    """A custom C type definition (struct, enum, union, or bitfield)."""
+    model_config = ConfigDict(extra="allow")
+    name: str
+    struct: Optional[list[StructFieldModel]] = None
+    enum: Optional[list[EnumValueModel]] = None
+    union: Optional[list[UnionFieldModel]] = None
+    bitfield: Optional[list[BitfieldFieldModel]] = None
 
 
 class TransitionModel(BaseModel):
@@ -331,6 +373,7 @@ class RegionModel(BaseModel):
 class BusinessFlowModel(BaseModel):
     model_config = ConfigDict(extra="allow")
     initial_state: Optional[str] = None
+    types: list[TypeDefModel] = Field(default_factory=list)
     variables: list[VariableModel] = Field(default_factory=list)
     events: list[dict] = Field(default_factory=list)
     states: list[StateModel] = Field(default_factory=list)

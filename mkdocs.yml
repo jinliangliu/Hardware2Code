@@ -71,7 +71,9 @@ nav:
     - Installation: getting-started/installation.md
     - Quick Start: getting-started/quick-start.md
   - User Guide:
-    - Hardware YAML Reference: user-guide/hardware-yaml.md
+    - hardware.yaml: user-guide/hardware-yaml.md
+    - task.yaml: user-guide/task-yaml.md
+    - bind.yaml: user-guide/bind-yaml.md
     - CLI Commands: user-guide/cli-commands.md
     - Examples: user-guide/examples.md
   - Developer Guide:
