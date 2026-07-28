@@ -1,289 +1,260 @@
-# hw2c
+# Hardware2Code
 
-**解析 Netlist/BOM 硬件设计文件，自动映射外设资源；在硬件能力范围内可视化配置业务任务，一键生成符合 MISRA C 规范的 arm-none-eabi-gcc 嵌入式工程。**
+**从 EDA 设计文件到可编译嵌入式固件，一键直达。**
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
+[![MCU](https://img.shields.io/badge/MCU-STM32G0B1-green.svg)](https://www.st.com)
+[![RTOS](https://img.shields.io/badge/RTOS-FreeRTOS-orange.svg)](https://freertos.org)
 
-## 愿景
+---
 
-hw2c 致力于打通**硬件设计到嵌入式软件工程**的全链路：
+## 行业痛点
 
-```
-EDA 设计输出              用户可视化配置              固件工程输出
-┌──────────────┐       ┌──────────────┐       ┌──────────────┐
-│ Netlist      │──┐    │  任务编排     │       │ MISRA C 代码  │
-│ BOM          │──┤    │  状态机设计   │       │ FreeRTOS 框架 │
-│ 原理图        │──┤    │  低功耗策略   │       │ 单元测试桩    │
-└──────────────┘  │    │  外设参数     │       │ Makefile 构建 │
-                  ▼    └──────┬───────┘       └──────┬───────┘
-            ┌──────────┐     │                      │
-            │硬件能力映射│────▶│    hardware.yaml     │────▶
-            └──────────┘     └──────────────────────┘      arm-none-eabi-gcc
-```
+传统嵌入式开发中，硬件定型后工程师仍需要数周时间完成驱动编写、RTOS 任务搭建和状态机实现。**更致命的是**，这些代码与硬件设计脱节——引脚不对、AF 复用冲突、时钟配置错误等问题几乎出现在每一个项目中。
 
-- **输入层**：解析 Netlist、BOM 等硬件设计文件，建立引脚-外设能力映射。优先支持嘉立创 EDA 专业版 `.enet` 格式。
-- **配置层**：用户在此能力约束内，可视化编排任务、状态机、低功耗策略，产出 `hardware.yaml`。
-- **输出层**：`hardware.yaml` 驱动代码生成引擎，输出完整、可编译、带单元测试的嵌入式工程。
+| 痛点 | 传统方式 | hw2c 方案 |
+|------|----------|-----------|
+| 硬件→软件信息断层 | 手动对照原理图写 init 代码 | 直接解析 Netlist/BOM，自动映射引脚-外设 |
+| 驱动代码重复编写 | 每项目复制粘贴 GPIO/UART/SPI 模板 | 外设模型库驱动，按需渲染 MISRA C 代码 |
+| 业务逻辑调试低效 | 无状态机框架，if-else 嵌套失控 | 层级状态机 DSL，可视化编排，自动生成 C |
+| 测试依赖硬件 | 烧录→看现象→改代码循环 | PC 端 Unity 单元测试 + Mock HAL，脱离硬件验证 |
+| 硬件变更→软件适配 | 改原理图后手动改代码 | 重新生成，diff 仅业务逻辑 |
 
-## 核心数据流
+---
 
-```
-   Netlist (.enet)                    可视化配置台
-   BOM     (.csv)                         │
-       │      │                           │
-       ▼      ▼                           ▼
-  ┌──────────────┐              ┌──────────────────┐
-  │ parser/      │──────────────│ 硬件能力约束映射   │
-  │ netlist_parser│  引脚-外设    │ (Web/CLI 交互)   │
-  │ bom_parser   │  关联表       └────────┬─────────┘
-  └──────────────┘                       │
-                                         ▼
-                                  ┌──────────────┐
-                                  │ hardware.yaml │  ◀── 人工可编辑的中间表示
-                                  └──────┬───────┘
-                                         │
-                          ┌──────────────┼──────────────┐
-                          ▼              ▼              ▼
-                   ┌──────────┐  ┌────────────┐  ┌──────────┐
-                   │ Validator │  │ Pin Alloc  │  │ Models   │
-                   │ (schema)  │  │ (冲突检测)  │  │ (17 YAML)│
-                   └────┬─────┘  └─────┬──────┘  └────┬─────┘
-                        │              │              │
-                        └──────┬───────┴──────┬───────┘
-                               │              │
-                               ▼              ▼
-                        ┌──────────────────────────┐
-                        │   Context Builder         │  ◀── pins, peripherals,
-                        │   (conditions + drivers)  │       boot_config, flags
-                        └────────────┬─────────────┘
-                                     │
-                                     ▼
-                        ┌──────────────────────────┐
-                        │   Jinja2 Template Render  │  ◀── 62 个 .j2 模板
-                        │   (C 源码 / 配置 / 测试)  │
-                        └────────────┬─────────────┘
-                                     │
-                    ┌────────────────┼────────────────┐
-                    ▼                ▼                ▼
-             ┌──────────┐   ┌──────────────┐   ┌──────────┐
-             │ src/     │   │ config/      │   │ test/    │
-             │ drivers/ │   │ bootloader/  │   │ mock_hal │
-             └────┬─────┘   └──────┬───────┘   └────┬─────┘
-                  │                │                │
-                  └────────┬───────┴────────┬───────┘
-                           │                │
-                           ▼                ▼
-                    ┌──────────────────────────────┐
-                    │   arm-none-eabi-gcc 编译      │
-                    │   + CRC32 后处理 (patch_crc)  │
-                    └──────────────┬───────────────┘
-                                   │
-                      ┌────────────┼────────────┐
-                      ▼            ▼            ▼
-               ┌──────────┐ ┌──────────┐ ┌──────────┐
-               │ firmware │ │ PC 单元测试│ │ HIL 测试 │
-               │ .elf/.bin│ │ (Unity)  │ │ (硬件在环)│
-               └──────────┘ └──────────┘ └──────────┘
+## 核心流程
+
+```mermaid
+flowchart LR
+    subgraph Input["EDA 设计输出"]
+        A1[("Netlist<br>.enet / .xml")]
+        A2[("BOM<br>.csv")]
+    end
+
+    subgraph Parse["硬件感知解析"]
+        B1["引脚-外设映射"]
+        B2["时钟树推断"]
+        B3["外设类型匹配<br>100+ 芯片"]
+    end
+
+    subgraph Config["可视化业务编排"]
+        C1["任务定义"]
+        C2["状态机设计"]
+        C3["硬件-软件绑定"]
+    end
+
+    subgraph Engine["代码生成引擎"]
+        D1["Context Builder"]
+        D2["Pin Allocator"]
+        D3["Jinja2 渲染<br>62 个模板"]
+    end
+
+    subgraph Output["固件输出"]
+        E1[("src/<br>.c .h")]
+        E2[("test/<br>Unity")]
+        E3[("Makefile<br>arm-gcc")]
+    end
+
+    Input --> Parse --> Config --> Engine --> Output
 ```
 
-| 阶段 | 输入 | 处理 | 输出 |
-|------|------|------|------|
-| 1. 硬件解析 | Netlist + BOM | `parser/` 提取引脚-外设关联 | 硬件能力映射表 |
-| 2. 可视化配置 | 能力映射 + 用户需求 | 任务编排、状态机设计、参数调整 | `hardware.yaml` |
-| 3. 校验 | `hardware.yaml` | Pydantic schema + 引脚冲突检测 | 校验通过/错误列表 |
-| 4. 上下文构建 | 校验后的 model | 提取 pins/drivers/flags/boot_config | 模板渲染上下文 dict |
-| 5. 模板渲染 | 上下文 dict + 62 个 `.j2` | Jinja2 引擎 → C/配置/测试源码 | 完整 C 工程目录 |
-| 6. 编译 | C 源码 + HAL/CMSIS/FreeRTOS | `arm-none-eabi-gcc` + Makefile | `firmware.elf/.bin` |
-| 7. 测试 | 生成的 test/ 目录 | `gcc -DTEST` (PC) 或 烧录 (HIL) | Unity 测试报告 |
+> **一句话**：上传网表和 BOM，拖拽编排任务和绑定，下载 arm-none-eabi-gcc 可直接编译的嵌入式工程。
 
-## 特性
+---
 
-- **硬件驱动自动生成**：根据外设模型库，从硬件描述自动实例化 GPIO、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485、红外、EEPROM 等驱动。
-- **业务逻辑 DSL**：支持层级状态机（复合子状态、并行区域、历史状态）、跨区域通信、defer/timeline 时间控制、when 条件动作、ref 引用复用。
-- **内置低功耗**：自动分析唤醒源，插入 Tickless Idle 钩子与电源管理代码。
-- **TDD 就绪**：生成基于 Unity 的模块测试框架与硬件 mock，支持脱离硬件运行。
-- **双槽位 Bootloader**：固件 CRC32 校验、TAMP 备份寄存器持久化、自动故障回退。
-- **BSDIFF FOTA 固件升级**：差分升级支持，减小传输数据量，含校验与回滚机制。
+## 三层 YAML 架构
 
-## 当前功能
+项目采用 **硬件 / 软件 / 绑定** 三层解耦设计，各层职责独立、可并行编辑：
 
-- **Netlist/BOM 驱动**：解析嘉立创EasyEDA Pro .enet和KiCad XML/S-Expression 网表和 CSV BOM，100+ 种外设芯片启发式匹配，自动生成硬件 YAML；无源元件约束提取（阻容/晶振/连接器）、引脚冲突交叉校验、原理图注解导入
-- **YAML 硬件描述**：定义 MCU、引脚（GPIO/EXTI）、低功耗模式、应用任务
-- **业务 DSL**：状态机引擎（states/regions/substates/ref）、动作系统（set/calc/defer/timeline/when/publish/publish_async/send_to）
-- **代码生成**：Python + Jinja2 + Pydantic 类型模型，生成完整的 C 工程（HAL、FreeRTOS、启动文件、链接脚本）
-- **Bootloader**：双槽位 (A/B) + 硬件 CRC32 校验 + TAMP 备份寄存器 + 启动失败自动回退
-- **BSDIFF FOTA**：固件差分升级（BSDIFF 算法），减小 OTA 传输体积，含完整性校验与回滚
-- **日志子系统**：USART2 中断驱动环形缓冲日志，6 级过滤，ISR 安全
-- **CLI 调试终端**：UART 命令行交互，支持 gpio/rtc/led/tasks/free/uptime 等调试命令
-- **通信协议**：Modbus RTU、MQTT 3.1.1 客户端、RS485 半双工、Cellular 4G Cat.1
-- **红外通信**：NEC/SIR 红外收发驱动
-- **I2C EEPROM**：I2C EEPROM 存储驱动
-- **独立看门狗**：IWDG 驱动模板（HAL_IWDG）
-- **编译工具链**：GCC Makefile，支持 ST-Link 和 DAP-Link 烧录
-- **单元测试**：Unity 框架 + Mock HAL，PC 端运行，支持覆盖率报告
-- **HIL 测试**：目标板硬件在环测试框架，串口输出结果
-- **VSCode 集成**：自动生成 launch/tasks/settings/c_cpp_properties 调试配置
-- **GitHub CI**：自动编译 + 单元测试 + 覆盖率
-- **低功耗管理**：Idle Hook 自动进入 `__WFI()`，支持 STOP/SLEEP/STANDBY 模式
-- **实际验证**：已在 STM32G0B1RET6 开发板上通过按键中断 + LED 翻转 + Bootloader 跳转测试
+```mermaid
+flowchart TB
+    subgraph HW["hardware.yaml — 硬件物理事实"]
+        direction LR
+        H1["MCU<br>型号/内核/Flash/RAM"] ---
+        H2["Pins<br>GPIO/EXTI/AF"] ---
+        H3["Peripherals<br>I2C/SPI/UART/..."] ---
+        H4["Clock<br>HSE/LSE/PLL/SysTick"] ---
+        H5["Sleep<br>STOP/STANDBY"]
+    end
 
-## 支持的外设
+    subgraph SW["task.yaml — 软件定义"]
+        direction LR
+        S1["Project<br>名称/版本"] ---
+        S2["app_tasks<br>FreeRTOS 任务"] ---
+        S3["business_flow<br>状态机/变量/类型"]
+    end
 
-| 外设 | 驱动模板 | 单元测试 | HIL 测试 |
-|------|----------|----------|----------|
-| GPIO + EXTI | gpio.c.j2 | test_gpio.c.j2 | -- |
-| USART (日志) | drv_log.c.j2 | -- | -- |
-| USART (串口) | drv_uart.c.j2 | test_uart.c.j2 | -- |
-| I2C (MPU6050) | drv_i2c_mpu6050.c.j2 | test_mpu6050.c.j2 | -- |
-| SPI (W25Q32) | drv_spi_flash.c.j2 | test_spi_flash.c.j2 | -- |
-| ADC | drv_adc.c.j2 | test_adc.c.j2 | -- |
-| PWM | drv_pwm.c.j2 | test_pwm.c.j2 | -- |
-| RTC | drv_rtc.c.j2 | test_rtc.c.j2 / test_rtc_timers.c.j2 | hil_test.c.j2 |
-| IWDG | drv_iwdg.c.j2 | -- | -- |
-| I2C EEPROM | drv_eeprom.c.j2 | -- | -- |
-| RS485 | drv_rs485.c.j2 | -- | -- |
-| Cellular 4G | drv_cellular.c.j2 | -- | -- |
-| 红外 (NEC/SIR) | drv_ir.c.j2 | -- | -- |
-| Modbus RTU | drv_modbus.c.j2 | -- | -- |
-| MQTT 3.1.1 | drv_mqtt.c.j2 | -- | -- |
-| CLI 调试终端 | drv_cli.c.j2 | -- | -- |
-| FOTA (BSDIFF) | drv_fota.c.j2 + fota_bspatch.c.j2 | -- | -- |
+    subgraph BIND["bind.yaml — 硬件-软件绑定"]
+        direction LR
+        D1["interrupt<br>EXTI→Task 绑定"] ---
+        D2["peripheral_assign<br>外设→Task 分配"] ---
+        D3["routing<br>Task→Task 通信路由"]
+    end
+
+    HW -.->|"映射"| BIND
+    SW -.->|"分配"| BIND
+```
+
+### 上下文构建流程
+
+三份 YAML 通过 `mapper.py` 合并为统一的模板渲染上下文：
+
+```mermaid
+flowchart TB
+    subgraph Inputs["输入：三层 YAML"]
+        HW[("hardware.yaml<br>pins / peripherals / clock")]
+        TASK[("task.yaml<br>app_tasks / business_flow")]
+        B[("bind.yaml<br>interrupt / routing")]
+    end
+
+    subgraph Merge["mapper.py 合并"]
+        M1["向后兼容检测<br>旧格式自动拆分"] --> M2["合并 app_tasks"]
+        M2 --> M3["合并 business_flow"]
+        M3 --> M4["应用 interrupt → notify_task"]
+        M4 --> M5["应用 peripheral_assign → features"]
+        M5 --> M6["注入 routing → bind_routings"]
+    end
+
+    subgraph Validate["校验层"]
+        V1["Pydantic Schema 验证"] --> V2["引脚冲突检测"]
+        V2 --> V3["MCU 数据库交叉校验"]
+    end
+
+    subgraph Context["context_builder 构建"]
+        CB1["pin_context — 引脚/GPIO/EXTI"] --> CB
+        CB2["periph_context — 驱动/总线"] --> CB
+        CB3["app_task_context — RTOS 配置"] --> CB
+        CB4["boot_context — 双槽位布局"] --> CB
+        CB5["hal_context — HAL/时钟外设"] --> CB
+        CB6["flags — 条件编译宏"] --> CB
+        CB[("统一渲染上下文 Dict")]
+    end
+
+    Inputs --> Merge --> Validate --> Context
+
+    Context --> J2["Jinja2 模板引擎<br>62 个 .j2 → .c/.h/Makefile"]
+```
+
+> 无论旧格式（单体 YAML）还是新格式（三层拆分），`mapper.py` 确保上游零改动。
+
+---
+
+## 特性一览
+
+| 类别 | 能力 |
+|------|------|
+| **硬件解析** | EasyEDA Pro `.enet` / KiCad XML / S-Expr 网表，CSV BOM，100+ 外设芯片启发式匹配 |
+| **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485、红外、EEPROM — 17 种驱动模板 |
+| **业务 DSL** | 层级状态机（复合子状态 / 并行区域 / 历史状态）、defer/timeline 时间控制、when 条件动作、ref 引用复用 |
+| **任务系统** | FreeRTOS 任务定义 + 优先级/栈配置，可视化拖拽绑定中断源与外设 |
+| **低功耗** | 自动唤醒源分析，Tickless Idle 钩子，STOP/STANDBY/SLEEP 支持 |
+| **Bootloader** | 双槽位 A/B，硬件 CRC32，TAMP 备份寄存器，启动失败自动回退 |
+| **FOTA** | BSDIFF 差分升级，减小 OTA 传输体积，完整性校验 + 回滚 |
+| **测试** | Unity 框架 + Mock HAL，PC 端脱离硬件运行，覆盖率报告 |
+| **通信** | Modbus RTU / MQTT 3.1.1 / RS485 半双工 / Cellular 4G Cat.1 |
+| **工具链** | `arm-none-eabi-gcc` + Makefile，VSCode launch/tasks 自动生成，ST-Link + DAP-Link 烧录 |
+
+---
 
 ## 快速开始
 
-1. 安装 hw2c：
+```bash
+# 1. 克隆并安装
+git clone --recurse-submodules https://github.com/jinliangliu/hw2c.git
+cd hw2c && pip install -e .
 
-   ```bash
-   git clone --recurse-submodules https://github.com/jinliangliu/hw2c.git
-   cd hw2c
-   pip install -e .          # 开发模式安装，含 hw2c CLI
-   ```
+# 2. 从网表生成硬件描述
+hw2c parse parser/hardware_design/stm32g0b1_demo.enet \
+    --bom parser/hardware_design/stm32g0b1_demo.csv \
+    -o hardware.yaml --task task.yaml
 
-2. 解析网表/BOM → hardware.yaml：
+# 3. 编辑 task.yaml / bind.yaml（或用 Web 前端辅助）
 
-   ```bash
-   # 方式 A：从 EDA 设计文件自动生成 YAML
-   hw2c parse parser/hardware_design/stm32g0b1_demo.enet \
-       --bom parser/hardware_design/stm32g0b1_demo.csv \
-       -o hardware.yaml --summary
+# 4. 一键生成工程
+hw2c gen -i hardware.yaml --task task.yaml --bind bind.yaml -o output/my_project
 
-   # 方式 B：手写 hardware.yaml（参考 examples/ 中的示例）
+# 5. 编译烧录
+cd output/my_project && make && make flash
+```
 
-2. 生成嵌入式工程：
+> Web 可视化配置台：[hw2c-web](https://github.com/jinliangliu/hw2c-web) — 提供拖拽式任务编排、引脚封装预览、时钟树配置与 YAML 实时编辑。
 
-   ```bash
-   hw2c gen -i hardware.yaml -o output/my_project
-   cd output/my_project
-   make
-   ```
+---
 
-3. 编译并烧录：
-   ```bash
-   make flash           # ST-Link 烧录
-   make flash-daplink   # DAP-Link 烧录
-   ```
+## 支持矩阵
 
-4. 运行单元测试：
-   ```bash
-   python generator/run_tests.py --test-dir output/blinky_g0/test
-   ```
+### MCU
 
-## 目录结构
+| 系列 | 型号 | 内核 | Flash | RAM | 状态 |
+|------|------|------|-------|-----|------|
+| STM32G0 | STM32G0B1RE | Cortex-M0+ | 512 KB | 144 KB | 已验证 |
+
+### 外设覆盖
+
+| 外设 | 驱动 | 单元测试 | 业务示例 |
+|------|------|----------|----------|
+| GPIO + EXTI | `gpio.c` | `test_gpio.c` | `blinky_g0` |
+| USART | `drv_uart.c`, `drv_log.c` | `test_uart.c` | `cli_demo` |
+| I2C MPU6050 | `drv_i2c_mpu6050.c` | `test_mpu6050.c` | `mpu6050` |
+| SPI W25Q32 | `drv_spi_flash.c` | `test_spi_flash.c` | `spi_flash` |
+| ADC | `drv_adc.c` | `test_adc.c` | `adc_uart` |
+| PWM | `drv_pwm.c` | `test_pwm.c` | `pwm` |
+| RTC | `drv_rtc.c` | `test_rtc.c` | `rtc_advanced` |
+| IWDG | `drv_iwdg.c` | — | `bootloader_demo` |
+| RS485 | `drv_rs485.c` | — | `modbus_demo` |
+| Cellular 4G | `drv_cellular.c` | — | `cellular_mqtt` |
+| 红外 NEC/SIR | `drv_ir.c` | — | — |
+| I2C EEPROM | `drv_eeprom.c` | — | `i2c_spi_demo` |
+
+### 状态机 DSL
+
+```yaml
+business_flow:
+  initial_state: IDLE
+  states:
+    - name: IDLE
+      transitions:
+        - { event: BTN_PRESS, target: ACTIVE }
+    - name: ACTIVE
+      entry: set(led, on)
+      exit:  set(led, off)
+      transitions:
+        - { event: BTN_RELEASE, target: IDLE }
+```
+
+完整参考：[task-yaml.md](docs/user-guide/task-yaml.md) | [bind-yaml.md](docs/user-guide/bind-yaml.md)
+
+---
+
+## 目录
 
 ```
-├── examples/
-│   ├── blinky_g0/         # GPIO + EXTI
-│   ├── adc_uart/          # ADC + USART
-│   ├── mpu6050/           # I2C 传感器
-│   ├── spi_flash/         # SPI Flash
-│   ├── pwm/               # PWM 输出
-│   ├── rtc_advanced/      # RTC + 状态机全特性
-│   ├── substate_demo/     # 复合子状态
-│   ├── parallel_states/   # 并行区域
-│   ├── parallel_comm/     # 并行区域跨区域通信
-│   ├── nested_ref/        # ref 引用 + namespace
-│   ├── ref_demo/          # ref 基础用法
-│   ├── timeline_demo/     # timeline 时间序列
-│   ├── bootloader_demo/   # 双槽位 Bootloader
-│   ├── cli_demo/          # CLI 调试终端
-│   ├── modbus_demo/       # Modbus RTU
-│   ├── cellular_mqtt/     # 4G + MQTT
-│   ├── cellular_test/     # 4G 基础测试
-│   ├── fota_demo/         # BSDIFF 差分升级
-│   ├── fota_flow/         # FOTA 业务流程
-│   ├── i2c_spi_demo/      # I2C EEPROM + SPI
-│   ├── low_power_demo/    # 低功耗管理
-│   └── common_subflow.yaml
-├── output/                 # 生成工程输出 (按示例分目录)
-├── models/                 # 外设模型库 (17 个 YAML)
-│   ├── Internal_RTC.yaml  # RTC, ADC, PWM, IWDG, CLI, IR
-│   ├── I2C_Sensor_MPU6050.yaml
-│   ├── SPI_Flash_W25Q32.yaml / SPI_Flash_Generic.yaml
-│   ├── UART_Serial.yaml / RS485.yaml
-│   ├── Cellular_4G.yaml / Protocol_MQTT.yaml / Protocol_Modbus.yaml
-│   └── I2C_EEPROM.yaml / Bootloader.yaml / PWM_Timer.yaml
-├── templates/              # Jinja2 模板
-│   ├── macros.j2           # 可复用 Jinja2 宏
-│   ├── src/                # main.c, gpio.c, sleep.c, event_mgr, stm32g0xx_it.c
-│   ├── app/                # statemachine.c/h
-│   ├── drivers/            # 17 个外设驱动 (drv_rtc, drv_log, drv_uart, drv_adc,
-│   │                       #   drv_pwm, drv_iwdg, drv_i2c_mpu6050, drv_spi_flash,
-│   │                       #   drv_eeprom, drv_rs485, drv_cellular, drv_ir,
-│   │                       #   drv_modbus, drv_mqtt, drv_cli, drv_fota, fota_bspatch)
-│   ├── rtos/               # tickless_idle (FreeRTOS Tickless 适配)
-│   ├── bootloader/         # boot_main, boot_nvm, boot_crc, boot_jump, boot_app
-│   ├── linker/             # 链接脚本 (标准 + SlotA/B + Bootloader)
-│   ├── project/            # Makefile (App + Bootloader)
-│   ├── config/             # FreeRTOSConfig, HAL conf
-│   ├── test/               # 30 个单元测试 + Mock HAL
-│   └── vscode/             # VSCode 调试配置
-├── generator/              # Python 代码生成引擎
-│   ├── generate.py         # 主入口
-│   ├── context_builder.py  # 模板渲染上下文构建
-│   ├── validator.py        # YAML 校验
-│   ├── models.py           # Pydantic 类型模型
-│   ├── mcu_database.py     # MCU 引脚/外设数据库
-│   ├── patch_crc.py        # 固件 CRC 后处理
-│   ├── bsdiff_tool.py      # BSDIFF 补丁生成工具
-│   ├── fota_sender.py      # FOTA 补丁发送脚本
-│   ├── run_tests.py / hil_runner.py  # 测试运行器
-│   ├── allocators/         # 引脚分配器 (pin_allocator)
-│   ├── backends/           # MCU 后端适配 (stm32)
-│   ├── builders/           # 驱动构建器 (gpio, i2c, spi, uart)
-│   ├── context/            # 上下文子模块 (pin, peripheral, bearer, bootloader, hal)
-│   ├── data/mcu/           # MCU 数据 (JSON)
-│   ├── merger/             # C 代码合并工具
-│   ├── schemas/            # Pydantic 校验模型
-│   ├── tests/              # generator 自身的单元测试 (10 个)
-│   └── validators/         # 校验器 (pin_conflict)
-├── parser/                 # Netlist/BOM 解析器 (Phase 4)
-│   ├── pipeline.py          # 统一管道：Netlist + BOM + Passive + Annotator + Validator
-│   ├── netlist_parser.py    # EDA 网表解析 (EasyEDA .enet / KiCad XML / S-Expr)
-│   ├── netlist_parser_enet.py # EasyEDA Pro .enet 专用解析器 (主要目标)
-│   ├── bom_parser.py        # CSV BOM 解析 → 外设类型匹配
-│   ├── passive_extractor.py # 无源元件约束提取 (阻容/晶振/连接器)
-│   ├── cross_validator.py   # Netlist-YAML 引脚冲突交叉校验
-│   ├── schematic_annotator.py # 网络名设计意图提取 (总线/外设/电源/信号角色)
-│   ├── hardware_design/    # Netlist/BOM 输入示例
-│   │   ├── stm32g0b1_demo.enet  # EasyEDA Pro 网表
-│   │   └── stm32g0b1_demo.csv   # BOM
-│   └── tests/               # 139 个单元/集成测试
-├── static/                 # 第三方静态库 (Git 子模块)
-│   ├── stm32g0/            # HAL/CMSIS/FreeRTOS
-│   └── unity/              # Unity 测试框架
-├── docs/                   # 文档 (MkDocs Material)
-│   ├── index.md            # 首页
-│   ├── getting-started/    # 安装与快速开始
-│   ├── user-guide/         # 用户指南 (YAML 参考, CLI, 示例)
-│   ├── developer-guide/    # 开发者指南 (模板, 架构, 插件)
-│   ├── roadmap/            # 路线图
-│   ├── about/              # 贡献指南
-│   └── vision/             # 架构愿景
-├── .github/workflows/      # CI workflow
-├── pyproject.toml          # Python 项目配置
-├── requirements.txt        # Python 依赖
-├── CONTRIBUTING.md         # 贡献指南
-├── ROADMAP.md              # 项目路线图
-├── README.md
-└── LICENSE
+hw2c
+├── parser/          # 网表/BOM 解析管线
+├── generator/       # 代码生成引擎（mapper / context / schemas / builders）
+├── templates/       # 62 个 Jinja2 模板（驱动 / 测试 / 配置 / 链接脚本）
+├── models/          # 17 个外设模型 YAML
+├── examples/        # 22 个示例项目（从 blinky 到 FOTA）
+├── docs/            # MkDocs 文档（用户指南 / 开发者指南 / 路线图）
+├── static/          # Git 子模块（HAL / CMSIS / FreeRTOS / Unity）
+└── tests/           # 78 个生成器单元测试
 ```
+
+---
+
+## 路线图
+
+| 里程碑 | 内容 |
+|--------|------|
+| v0.5 | 多 MCU 后端支持（ESP32、NXP） |
+| v0.6 | `bind.yaml` 事件系统完整实现，Web 前端 BindGraph 联动 |
+| v1.0 | 免编程工作流闭环，EDA 上传 → 拖拽编排 → 一键固件 |
+
+详见：[ROADMAP.md](ROADMAP.md) | [three-layer-split.md](docs/plans/three-layer-split.md)
+
+---
+
+## 许可证
+
+MIT © hw2c contributors
