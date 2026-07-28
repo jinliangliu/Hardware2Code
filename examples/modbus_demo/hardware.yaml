@@ -62,7 +62,7 @@ peripherals:
     role: "slave"
     slave_id: 1
 
-business_flow:
+behavior:
   initial_state: "RUNNING"
   states:
     - name: "RUNNING"

@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "event_mgr.h"
 
-{% for region in business_flow.regions %}
+{% for region in behavior.regions %}
 #define REGION_{{ region.name | upper }} {{ loop.index0 }}
 {% endfor %}
 

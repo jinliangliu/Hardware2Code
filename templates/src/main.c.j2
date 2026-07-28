@@ -11,7 +11,7 @@
 /* Include event manager header (always present) */
 #include "event_mgr.h"
 
-{% if has_business_flow %}
+{% if has_behavior %}
 #include "statemachine.h"
 {% endif %}
 
@@ -233,7 +233,7 @@ int main(void)
     log_info("EventMgr_Init() OK");
 {% endif %}
 
-{% if has_business_flow %}
+{% if has_behavior %}
     statemachine_init();
 {% if has_log %}
     log_info("statemachine_init() OK");

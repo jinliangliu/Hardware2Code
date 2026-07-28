@@ -32,7 +32,7 @@ peripherals:
     features:
       - calendar
 
-business_flow:
+behavior:
   initial_state: "MAIN_IDLE"
   variables:
     # Declare variable here so it can be referenced by the subflow after namespace prefix is applied.

@@ -66,7 +66,7 @@ if (GPIO_Pin == GPIO_PIN_13) {
 If `event` is omitted, it defaults to `EVENT_<pin_id>_IRQ` (e.g. `EVENT_PC13_IRQ`).
 
 The event name must match an event used in transitions within `task.yaml`'s
-`business_flow`. The generator emits a warning if an interrupt event is not
+`behavior`. The generator emits a warning if an interrupt event is not
 consumed by any state machine transition.
 
 ---

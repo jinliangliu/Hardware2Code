@@ -24,7 +24,7 @@ app_tasks:
     priority: 3
     stack_size: 256
 
-business_flow:
+behavior:
   regions:
     # 区域1：LED 控制
     - name: "led_control"

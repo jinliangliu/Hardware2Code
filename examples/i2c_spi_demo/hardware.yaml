@@ -65,7 +65,7 @@ app_tasks:
     priority: 2
     stack_size: 512
 
-business_flow:
+behavior:
   initial_state: idle
   variables:
     - name: button_count

@@ -112,7 +112,7 @@ class BuildContext(TypedDict):
     has_cli: bool
     has_led: bool
     has_led_task: bool
-    has_business_flow: bool
+    has_behavior: bool
     has_substate: bool
     has_bootloader: bool
     has_fota: bool
@@ -122,7 +122,7 @@ class BuildContext(TypedDict):
     rs485_name: str
     modbus_name: str
     cli_uart_name: str
-    business_flow: dict
+    behavior: dict
     boot_config: dict
     hil: HilConfig
     boot_max_retries: int

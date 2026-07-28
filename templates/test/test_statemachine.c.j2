@@ -32,14 +32,14 @@ void setUp(void) {
 void tearDown(void) {}
 
 {#
-  Compute all expected toggle_led counts from the business_flow context.
+  Compute all expected toggle_led counts from the behavior context.
   Uses Jinja2 namespace() objects for mutable variables inside loops.
 #}
 {%- set ns = namespace(init_entry=0, transitions=[]) -%}
-{%- set initial_name = business_flow.initial_state -%}
+{%- set initial_name = behavior.initial_state -%}
 
 {# Find initial state and count its on_entry toggle_led calls #}
-{%- for s in business_flow.states -%}
+{%- for s in behavior.states -%}
 {%-     if s.name == initial_name -%}
 {%-         for a in (s.get('on_entry') or []) -%}
 {%-             if a == 'toggle_led' %}{% set ns.init_entry = ns.init_entry + 1 %}{% endif -%}
@@ -48,7 +48,7 @@ void tearDown(void) {}
 {%- endfor -%}
 
 {# Collect all transitions with their metadata #}
-{%- for s in business_flow.states -%}
+{%- for s in behavior.states -%}
 {%-     if s.transitions -%}
 {%-         for t in s.transitions -%}
 {%-             set trans_actions = t.get('actions') or [] -%}
@@ -58,7 +58,7 @@ void tearDown(void) {}
 {%-             endfor -%}
 {# Find target state and count its on_entry toggle_led #}
 {%-             set tgt_entry_toggle = namespace(val=0) -%}
-{%-             for ts in business_flow.states -%}
+{%-             for ts in behavior.states -%}
 {%-                 if ts.name == t.target -%}
 {%-                     for a in (ts.get('on_entry') or []) -%}
 {%-                         if a == 'toggle_led' %}{% set tgt_entry_toggle.val = tgt_entry_toggle.val + 1 %}{% endif -%}

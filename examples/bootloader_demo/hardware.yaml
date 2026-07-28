@@ -65,7 +65,7 @@ peripherals:
       slave_id: 1
 
 # ========== 业务状态机 ==========
-business_flow:
+behavior:
   initial_state: "IDLE"
   states:
     - name: "IDLE"

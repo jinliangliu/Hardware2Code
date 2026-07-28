@@ -1,4 +1,4 @@
-business_flow:
+behavior:
   initial_state: "SUB_IDLE"
   variables:
     - name: "local_counter"

@@ -62,7 +62,7 @@ def _minimal_context():
         "has_cli": False,
         "has_led": True,
         "has_led_task": False,
-        "has_business_flow": False,
+        "has_behavior": False,
         "has_substate": False,
         "has_bootloader": False,
         "has_fota": False,
@@ -72,7 +72,7 @@ def _minimal_context():
         "rs485_name": "",
         "modbus_name": "",
         "cli_uart_name": "",
-        "business_flow": {},
+        "behavior": {},
         "boot_config": {},
         "hil": {"baudrate": 115200, "uart": "UART2", "tx_pin": "PA2", "rx_pin": "PA3"},
         "boot_max_retries": 3,
@@ -161,13 +161,13 @@ def test_main_c_template_with_bootloader():
     assert "boot_app_mark_ok()" in rendered
 
 
-def test_main_c_template_with_business_flow():
-    """Main.c renders statemachine when has_business_flow=True."""
+def test_main_c_template_with_behavior():
+    """Main.c renders statemachine when has_behavior=True."""
     env = _make_env()
     template = env.get_template("src/main.c.j2")
     context = _minimal_context()
-    context["has_business_flow"] = True
-    context["business_flow"] = {"states": [{"name": "idle", "initial_state": "idle"}]}
+    context["has_behavior"] = True
+    context["behavior"] = {"states": [{"name": "idle", "initial_state": "idle"}]}
     rendered = template.render(context)
 
     assert '#include "statemachine.h"' in rendered
@@ -281,7 +281,7 @@ if __name__ == "__main__":
     test_main_c_template_basic()
     test_main_c_template_with_rtc()
     test_main_c_template_with_bootloader()
-    test_main_c_template_with_business_flow()
+    test_main_c_template_with_behavior()
     test_main_c_template_with_led_task()
     test_main_c_template_with_cli()
     test_main_c_no_led_no_bootloader_no_flow()

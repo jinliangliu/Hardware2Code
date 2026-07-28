@@ -55,7 +55,7 @@ def test_build_context_minimal():
     assert ctx["has_i2c"] == False
     assert ctx["has_rtc"] == False
     assert ctx["has_bootloader"] == False
-    assert ctx["has_business_flow"] == False
+    assert ctx["has_behavior"] == False
     assert ctx["hil_mode"] == False
     assert isinstance(ctx["hal_sources"], list)
     assert "stm32g0xx_hal.c" in ctx["hal_sources"]
@@ -87,12 +87,12 @@ def test_build_context_with_bootloader():
     assert "stm32g0xx_hal_iwdg.c" in ctx["hal_sources"]
 
 
-def test_build_context_with_business_flow():
-    """build_context with business_flow sets has_business_flow"""
+def test_build_context_with_behavior():
+    """build_context with behavior sets has_behavior"""
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "transitions": [{"event": "TICK", "target": "idle"}]},
@@ -100,7 +100,7 @@ def test_build_context_with_business_flow():
         },
     }
     ctx = build_context(hw, "test_bf")
-    assert ctx["has_business_flow"] == True
+    assert ctx["has_behavior"] == True
     assert ctx["has_event_mgr"] == True
 
 
@@ -158,7 +158,7 @@ def test_build_context_with_defer_timeline():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": ["defer 3000 => toggle_led"],
@@ -171,7 +171,7 @@ def test_build_context_with_defer_timeline():
         },
     }
     ctx = build_context(hw, "test_defer")
-    assert ctx["has_business_flow"] == True
+    assert ctx["has_behavior"] == True
     assert len(ctx["defer_actions"]) >= 2
     assert len(ctx["defer_timer_names"]) >= 2
 
@@ -181,7 +181,7 @@ def test_build_context_with_publish():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "transitions": [
@@ -193,7 +193,7 @@ def test_build_context_with_publish():
         },
     }
     ctx = build_context(hw, "test_pub")
-    assert ctx["has_business_flow"] == True
+    assert ctx["has_behavior"] == True
     assert "ALARM" in ctx["published_events"]
 
 
@@ -202,7 +202,7 @@ def test_build_context_with_dict_actions():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": [
@@ -219,7 +219,7 @@ def test_build_context_with_dict_actions():
         },
     }
     ctx = build_context(hw, "test_dict")
-    assert ctx["has_business_flow"] == True
+    assert ctx["has_behavior"] == True
 
 
 def test_build_context_compound_state():
@@ -227,7 +227,7 @@ def test_build_context_compound_state():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "parent", "initial_state": "child1",
                  "states": [
@@ -239,7 +239,7 @@ def test_build_context_compound_state():
         },
     }
     ctx = build_context(hw, "test_cmpd")
-    assert ctx["has_business_flow"] == True
+    assert ctx["has_behavior"] == True
     assert ctx["has_substate"] == True
 
 
@@ -258,11 +258,11 @@ def test_build_context_with_fota():
 
 
 def test_build_context_with_regions():
-    """build_context handles business_flow with regions"""
+    """build_context handles behavior with regions"""
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "regions": [
                 {"name": "r1", "initial_state": "s1",
                  "states": [
@@ -274,7 +274,7 @@ def test_build_context_with_regions():
         },
     }
     ctx = build_context(hw, "test_regions")
-    assert ctx["has_business_flow"] == True
+    assert ctx["has_behavior"] == True
 
 
 if __name__ == "__main__":
@@ -286,7 +286,7 @@ if __name__ == "__main__":
     test_build_context_minimal()
     test_build_context_with_rtc()
     test_build_context_with_bootloader()
-    test_build_context_with_business_flow()
+    test_build_context_with_behavior()
     test_build_context_default_hil()
     test_build_context_with_led()
     test_build_context_heap_stack()

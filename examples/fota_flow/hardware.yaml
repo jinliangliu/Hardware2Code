@@ -62,7 +62,7 @@ peripherals:
     extra:
       baudrate: 115200
 
-business_flow:
+behavior:
   initial_state: "IDLE"
   variables:
     - name: "upgrade_attempts"

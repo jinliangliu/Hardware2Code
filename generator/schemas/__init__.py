@@ -31,7 +31,7 @@ from .hardware import (
     TransitionModel,
     StateModel,
     RegionModel,
-    BusinessFlowModel,
+    BehaviorModel,
     # Root
     HardwareModel,
     # Types
@@ -48,7 +48,7 @@ __all__ = [
     "McuModel", "TaskModel", "PeripheralModel",
     "SleepModel", "LogModel", "BootloaderModel", "HilModel",
     "VariableModel", "TransitionModel", "StateModel",
-    "RegionModel", "BusinessFlowModel",
+    "RegionModel", "BehaviorModel",
     "HardwareModel", "ActionType",
     "VALID_PERIPHERAL_TYPES", "VALID_PIN_FUNCTIONS",
     "VALID_FUNCTION_PATTERNS",

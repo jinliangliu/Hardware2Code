@@ -102,7 +102,7 @@ The generator parses `hardware.yaml` and builds a **context dictionary** passed 
 | `has_rtc` | bool | RTC peripheral configured |
 | `has_log` | bool | UART peripheral configured (auto-enables USART2 logging) |
 | `has_bootloader` | bool | `bootloader.enabled: true` in YAML |
-| `has_business_flow` | bool | `business_flow` node exists in YAML |
+| `has_behavior` | bool | `behavior` node exists in YAML |
 | `has_substate` | bool | Business flow contains composite (nested) states |
 | `has_led` | bool | A pin with `label: "LED"` exists |
 | `has_led_task` | bool | A task named `led_task` is in `app_tasks` |
@@ -261,7 +261,7 @@ Reusable helper macros.
 **Output:** `src/statemachine.c` / `src/statemachine.h`
 
 **Responsibilities:**
-- Generates the complete state machine engine from `business_flow` DSL
+- Generates the complete state machine engine from `behavior` DSL
 - Supports three modes controlled by `has_substate` and `regions` presence:
 
 | Mode | Condition | Features |
@@ -617,12 +617,12 @@ All `.vscode/` templates generate IDE configuration for:
 
 ## Business Logic DSL Reference
 
-Defined via `business_flow` in YAML. Generates `statemachine.c/h`.
+Defined via `behavior` in YAML. Generates `statemachine.c/h`.
 
 ### Flat State Machine
 
 ```yaml
-business_flow:
+behavior:
   initial_state: "IDLE"
   states:
     - name: "IDLE"
@@ -645,7 +645,7 @@ business_flow:
 ### Substate (Composite) State Machine
 
 ```yaml
-business_flow:
+behavior:
   initial_state: "IDLE"
   states:
     - name: "IDLE"
@@ -680,7 +680,7 @@ business_flow:
 ### Parallel Regions
 
 ```yaml
-business_flow:
+behavior:
   initial_state: "ACTIVE"
   regions:
     - name: "led_region"
@@ -714,7 +714,7 @@ business_flow:
 ### Ref (Reusable Substate)
 
 ```yaml
-business_flow:
+behavior:
   initial_state: "MAIN"
   states:
     - name: "MAIN"
@@ -728,7 +728,7 @@ business_flow:
 ### Timeline
 
 ```yaml
-business_flow:
+behavior:
   initial_state: "IDLE"
   states:
     - name: "IDLE"

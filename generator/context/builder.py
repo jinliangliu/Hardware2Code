@@ -135,8 +135,8 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
                       f"'{p.get('name', '?')}': {e}")
 
     # ---------- 业务逻辑 DSL ----------
-    business_flow = hw.get('business_flow', {})
-    has_business_flow = bool(business_flow)
+    behavior = hw.get('behavior', {})
+    has_behavior = bool(behavior)
 
     has_led = any(pin.get('label') == 'LED' for pin in pins)
     has_led_task = any(t.get('name') == 'led_task' for t in app_tasks)
@@ -156,8 +156,8 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         try:
             with open(full_path, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
-            if data and 'business_flow' in data:
-                return data['business_flow']
+            if data and 'behavior' in data:
+                return data['behavior']
         except (yaml.YAMLError, OSError) as e:
             print(f"Warning: cannot load ref {ref_path}: {e}")
         return None
@@ -238,11 +238,11 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
             if not changed:
                 break
 
-    if business_flow:
-        if business_flow.get('states'):
-            resolve_all_refs(business_flow['states'])
-        if business_flow.get('regions'):
-            for region in business_flow['regions']:
+    if behavior:
+        if behavior.get('states'):
+            resolve_all_refs(behavior['states'])
+        if behavior.get('regions'):
+            for region in behavior['regions']:
                 resolve_all_refs(region['states'])
 
     # ---------- 确保复合状态有 initial_state ----------
@@ -253,11 +253,11 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
             if s.get('states'):
                 fix_initial_state(s['states'])
 
-    if business_flow:
-        if business_flow.get('states'):
-            fix_initial_state(business_flow['states'])
-        if business_flow.get('regions'):
-            for region in business_flow['regions']:
+    if behavior:
+        if behavior.get('states'):
+            fix_initial_state(behavior['states'])
+        if behavior.get('regions'):
+            for region in behavior['regions']:
                 fix_initial_state(region['states'])
 
     # ---------- 检查是否有子状态 ----------
@@ -268,11 +268,11 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         return False
 
     has_substate = False
-    if business_flow:
-        if business_flow.get('states'):
-            has_substate = has_nested_states(business_flow['states'])
-        if business_flow.get('regions'):
-            for region in business_flow['regions']:
+    if behavior:
+        if behavior.get('states'):
+            has_substate = has_nested_states(behavior['states'])
+        if behavior.get('regions'):
+            for region in behavior['regions']:
                 if has_nested_states(region['states']):
                     has_substate = True
                     break
@@ -397,7 +397,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         for i, act in enumerate(action_list):
             action_list[i] = normalize_dict_action(act)
 
-    # Apply normalization to all action lists in business_flow
+    # Apply normalization to all action lists in behavior
     def traverse_and_normalize(states_or_regions):
         """Walk all states/regions and normalize action lists."""
         entries = states_or_regions if isinstance(states_or_regions, list) else [states_or_regions]
@@ -414,11 +414,11 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
                 if state.get('states'):
                     traverse_and_normalize(state)
 
-    if business_flow:
-        if business_flow.get('states'):
-            traverse_and_normalize({'states': business_flow['states']})
-        if business_flow.get('regions'):
-            for region in business_flow['regions']:
+    if behavior:
+        if behavior.get('states'):
+            traverse_and_normalize({'states': behavior['states']})
+        if behavior.get('regions'):
+            for region in behavior['regions']:
                 traverse_and_normalize(region)
 
     # ---------- Defer / Timeline 动作处理 ----------
@@ -479,11 +479,11 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
                 defer_counter = traverse_states(state['states'], defer_counter)
         return defer_counter
 
-    if business_flow:
-        if business_flow.get('states'):
-            traverse_states(business_flow['states'], 0)
-        if business_flow.get('regions'):
-            for region in business_flow['regions']:
+    if behavior:
+        if behavior.get('states'):
+            traverse_states(behavior['states'], 0)
+        if behavior.get('regions'):
+            for region in behavior['regions']:
                 traverse_states(region['states'], 0)
 
     # ---------- 收集所有定时器事件名 ----------
@@ -534,11 +534,11 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
             if state.get('states'):
                 collect_timer_events_from_states(state['states'], prefix)
 
-    if business_flow:
-        if business_flow.get('states'):
-            collect_timer_events_from_states(business_flow['states'])
-        if business_flow.get('regions'):
-            for region in business_flow['regions']:
+    if behavior:
+        if behavior.get('states'):
+            collect_timer_events_from_states(behavior['states'])
+        if behavior.get('regions'):
+            for region in behavior['regions']:
                 collect_timer_events_from_states(region['states'], region['name'] + '_')
 
     # ---------- 收集所有 publish / publish_async 事件 ----------
@@ -588,11 +588,11 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
             if state.get('states'):
                 collect_published_events(state['states'])
 
-    if business_flow:
-        if business_flow.get('states'):
-            collect_published_events(business_flow['states'])
-        if business_flow.get('regions'):
-            for region in business_flow['regions']:
+    if behavior:
+        if behavior.get('states'):
+            collect_published_events(behavior['states'])
+        if behavior.get('regions'):
+            for region in behavior['regions']:
                 collect_published_events(region['states'])
 
     # 同时从已经处理好的 defer_actions 中提取 publish 事件
@@ -626,11 +626,11 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
             if state.get('states'):
                 collect_transition_events(state['states'])
 
-    if business_flow:
-        if business_flow.get('states'):
-            collect_transition_events(business_flow['states'])
-        if business_flow.get('regions'):
-            for region in business_flow['regions']:
+    if behavior:
+        if behavior.get('states'):
+            collect_transition_events(behavior['states'])
+        if behavior.get('regions'):
+            for region in behavior['regions']:
                 collect_transition_events(region['states'])
 
     # ---------- Auto-inject RTC driver when business flow needs timers ----------
@@ -743,7 +743,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         if flow.get('regions'):
             for region in flow['regions']:
                 walk(region['states'], f"{region['name']}_")
-    compute_state_enums(business_flow)
+    compute_state_enums(behavior)
 
     # ---------- 预计算：FreeRTOS 堆大小 ----------
     def compute_heap_size(tasks, has_cli, has_fota, cli_stack=512):
@@ -816,8 +816,8 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         "test_mode": False,
         "has_log": has_log,
         "has_tickless": has_tickless,
-        "has_business_flow": has_business_flow,
-        "business_flow": business_flow,
+        "has_behavior": has_behavior,
+        "behavior": behavior,
         "has_substate": has_substate,
         "has_bootloader": has_bootloader,
         "has_fota": has_fota,

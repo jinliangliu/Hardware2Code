@@ -50,7 +50,7 @@ peripherals:
       tx_pin: "PA2"
       rx_pin: "PA3"
 
-business_flow:
+behavior:
   initial_state: "IDLE"
   variables:
     - name: "press_count"

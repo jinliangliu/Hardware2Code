@@ -488,7 +488,7 @@ def test_bf_states_basic():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle", "initial_state": True,
                  "transitions": [{"event": "TICK", "target": "active"}]},
@@ -509,7 +509,7 @@ def test_bf_variables_valid():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [
                 {"name": "counter", "type": "uint32_t"},
                 {"name": "flag", "type": "bool"},
@@ -532,7 +532,7 @@ def test_bf_regions_basic():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "regions": [
                 {"name": "r1", "initial_state": "s1",
                  "states": [
@@ -555,7 +555,7 @@ def test_bf_events_valid():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "events": [
                 {"name": "TICK", "source": "rtc", "type": "synchronous"},
             ],
@@ -577,7 +577,7 @@ def test_bf_guard_declared_variable():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "ready", "type": "bool"}],
             "states": [
                 {"name": "idle",
@@ -600,7 +600,7 @@ def test_bf_guard_undeclared_variable():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "transitions": [
@@ -619,7 +619,7 @@ def test_bf_calc_valid():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [
                 {"name": "counter", "type": "uint32_t"},
                 {"name": "step", "type": "uint32_t"},
@@ -643,7 +643,7 @@ def test_bf_calc_undeclared_var():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": ["calc counter = counter + 1"],
@@ -660,7 +660,7 @@ def test_bf_variable_no_name():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"type": "uint32_t"}],
             "states": [
                 {"name": "idle",
@@ -677,7 +677,7 @@ def test_bf_variable_no_type():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "x"}],
             "states": [
                 {"name": "idle",
@@ -694,7 +694,7 @@ def test_bf_variable_invalid_type():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "x", "type": "double"}],
             "states": [
                 {"name": "idle",
@@ -711,7 +711,7 @@ def test_bf_event_invalid_source():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "events": [{"name": "TICK", "source": "unknown", "type": "synchronous"}],
             "states": [
                 {"name": "idle",
@@ -728,7 +728,7 @@ def test_bf_event_invalid_type_field():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "events": [{"name": "TICK", "source": "rtc", "type": "blocking"}],
             "states": [
                 {"name": "idle",
@@ -741,11 +741,11 @@ def test_bf_event_invalid_type_field():
 
 
 def test_bf_no_states_no_regions():
-    """business_flow without states or regions triggers ERROR"""
+    """behavior without states or regions triggers ERROR"""
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "events": [{"name": "TICK", "source": "rtc"}],
         },
     }
@@ -758,7 +758,7 @@ def test_bf_ref_state():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "sub_ref", "type": "ref", "ref": "common_subflow.yaml",
                  "namespace": "sub", "initial_state": True},
@@ -775,7 +775,7 @@ def test_bf_ref_state_missing_ref():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "sub_ref", "type": "ref", "namespace": "sub"},
             ]
@@ -790,7 +790,7 @@ def test_bf_ref_state_missing_namespace():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "sub_ref", "type": "ref", "ref": "common_subflow.yaml"},
             ]
@@ -805,7 +805,7 @@ def test_bf_compound_state_no_initial():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "parent",
                  "states": [
@@ -824,7 +824,7 @@ def test_bf_dict_action_toggle_led():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": [{"toggle_led": None}],
@@ -844,7 +844,7 @@ def test_bf_dict_action_calc():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "counter", "type": "uint32_t"}],
             "states": [
                 {"name": "idle",
@@ -865,7 +865,7 @@ def test_bf_dict_action_when():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "counter", "type": "uint32_t"}],
             "states": [
                 {"name": "idle",
@@ -886,7 +886,7 @@ def test_bf_dict_action_timeline():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": [{"timeline": [{"ms": 100, "do": "toggle_led"}]}],
@@ -906,7 +906,7 @@ def test_bf_dict_action_defer():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": [{"defer": {"after": 3000, "do": "toggle_led"}}],
@@ -926,7 +926,7 @@ def test_bf_transition_no_event():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "transitions": [{"target": "active"}]},
@@ -943,7 +943,7 @@ def test_bf_transition_no_target():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "transitions": [{"event": "GO"}]},
@@ -959,7 +959,7 @@ def test_bf_dict_action_invalid_key():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": [{"unknown_action": None}],
@@ -976,7 +976,7 @@ def test_bf_region_no_initial_state():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "regions": [
                 {"name": "r1", "states": [{"name": "s1"}]},
             ]
@@ -991,7 +991,7 @@ def test_bf_region_no_name():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "regions": [
                 {"initial_state": "s1", "states": [{"name": "s1"}]},
             ]
@@ -1006,7 +1006,7 @@ def test_bf_state_no_name():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"initial_state": True,
                  "transitions": [{"event": "TICK", "target": "s2"}]},
@@ -1023,7 +1023,7 @@ def test_bf_event_no_name():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "events": [{"source": "rtc"}],
             "states": [
                 {"name": "idle",
@@ -1040,7 +1040,7 @@ def test_bf_when_string_valid():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "val", "type": "uint32_t"}],
             "states": [
                 {"name": "idle",
@@ -1061,7 +1061,7 @@ def test_bf_when_undeclared_var():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": ["when val > 5 => toggle_led"],
@@ -1078,7 +1078,7 @@ def test_bf_on_entry_on_exit_actions():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": ["toggle_led"],
@@ -1099,7 +1099,7 @@ def test_bf_action_non_string_non_dict():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": [42],
@@ -1116,7 +1116,7 @@ def test_bf_transition_guard_with_actions():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "flag", "type": "bool"}],
             "states": [
                 {"name": "idle",
@@ -1141,7 +1141,7 @@ def test_bf_guard_boolean_var():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "flag", "type": "bool"}],
             "states": [
                 {"name": "idle",
@@ -1164,7 +1164,7 @@ def test_bf_guard_boolean_var_undeclared():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "transitions": [
@@ -1183,7 +1183,7 @@ def test_bf_guard_complex_expr():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "flag", "type": "bool"}],
             "states": [
                 {"name": "idle",
@@ -1204,7 +1204,7 @@ def test_bf_substate_transition_no_event():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "parent", "initial_state": "child1",
                  "states": [
@@ -1224,7 +1224,7 @@ def test_bf_substate_no_name():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "parent", "initial_state": "child1",
                  "states": [
@@ -1243,7 +1243,7 @@ def test_bf_region_state_no_name():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "regions": [
                 {"name": "r1", "initial_state": "s1",
                  "states": [
@@ -1262,7 +1262,7 @@ def test_bf_region_transition_no_event():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "regions": [
                 {"name": "r1", "initial_state": "s1",
                  "states": [
@@ -1282,7 +1282,7 @@ def test_bf_region_transition_no_target():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "regions": [
                 {"name": "r1", "initial_state": "s1",
                  "states": [
@@ -1435,12 +1435,12 @@ def test_valid_with_rtc_peripheral():
     assert len(errors_list) == 0
 
 
-def test_valid_full_business_flow():
+def test_valid_full_behavior():
     """Complex business flow with regions, vars, events, guards passes"""
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [
                 {"name": "counter", "type": "uint32_t"},
                 {"name": "ready", "type": "bool"},
@@ -1475,7 +1475,7 @@ def test_bf_guard_rhs_identifier_not_declared():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "ready", "type": "bool"}],
             "states": [
                 {"name": "idle",
@@ -1496,7 +1496,7 @@ def test_bf_guard_rhs_complex_expr():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "value", "type": "uint32_t"}],
             "states": [
                 {"name": "idle",
@@ -1517,7 +1517,7 @@ def test_bf_calc_missing_equal():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "counter", "type": "uint32_t"}],
             "states": [
                 {"name": "idle",
@@ -1535,7 +1535,7 @@ def test_bf_calc_invalid_dest():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "counter", "type": "uint32_t"}],
             "states": [
                 {"name": "idle",
@@ -1553,7 +1553,7 @@ def test_bf_when_missing_arrow():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "flag", "type": "bool"}],
             "states": [
                 {"name": "idle",
@@ -1571,7 +1571,7 @@ def test_bf_when_boolean_var_undeclared():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "states": [
                 {"name": "idle",
                  "on_entry": ["when unknown_var => toggle_led"],
@@ -1588,7 +1588,7 @@ def test_bf_when_complex_condition():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "flag", "type": "bool"}],
             "states": [
                 {"name": "idle",
@@ -1606,7 +1606,7 @@ def test_bf_when_lhs_not_identifier():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "flag", "type": "bool"}],
             "states": [
                 {"name": "idle",
@@ -1624,7 +1624,7 @@ def test_bf_region_with_variables():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "regions": [
                 {"name": "r1", "initial_state": "idle",
                  "variables": [{"name": "r1_var", "type": "uint32_t"}],
@@ -1651,7 +1651,7 @@ def test_bf_substate_with_actions():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "counter", "type": "uint32_t"}],
             "states": [
                 {"name": "parent", "initial_state": "child",
@@ -1679,7 +1679,7 @@ def test_bf_defer_with_when_sub_action():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "flag", "type": "bool"}],
             "states": [
                 {"name": "idle",
@@ -1697,7 +1697,7 @@ def test_bf_defer_with_calc_sub_action():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "counter", "type": "uint32_t"}],
             "states": [
                 {"name": "idle",
@@ -1715,7 +1715,7 @@ def test_bf_timeline_with_when_sub_action():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "flag", "type": "bool"}],
             "states": [
                 {"name": "idle",
@@ -1733,7 +1733,7 @@ def test_bf_timeline_with_calc_sub_action():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "counter", "type": "uint32_t"}],
             "states": [
                 {"name": "idle",
@@ -1793,7 +1793,7 @@ def test_bf_calc_rhs_complex_identifier():
     hw = {
         "mcu": {"part": "STM32G0B1RET6"},
         "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "business_flow": {
+        "behavior": {
             "variables": [{"name": "counter", "type": "uint32_t"}],
             "states": [
                 {"name": "idle",
@@ -1835,7 +1835,7 @@ if __name__ == "__main__":
     test_bf_when_string_valid()
     test_valid_pin_numbered_function()
     test_valid_with_rtc_peripheral()
-    test_valid_full_business_flow()
+    test_valid_full_behavior()
     test_pull_valid_up()
 
     # Invalid

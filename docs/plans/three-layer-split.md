@@ -65,7 +65,7 @@ app_tasks:
   - { name: "sensor_task", priority: 3, stack_size: 512 }
   - { name: "mqtt_task",   priority: 4, stack_size: 1024 }
 
-business_flow:
+behavior:
   types:
     - name: "sensor_data_t"
       struct:
@@ -84,7 +84,7 @@ business_flow:
 
 **Key changes**:
 - `app_tasks` no longer has `run_mode`, `triggers`, `signals` — those are `bind.yaml` concepts
-- `business_flow` moves entirely here from hardware.yaml
+- `behavior` moves entirely here from hardware.yaml
 - `project` metadata is new
 
 ### 2.3 `bind.yaml` — Hardware ⇔ Software Wiring
@@ -121,9 +121,9 @@ routing:
 
 | Action | File |
 |--------|------|
-| Split hardware-yaml.md → remove `business_flow`, `app_tasks` | `docs/user-guide/hardware-yaml.md` |
+| Split hardware-yaml.md → remove `behavior`, `app_tasks` | `docs/user-guide/hardware-yaml.md` |
 | New `mcu.core` field in hardware-yaml.md schema table | `docs/user-guide/hardware-yaml.md` |
-| Create task-yaml.md with `project`, `app_tasks`, `business_flow` | `docs/user-guide/task-yaml.md` (new) |
+| Create task-yaml.md with `project`, `app_tasks`, `behavior` | `docs/user-guide/task-yaml.md` (new) |
 | Create bind-yaml.md with `interrupt`, `peripheral_assign`, `routing` | `docs/user-guide/bind-yaml.md` (new) |
 | Update mkdocs navigation | `mkdocs.yml` |
 
@@ -134,7 +134,7 @@ routing:
 | Action | File |
 |--------|------|
 | `PipelineResult.yaml` → deprecated, add `hardware_yaml` + `task_yaml` fields | `parser/pipeline.py` |
-| Remove `business_flow` / `app_tasks` generation from netlist parsers | `parser/netlist_parser.py`, `parser/netlist_parser_enet.py` |
+| Remove `behavior` / `app_tasks` generation from netlist parsers | `parser/netlist_parser.py`, `parser/netlist_parser_enet.py` |
 | Add `"core": "Cortex-M0+"` to default MCU dict | `parser/bom_parser.py` |
 | Generate default empty `task.yaml` from parser (with detected tasks from pins) | `parser/pipeline.py` |
 | CLI `parse` subcommand: output hardware.yaml; `--task` flag also writes task.yaml | `parser/cli.py` |
@@ -146,8 +146,8 @@ routing:
 | Action | File |
 |--------|------|
 | Add new `BindModel`, `RoutingModel`, `InterruptBindingModel`, `PeripheralAssignModel` Pydantic schemas | `generator/schemas/bind.py` (new) |
-| Split `BusinessFlowModel` → `TaskModel` (top-level) + `BusinessFlowModel` (inside task.yaml) | `generator/schemas/task.py` (new) |
-| Strip `business_flow` and `app_tasks` from `HardwareModel` | `generator/schemas/hardware.py` |
+| Split `BehaviorModel` → `TaskModel` (top-level) + `BehaviorModel` (inside task.yaml) | `generator/schemas/task.py` (new) |
+| Strip `behavior` and `app_tasks` from `HardwareModel` | `generator/schemas/hardware.py` |
 | Add `core: str = ""` field to `McuModel` | `generator/schemas/hardware.py` |
 | Add `core: str` to `McuConfig` TypedDict | `generator/types.py` |
 | New `mapper.py` that merges hardware + task + bind into a unified internal dict | `generator/mapper.py` (new) |
@@ -215,9 +215,9 @@ After:   { hardware_yaml: "...", task_yaml: "...", bind_yaml: "...", bind: {...}
 
 | Action | File | Detail |
 |--------|------|--------|
-| Strip `app_tasks` and `business_flow` | `useHardwareModel.ts` | `HardwareModel` only has `mcu`, `pins`, `peripherals`, `sleep`, `clock` |
+| Strip `app_tasks` and `behavior` | `useHardwareModel.ts` | `HardwareModel` only has `mcu`, `pins`, `peripherals`, `sleep`, `clock` |
 | Add `core: string` to `McuModel` | `useHardwareModel.ts` | Default `"Cortex-M0+"`, YAML parse read `m.core` |
-| New composable | `useTaskModel.ts` | `TaskModel { project: ProjectInfo, app_tasks: AppTaskModel[], business_flow: BusinessFlowModel }`; YAML sync for `task_yaml` ref |
+| New composable | `useTaskModel.ts` | `TaskModel { project: ProjectInfo, app_tasks: AppTaskModel[], behavior: BehaviorModel }`; YAML sync for `task_yaml` ref |
 | New composable | `useBindModel.ts` | `BindModel { interrupt: [], peripheral_assign: [], routing: [] }`; YAML sync for `bind_yaml` ref |
 | `loadFromApi` | `useHardwareModel.ts` | After parse, also call `loadFromApi` on task and bind models |
 
@@ -243,7 +243,7 @@ Changes to current layout:
 |--------|--------|
 | Remove trigger/signal handles from task nodes | Task nodes only show name + priority + stack_size |
 | Remove trigger source nodes (GPIO / Timer / RTC) | Those belong in BindGraph |
-| Task-to-task connections for `business_flow` states | Keep state-machine transitions as separate graph (or in Business Flow editor panel) |
+| Task-to-task connections for `behavior` states | Keep state-machine transitions as separate graph (or in Business Flow editor panel) |
 | Double-click to rename | Keep in-place rename |
 | Run mode toggle | Remove (always loop in FreeRTOS) |
 
@@ -276,21 +276,21 @@ Visual drag-and-drop graph with three zones:
 | Connection labels | Show event name / role / signal name on edges |
 | Click edge to edit | Edit signal name, condition expression, role |
 | Delete edge | Click + Delete key, or context menu, removes bindModel entry |
-| Validation indicators | Red outline if `event` name doesn't match `business_flow` events in task.yaml |
+| Validation indicators | Red outline if `event` name doesn't match `behavior` events in task.yaml |
 
 #### 5.6 Legacy YAML Import Handler
 
 | Action | Detail |
 |--------|--------|
-| Detection | In `handleParse()`, check if `results.yaml` has `business_flow` or `app_tasks` top-level |
+| Detection | In `handleParse()`, check if `results.yaml` has `behavior` or `app_tasks` top-level |
 | Auto-split | If legacy detected, call a client-side `splitLegacy(yaml: string)` that extracts hardware/task/bind separately and feeds into three models |
 | Warning banner | Show "Legacy monolithic YAML detected — auto-split into Hardware / Tasks / Bind tabs. Review Bind tab for interrupt and routing mapping." |
-| Split logic | `app_tasks` → taskModel; `business_flow` → taskModel; `pins[].notify_task` → bindModel.interrupt; `app_tasks[].triggers` → bindModel.interrupt; `app_tasks[].signals` → bindModel.routing |
+| Split logic | `app_tasks` → taskModel; `behavior` → taskModel; `pins[].notify_task` → bindModel.interrupt; `app_tasks[].triggers` → bindModel.interrupt; `app_tasks[].signals` → bindModel.routing |
 
 ## 4. Backward Compatibility Strategy
 
 ### 4.1 Detection
-If hardware.yaml contains `business_flow` or `app_tasks` at the top level → old format.
+If hardware.yaml contains `behavior` or `app_tasks` at the top level → old format.
 
 ### 4.2 Auto-split (in mapper.py)
 ```python
@@ -299,9 +299,9 @@ def split_legacy(hw: dict) -> tuple[dict, dict, dict]:
     task = {
         "project": {"name": hw.get("project_name", "untitled")},
         "app_tasks": _strip_task_triggers(hw.get("app_tasks", [])),
-        "business_flow": hw.get("business_flow", {}),
+        "behavior": hw.get("behavior", {}),
     }
-    hw_new = {k: v for k, v in hw.items() if k not in ("app_tasks", "business_flow")}
+    hw_new = {k: v for k, v in hw.items() if k not in ("app_tasks", "behavior")}
     bind = _extract_bind_from_legacy(hw)
     return hw_new, task, bind
 ```
@@ -316,7 +316,7 @@ def split_legacy(hw: dict) -> tuple[dict, dict, dict]:
 | Repo | New Files | Modified Files |
 |------|-----------|---------------|
 | **hw2c** | `docs/user-guide/task-yaml.md`, `docs/user-guide/bind-yaml.md`, `generator/schemas/task.py`, `generator/schemas/bind.py`, `generator/mapper.py`, `docs/plans/three-layer-split.md` | `docs/user-guide/hardware-yaml.md`, `mkdocs.yml`, `parser/pipeline.py`, `parser/cli.py`, `parser/netlist_parser.py`, `parser/netlist_parser_enet.py`, `generator/schemas/hardware.py`, `generator/generate.py`, `generator/context/builder.py`, `generator/validator.py` |
-| **hw2c-web** | `frontend/src/components/BindGraph.vue`, `frontend/src/composables/useTaskModel.ts`, `frontend/src/composables/useBindModel.ts` | `backend/schemas.py` (split ParseResponse + new BindInfo/ProjectInfo models), `backend/routes/parse.py` (return split yaml strings), `backend/routes/generate.py` (accept three yamls), `frontend/src/api.ts` (new types + generate signature), `frontend/src/App.vue` (4-tab restructure + legacy import), `frontend/src/composables/useHardwareModel.ts` (strip app_tasks/business_flow), `frontend/src/components/TaskGraph.vue` (simplify to pure tasks) |
+| **hw2c-web** | `frontend/src/components/BindGraph.vue`, `frontend/src/composables/useTaskModel.ts`, `frontend/src/composables/useBindModel.ts` | `backend/schemas.py` (split ParseResponse + new BindInfo/ProjectInfo models), `backend/routes/parse.py` (return split yaml strings), `backend/routes/generate.py` (accept three yamls), `frontend/src/api.ts` (new types + generate signature), `frontend/src/App.vue` (4-tab restructure + legacy import), `frontend/src/composables/useHardwareModel.ts` (strip app_tasks/behavior), `frontend/src/components/TaskGraph.vue` (simplify to pure tasks) |
 
 **Total: 6 new files + 17 modified files across 2 repos (23 files)**
 
@@ -324,7 +324,7 @@ def split_legacy(hw: dict) -> tuple[dict, dict, dict]:
 
 | Risk | Mitigation |
 |------|-----------|
-| `bind.yaml` event names mismatch with `task.yaml` | Validator checks all `bind.yaml.interrupt[].event` and `routing[].signal` against `business_flow` events; frontend provides auto-complete dropdown |
+| `bind.yaml` event names mismatch with `task.yaml` | Validator checks all `bind.yaml.interrupt[].event` and `routing[].signal` against `behavior` events; frontend provides auto-complete dropdown |
 | Generator template context API too coupled to single-dict shape | `mapper.py` produces the identical dict shape that `build_context()` expects; only the input side changes |
 | Frontend regressions during Tab restructure | Phase 5 last, after all backend layers stable; keep old Tab as fallback during development |
 | User confusion with three files | hw2c-web provides guided step-by-step workflow (upload → hardware → tasks → bind → generate)；CLI help text explains the 3-file model |

@@ -75,7 +75,7 @@ hw2c-web/frontend/src/
 
 ```
 1. 从 API 获取 ParsedHardware，提取初始 YAML
-2. 建立 reactive 对象 { mcu, pins, peripherals, app_tasks, business_flow }
+2. 建立 reactive 对象 { mcu, pins, peripherals, app_tasks, behavior }
 3. 监听 reactive 变更 → js-yaml dump → 更新 CodeMirror
 4. 监听 CodeMirror 变更 → js-yaml load → 更新 reactive
 5. 提供 writeMcu(part), writePin(id, field, val), addPeripheral(), removeTask() 等 mutations
@@ -142,7 +142,7 @@ hw2c-web/frontend/src/
 
 ### 5.4 状态机可视化编辑器（高难度）
 
-**目标**：Canvas 拖拽式状态机设计，生成 `business_flow` YAML。
+**目标**：Canvas 拖拽式状态机设计，生成 `behavior` YAML。
 
 **技术选型**：Vue Flow (@vue-flow/core) — MIT 开源，Vue 3 原生支持，节点/边拖拽
 
@@ -165,7 +165,7 @@ hw2c-web/frontend/src/
 **YAML 映射**：
 
 ```yaml
-business_flow:
+behavior:
   initial_state: "IDLE"
   states:
     - name: "IDLE"               # StateNode
@@ -176,7 +176,7 @@ business_flow:
           actions: ["toggle_led"]  # EdgePropsPanel 输入
 ```
 
-**验收**：拖拽创建节点和边 → 画布自动布局 → 右侧属性面板编辑 → YAML 实时生成 `business_flow` 节。
+**验收**：拖拽创建节点和边 → 画布自动布局 → 右侧属性面板编辑 → YAML 实时生成 `behavior` 节。
 
 ---
 

@@ -30,7 +30,7 @@ app_tasks:
     priority: 2
     stack_size: 128
 
-business_flow:
+behavior:
   initial_state: "OFF"
   states:
     - name: "OFF"

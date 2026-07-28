@@ -23,12 +23,12 @@ def merge(
     """Merge the three-layer YAML into a unified hardware dict.
 
     Backward compatibility:
-    - If task_yaml is empty, extract app_tasks/business_flow from hardware_yaml.
+    - If task_yaml is empty, extract app_tasks/behavior from hardware_yaml.
     - If bind_yaml is empty, create an empty bind context.
 
     Args:
         hardware_yaml: hardware.yaml content (mcu, pins, peripherals, sleep, clock, bootloader, hil).
-        task_yaml: task.yaml content (project, app_tasks, business_flow).
+        task_yaml: task.yaml content (project, app_tasks, behavior).
         bind_yaml: bind.yaml content (interrupt, peripheral_assign, routing).
 
     Returns:
@@ -58,13 +58,13 @@ def merge(
     if app_tasks:
         merged["app_tasks"] = app_tasks
 
-    # ---- Merge business_flow ----
-    bf = task.get("business_flow", {})
-    if not bf and "business_flow" in hw:
-        # Backward compat: business_flow in old hardware.yaml
-        bf = hw["business_flow"]
+    # ---- Merge behavior ----
+    bf = task.get("behavior", {})
+    if not bf and "behavior" in hw:
+        # Backward compat: behavior in old hardware.yaml
+        bf = hw["behavior"]
     if bf:
-        merged["business_flow"] = bf
+        merged["behavior"] = bf
 
     # ---- Apply bind: interrupt → notify_task on pins ----
     interrupts = bind.get("interrupt", [])
@@ -147,7 +147,7 @@ def split_legacy(monolithic_yaml: str) -> tuple:
 
     hw_keys = ("mcu", "pins", "peripherals", "sleep", "clock",
                "bootloader", "hil", "heap_size", "stack_size")
-    sw_keys = ("app_tasks", "business_flow")
+    sw_keys = ("app_tasks", "behavior")
 
     # Hardware-only
     hw_doc: dict = {}

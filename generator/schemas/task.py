@@ -69,7 +69,7 @@ class TypeDefModel(BaseModel):
     bitfield: Optional[list[BitfieldFieldModel]] = None
 
 
-class BusinessFlowModel(BaseModel):
+class BehaviorModel(BaseModel):
     """State-machine DSL (moved from old hardware.yaml to task.yaml)."""
     model_config = ConfigDict(extra="allow")
     initial_state: Optional[str] = None
@@ -85,4 +85,4 @@ class TaskModel(BaseModel):
     model_config = ConfigDict(extra="allow")
     project: ProjectModel = Field(default_factory=ProjectModel)
     app_tasks: list[AppTaskModel] = []
-    business_flow: Optional[BusinessFlowModel] = None
+    behavior: Optional[BehaviorModel] = None

@@ -61,7 +61,7 @@ class PipelineResult:
     """Hardware-only YAML (mcu, pins, peripherals, sleep, clock, bootloader, hil)."""
 
     task_yaml: str = ""
-    """Software-only YAML (project, app_tasks, business_flow)."""
+    """Software-only YAML (project, app_tasks, behavior)."""
 
     report: CrossReport = field(default_factory=CrossReport)
     """Cross-validation report (empty if no user YAML provided)."""
@@ -391,7 +391,7 @@ class HardwarePipeline:
         doc = yaml.safe_load(monolithic_yaml) or {}
 
         # Software keys to extract
-        sw_keys = ("app_tasks", "business_flow")
+        sw_keys = ("app_tasks", "behavior")
         hardware_keys = ("mcu", "pins", "peripherals", "sleep",
                          "clock", "bootloader", "hil", "heap_size", "stack_size")
 

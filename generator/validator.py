@@ -23,11 +23,11 @@ _C_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 def _collect_all_variables(hw: dict) -> dict[str, str]:
     """
-    Collect all declared variable names from business_flow and regions.
+    Collect all declared variable names from behavior and regions.
     Returns dict: {var_name: var_type_str}
     """
     variables = {}
-    bf = hw.get('business_flow', {})
+    bf = hw.get('behavior', {})
     if not bf:
         return variables
 
@@ -45,15 +45,15 @@ def _collect_all_variables(hw: dict) -> dict[str, str]:
 
 
 def _collect_custom_types(hw: dict) -> set[str]:
-    """Collect all custom type names from business_flow.types."""
-    bf = hw.get('business_flow', {})
+    """Collect all custom type names from behavior.types."""
+    bf = hw.get('behavior', {})
     if not bf:
         return set()
     return {t['name'] for t in bf.get('types', []) if 'name' in t}
 
 
 def _validate_custom_types(bf: dict) -> list[str]:
-    """Validate business_flow.types entries."""
+    """Validate behavior.types entries."""
     errors = []
     custom_types = set()
     for i, tdef in enumerate(bf.get('types', [])):
@@ -395,8 +395,8 @@ def validate_hardware(hw: dict) -> list[ValidationError]:
     # Bootloader size_kb, max_retries, and offset constraints are handled
     # by Pydantic (BootloaderModel).
 
-    if 'business_flow' in hw and hw['business_flow']:
-        bf = hw['business_flow']
+    if 'behavior' in hw and hw['behavior']:
+        bf = hw['behavior']
 
         # Collect all declared variables for expression validation
         _all_vars = _collect_all_variables(hw)
@@ -407,14 +407,14 @@ def validate_hardware(hw: dict) -> list[ValidationError]:
             valid_event_types = {'synchronous', 'asynchronous'}
             for i, evt in enumerate(bf['events']):
                 if 'name' not in evt or not evt['name']:
-                    errors.append(f"[ERROR] Event #{i} in business_flow.events has no 'name' field.")
+                    errors.append(f"[ERROR] Event #{i} in behavior.events has no 'name' field.")
                 if evt.get('source') and evt['source'] not in valid_event_sources:
                     errors.append(f"[WARNING] Event '{evt.get('name', 'unknown')}' has unknown source '{evt['source']}'. Valid: {sorted(valid_event_sources)}.")
                 if evt.get('type') and evt['type'] not in valid_event_types:
                     errors.append(f"[WARNING] Event '{evt.get('name', 'unknown')}' has unknown type '{evt['type']}'. Valid: {sorted(valid_event_types)}.")
 
         if not ('states' in bf or 'regions' in bf):
-            errors.append("[ERROR] business_flow has neither 'states' nor 'regions' defined.")
+            errors.append("[ERROR] behavior has neither 'states' nor 'regions' defined.")
 
         valid_actions = ['toggle_led', 'return', 'EVENT_NONE']
         valid_action_prefixes = ['start_timer ', 'stop_timer ', 'set ', 'calc ', 'publish ', 'publish_async ', 'when ', 'defer ', 'timeline:', 'send_to ']
@@ -506,7 +506,7 @@ def validate_hardware(hw: dict) -> list[ValidationError]:
         if 'states' in bf and bf['states']:
             for i, state in enumerate(bf['states']):
                 if 'name' not in state or not state['name']:
-                    errors.append(f"[ERROR] State #{i} in business_flow has no 'name' field.")
+                    errors.append(f"[ERROR] State #{i} in behavior has no 'name' field.")
                 else:
                     state_names.append(state['name'])
 
@@ -595,7 +595,7 @@ def validate_hardware(hw: dict) -> list[ValidationError]:
             custom_type_names = _collect_custom_types(hw)
             for i, var in enumerate(bf['variables']):
                 if 'name' not in var or not var['name']:
-                    errors.append(f"[ERROR] Variable #{i} in business_flow has no 'name' field.")
+                    errors.append(f"[ERROR] Variable #{i} in behavior has no 'name' field.")
                 if 'type' not in var or not var['type']:
                     errors.append(f"[ERROR] Variable '{var.get('name', 'unknown')}' has no 'type' field.")
                 else:

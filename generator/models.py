@@ -30,7 +30,7 @@ from .schemas.hardware import (   # noqa: F401  — re-export for backward compa
     TransitionModel,
     StateModel,
     RegionModel,
-    BusinessFlowModel,
+    BehaviorModel,
     ActionType,
     # Root
     HardwareModel,

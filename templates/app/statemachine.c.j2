@@ -16,8 +16,8 @@
 
 
 /* ========== 自定义类型定义 / Custom Type Definitions ========== */
-{%- if business_flow.types %}
-{%- for tdef in business_flow.types %}
+{%- if behavior.types %}
+{%- for tdef in behavior.types %}
 
 {%- if tdef.struct is defined and tdef.struct %}
 #pragma pack(push, 1)
@@ -63,13 +63,13 @@ typedef struct {
 {%- endif %}
 
 /* ========== 全局变量 ========== */
-{% for var in business_flow.get('variables', []) %}
+{% for var in behavior.get('variables', []) %}
 static {{ var.type }} {{ var.name }}{% if var.array is defined and var.array %}[{{ var.array }}]{% endif %} = {{ var.initial }};
 {% endfor %}
 
 /* ========== 区域级变量 ========== */
-{% if business_flow.regions %}
-{% for region in business_flow.regions %}
+{% if behavior.regions %}
+{% for region in behavior.regions %}
 {% for var in region.get('variables', []) %}
 static {{ var.type }} {{ region.name }}_{{ var.name }}{% if var.array is defined and var.array %}[{{ var.array }}]{% endif %} = {{ var.initial }};
 {% endfor %}
@@ -77,8 +77,8 @@ static {{ var.type }} {{ region.name }}_{{ var.name }}{% if var.array is defined
 {% endif %}
 
 /* ========== 状态枚举 ========== */
-{% if business_flow.regions %}
-{% for region in business_flow.regions %}
+{% if behavior.regions %}
+{% for region in behavior.regions %}
 {% for state in region.states %}
 #define STATE_{{ region.name }}_{{ state.name }} {{ state._enum }}
 {% if state.states %}
@@ -89,7 +89,7 @@ static {{ var.type }} {{ region.name }}_{{ var.name }}{% if var.array is defined
 {% endfor %}
 {% endfor %}
 {% else %}
-{% for state in business_flow.states %}
+{% for state in behavior.states %}
 #define STATE_{{ state.name }} {{ state._enum }}
 {% if state.states %}
 {% for nested in state.states %}
@@ -100,8 +100,8 @@ static {{ var.type }} {{ region.name }}_{{ var.name }}{% if var.array is defined
 {% endif %}
 
 /* ========== 当前状态变量 ========== */
-{% if business_flow.regions %}
-{% for region in business_flow.regions %}
+{% if behavior.regions %}
+{% for region in behavior.regions %}
 static uint32_t current_state_{{ region.name }};
 {% for state in region.states %}
 {% if state.states %}
@@ -111,7 +111,7 @@ static uint32_t current_state_{{ region.name }}_{{ state.name }};
 {% endfor %}
 {% else %}
 static uint32_t current_state;
-{% for state in business_flow.states %}
+{% for state in behavior.states %}
 {% if state.states %}
 static uint32_t current_state_{{ state.name }};
 {% endif %}
@@ -119,8 +119,8 @@ static uint32_t current_state_{{ state.name }};
 {% endif %}
 
 /* ========== 历史状态变量 ========== */
-{% if business_flow.regions %}
-{% for region in business_flow.regions %}
+{% if behavior.regions %}
+{% for region in behavior.regions %}
 {% for state in region.states %}
 {% if state.states and state.history %}
 static uint32_t current_state_{{ region.name }}_{{ state.name }}_history = STATE_{{ region.name }}_{{ state.name }}_{{ state.initial_state or state.states[0].name }};
@@ -128,7 +128,7 @@ static uint32_t current_state_{{ region.name }}_{{ state.name }}_history = STATE
 {% endfor %}
 {% endfor %}
 {% else %}
-{% for state in business_flow.states %}
+{% for state in behavior.states %}
 {% if state.states and state.history %}
 static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_{{ state.initial_state or state.states[0].name }};
 {% endif %}
@@ -284,8 +284,8 @@ static void {{ d.timer_name }}_cb(void *arg) {
 
 /* ========== 初始化 ========== */
 void statemachine_init(void) {
-{% if business_flow.regions %}
-{% for region in business_flow.regions %}
+{% if behavior.regions %}
+{% for region in behavior.regions %}
     current_state_{{ region.name }} = STATE_{{ region.name }}_{{ region.initial_state }};
 {% for state in region.states %}
 {% if state.states %}
@@ -318,8 +318,8 @@ void statemachine_init(void) {
 {% endfor %}
 {% endfor %}
 {% else %}
-    current_state = STATE_{{ business_flow.initial_state }};
-{% for state in business_flow.states %}
+    current_state = STATE_{{ behavior.initial_state }};
+{% for state in behavior.states %}
 {% if state.states %}
 {% if state.history %}
     current_state_{{ state.name }} = current_state_{{ state.name }}_history;
@@ -328,12 +328,12 @@ void statemachine_init(void) {
 {% endif %}
 {% endif %}
 {% endfor %}
-{% for var in business_flow.get('variables', []) %}
+{% for var in behavior.get('variables', []) %}
     {{ var.name }} = {{ var.initial }};
 {% endfor %}
     /* 执行初始状态的进入动作并启动时间序列 */
-{% for state in business_flow.states %}
-{% if state.name == business_flow.initial_state %}
+{% for state in behavior.states %}
+{% if state.name == behavior.initial_state %}
 {% if state.on_entry %}
 {{ process_actions(state.on_entry) | indent(4, true) }}
 {% endif %}
@@ -353,9 +353,9 @@ void statemachine_init(void) {
 
 /* ========== 事件处理 ========== */
 void statemachine_process(event_t *evt) {
-{% if business_flow.regions %}
+{% if behavior.regions %}
     /* 并行区域：每个区域独立处理事件 */
-{% for region in business_flow.regions %}
+{% for region in behavior.regions %}
     {
         uint32_t *p_curr = &current_state_{{ region.name }};
         switch (*p_curr) {
@@ -514,7 +514,7 @@ void statemachine_process(event_t *evt) {
 {% else %}
     /* 单区域状态机（传统模式） */
     switch (current_state) {
-{% for state in business_flow.states %}
+{% for state in behavior.states %}
     case STATE_{{ state.name }}:
 {% if state.states %}
         {
@@ -610,7 +610,7 @@ void statemachine_process(event_t *evt) {
 {{ process_actions(trans.actions) | indent(12, true) }}
             current_state = STATE_{{ trans.target }};
             /* 执行目标状态的进入动作并启动时间序列 */
-{% for s in business_flow.states %}
+{% for s in behavior.states %}
 {% if s.name == trans.target %}
 {% if s.on_entry %}
 {{ process_actions(s.on_entry) | indent(12, true) }}

@@ -32,7 +32,7 @@ peripherals:
     features:
       - calendar
 
-business_flow:
+behavior:
   initial_state: "IDLE"
   states:
     - name: "IDLE"

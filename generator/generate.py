@@ -223,7 +223,7 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             _write_file(out_path, rendered, dry_run, show_diff)
 
     # ---------- 业务状态机 ----------
-    if context.get("has_business_flow"):
+    if context.get("has_behavior"):
         state_machine_templates = {
             "app/statemachine.h.j2": os.path.join(output_dir, "src", "statemachine.h"),
             "app/statemachine.c.j2": os.path.join(output_dir, "src", "statemachine.c"),
@@ -315,8 +315,8 @@ def render_templates(env: Environment, context: dict, output_dir: str,
         test_templates["test/test_fota_bspatch.c.j2"] = os.path.join(test_dir, "test_fota_bspatch.c")
 
     # 状态机测试
-    if context.get("has_business_flow"):
-        if context.get("business_flow", {}).get("regions") is not None:
+    if context.get("has_behavior"):
+        if context.get("behavior", {}).get("regions") is not None:
             test_templates["test/test_parallel.c.j2"] = os.path.join(test_dir, "test_parallel.c")
         else:
             test_templates["test/test_statemachine.c.j2"] = os.path.join(test_dir, "test_statemachine.c")
@@ -659,8 +659,8 @@ def generate_project(
         # Inject merged software fields into hw for build_context
         if "app_tasks" in merged:
             hw["app_tasks"] = merged["app_tasks"]
-        if "business_flow" in merged:
-            hw["business_flow"] = merged["business_flow"]
+        if "behavior" in merged:
+            hw["behavior"] = merged["behavior"]
         if "bind_routings" in merged:
             hw["bind_routings"] = merged["bind_routings"]
 

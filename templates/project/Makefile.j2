@@ -121,7 +121,7 @@ C_SOURCES += \
 ./src/stm32g0xx_it.c \
 ./src/event_mgr.c \
 ./src/stm32g0xx_hal_timebase_tim.c \
-{% if has_business_flow %}
+{% if has_behavior %}
 ./src/statemachine.c \
 {% endif %}
 {% if has_bootloader %}

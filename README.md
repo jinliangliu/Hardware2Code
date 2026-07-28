@@ -82,7 +82,7 @@ flowchart TB
         direction LR
         S1["Project<br>名称/版本"] ---
         S2["app_tasks<br>FreeRTOS 任务"] ---
-        S3["business_flow<br>状态机/变量/类型"]
+        S3["behavior<br>状态机/变量/类型"]
     end
 
     subgraph BIND["bind.yaml — 硬件-软件绑定"]
@@ -104,13 +104,13 @@ flowchart TB
 flowchart TB
     subgraph Inputs["输入：三层 YAML"]
         HW[("hardware.yaml<br>pins / peripherals / clock")]
-        TASK[("task.yaml<br>app_tasks / business_flow")]
+        TASK[("task.yaml<br>app_tasks / behavior")]
         B[("bind.yaml<br>interrupt / routing")]
     end
 
     subgraph Merge["mapper.py 合并"]
         M1["向后兼容检测<br>旧格式自动拆分"] --> M2["合并 app_tasks"]
-        M2 --> M3["合并 business_flow"]
+        M2 --> M3["合并 behavior"]
         M3 --> M4["应用 interrupt → notify_task"]
         M4 --> M5["应用 peripheral_assign → features"]
         M5 --> M6["注入 routing → bind_routings"]
@@ -210,7 +210,7 @@ cd output/my_project && make && make flash
 ### 状态机 DSL
 
 ```yaml
-business_flow:
+behavior:
   initial_state: IDLE
   states:
     - name: IDLE

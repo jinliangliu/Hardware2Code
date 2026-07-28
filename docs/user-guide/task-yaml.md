@@ -23,33 +23,33 @@ The wiring between hardware and software is in [`bind.yaml`](bind-yaml.md).
 | `app_tasks[].name` | string | Yes | - | Task name |
 | `app_tasks[].priority` | int | No | `1` | Task priority (0–31) |
 | `app_tasks[].stack_size` | int | No | `128` | Stack size in words |
-| `business_flow` | object | No | `{}` | State-machine DSL |
-| `business_flow.initial_state` | string | Varies | - | Initial state name |
-| `business_flow.states` | list | Varies | `[]` | State definitions |
-| `business_flow.regions` | list | Varies | `[]` | Parallel region definitions |
-| `business_flow.variables` | list | No | `[]` | Global variable declarations |
-| `business_flow.events` | list | No | `[]` | Custom event declarations |
-| `business_flow.types` | list | No | `[]` | Custom type definitions (struct/enum/union/bitfield) |
-| `business_flow.types[].name` | string | Yes | - | Type name (e.g. `sensor_data_t`) |
-| `business_flow.types[].struct` | list | No | - | Struct fields (max 2 nesting levels) |
-| `business_flow.types[].struct[].name` | string | Yes | - | Field name |
-| `business_flow.types[].struct[].type` | string | No | - | C type; omit for nested struct (has `fields`) |
-| `business_flow.types[].struct[].array` | int | No | - | Array size if field is an array |
-| `business_flow.types[].struct[].fields` | list | No | - | Nested struct fields (level 2) |
-| `business_flow.types[].enum` | list | No | - | Enum values |
-| `business_flow.types[].enum[].name` | string | Yes | - | Enum value name |
-| `business_flow.types[].enum[].value` | int | No | auto | Enum value (auto-increments from 0) |
-| `business_flow.types[].union` | list | No | - | Union member fields |
-| `business_flow.types[].union[].name` | string | Yes | - | Member name |
-| `business_flow.types[].union[].type` | string | Yes | - | Member C type |
-| `business_flow.types[].union[].array` | int | No | - | Array size if member is an array |
-| `business_flow.types[].bitfield` | list | No | - | Bitfield definitions |
-| `business_flow.types[].bitfield[].name` | string | Yes | - | Bitfield member name |
-| `business_flow.types[].bitfield[].width` | int | Yes | - | Bit width (1–32) |
-| `business_flow.variables[].name` | string | Yes | - | Variable name |
-| `business_flow.variables[].type` | string | Yes | - | C type or custom type name |
-| `business_flow.variables[].array` | int | No | - | Array size (scalar → array conversion) |
-| `business_flow.variables[].initial` | any | No | - | Initial value |
+| `behavior` | object | No | `{}` | State-machine DSL |
+| `behavior.initial_state` | string | Varies | - | Initial state name |
+| `behavior.states` | list | Varies | `[]` | State definitions |
+| `behavior.regions` | list | Varies | `[]` | Parallel region definitions |
+| `behavior.variables` | list | No | `[]` | Global variable declarations |
+| `behavior.events` | list | No | `[]` | Custom event declarations |
+| `behavior.types` | list | No | `[]` | Custom type definitions (struct/enum/union/bitfield) |
+| `behavior.types[].name` | string | Yes | - | Type name (e.g. `sensor_data_t`) |
+| `behavior.types[].struct` | list | No | - | Struct fields (max 2 nesting levels) |
+| `behavior.types[].struct[].name` | string | Yes | - | Field name |
+| `behavior.types[].struct[].type` | string | No | - | C type; omit for nested struct (has `fields`) |
+| `behavior.types[].struct[].array` | int | No | - | Array size if field is an array |
+| `behavior.types[].struct[].fields` | list | No | - | Nested struct fields (level 2) |
+| `behavior.types[].enum` | list | No | - | Enum values |
+| `behavior.types[].enum[].name` | string | Yes | - | Enum value name |
+| `behavior.types[].enum[].value` | int | No | auto | Enum value (auto-increments from 0) |
+| `behavior.types[].union` | list | No | - | Union member fields |
+| `behavior.types[].union[].name` | string | Yes | - | Member name |
+| `behavior.types[].union[].type` | string | Yes | - | Member C type |
+| `behavior.types[].union[].array` | int | No | - | Array size if member is an array |
+| `behavior.types[].bitfield` | list | No | - | Bitfield definitions |
+| `behavior.types[].bitfield[].name` | string | Yes | - | Bitfield member name |
+| `behavior.types[].bitfield[].width` | int | Yes | - | Bit width (1–32) |
+| `behavior.variables[].name` | string | Yes | - | Variable name |
+| `behavior.variables[].type` | string | Yes | - | C type or custom type name |
+| `behavior.variables[].array` | int | No | - | Array size (scalar → array conversion) |
+| `behavior.variables[].initial` | any | No | - | Initial value |
 
 > **Note**: `run_mode`, `triggers`, and `signals` have been removed from `app_tasks`.
 > These are now defined in [`bind.yaml`](bind-yaml.md).
@@ -93,7 +93,7 @@ Trigger and signal configuration has been moved to [`bind.yaml`](bind-yaml.md).
 ### 3.1 Basic State Machine
 
 ```yaml
-business_flow:
+behavior:
   initial_state: "IDLE"        # Required: Initial state name
   variables:                   # Optional: Global variables
     - name: "counter"          # Required: Variable name
@@ -119,7 +119,7 @@ business_flow:
 ### 3.2 Compound States (Substates)
 
 ```yaml
-business_flow:
+behavior:
   initial_state: "PROCESS"
   states:
     - name: "PROCESS"
@@ -144,7 +144,7 @@ business_flow:
 ### 3.3 Parallel Regions
 
 ```yaml
-business_flow:
+behavior:
   regions:                     # Parallel regions instead of states
     - name: "led_control"      # Required: Region name
       initial_state: "OFF"     # Required: Initial state
@@ -180,7 +180,7 @@ business_flow:
 ### 3.4 State References (Subflow)
 
 ```yaml
-business_flow:
+behavior:
   initial_state: "IDLE"
   states:
     - name: "IDLE"
@@ -198,7 +198,7 @@ business_flow:
 
 **Subflow file format** (`common_subflow.yaml`):
 ```yaml
-business_flow:
+behavior:
   initial_state: "S1"
   states:
     - name: "S1"
@@ -351,7 +351,7 @@ actions:
 
 ## 6. Types & Variables
 
-### 6.1 Custom Type Definitions (`business_flow.types`)
+### 6.1 Custom Type Definitions (`behavior.types`)
 
 Define reusable complex C types — structs, enums, unions, and bitfields.
 Generated with `#pragma pack(push, 1)` for consistent memory layout on Cortex-M0+.
@@ -368,7 +368,7 @@ Generated with `#pragma pack(push, 1)` for consistent memory layout on Cortex-M0
 **Struct (with optional nesting up to 2 levels):**
 
 ```yaml
-business_flow:
+behavior:
   types:
     - name: "sensor_data_t"
       struct:
@@ -458,7 +458,7 @@ typedef struct {
 } config_flags_t;
 ```
 
-### 6.2 Variable Declarations (`business_flow.variables`)
+### 6.2 Variable Declarations (`behavior.variables`)
 
 **Scalar types:**
 
@@ -555,7 +555,7 @@ app_tasks:
     priority: 4
     stack_size: 1024
 
-business_flow:
+behavior:
   initial_state: "IDLE"
   types:
     - name: "sensor_data_t"
@@ -606,13 +606,13 @@ business_flow:
 - Compound state (has `states`) missing `initial_state`
 - `initial_state` missing in region definitions
 - Ref type state missing `ref` path or ref file not found
-- `business_flow` defined with neither `states` nor `regions`
+- `behavior` defined with neither `states` nor `regions`
 - Unknown actions in `on_entry`/`on_exit`/transition `actions`
 
 ### Warnings
 - Unknown variable types (recommended: `uint8_t`..`uint32_t`, `int8_t`..`int32_t`, `float`, `bool`, or custom type name)
 - Missing namespace for reference states (may cause name conflicts)
-- Events referenced in `bind.yaml` but not declared in `business_flow`
+- Events referenced in `bind.yaml` but not declared in `behavior`
 
 ### Info
 - Guard conditions: embedded as-is into C code without validation — errors surface at compile time

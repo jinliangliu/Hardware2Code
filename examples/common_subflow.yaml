@@ -1,4 +1,4 @@
-business_flow:
+behavior:
   initial_state: "S1"
   states:
     - name: "S1"

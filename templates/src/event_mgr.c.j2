@@ -18,7 +18,7 @@ event_mgr.c.j2 - Central event manager task
 #endif
 {% endif %}
 
-{% if has_business_flow %}
+{% if has_behavior %}
 #ifndef TEST
 #include "statemachine.h"
 #endif
@@ -36,7 +36,7 @@ extern TaskHandle_t {{ led_task_name }}_handle;
 QueueHandle_t event_queue = NULL;
 
 /* 内部处理器（无业务流时使用） */
-{% if not has_business_flow %}
+{% if not has_behavior %}
 static void handle_minute_tick(void);
 static void handle_hour_tick(void);
 static void handle_button_press(void);
@@ -59,7 +59,7 @@ void EventMgr_Task(void *pvParameters)
     while(1) {
         if( xQueueReceive(event_queue, &evt, portMAX_DELAY) == pdTRUE ) {
 #ifndef TEST
-{% if has_business_flow %}
+{% if has_behavior %}
 {% if has_log %}
             log_debug("EventMgr: dispatching event #%d", (int)evt.id);
 {% endif %}
@@ -106,7 +106,7 @@ void EventMgr_Task(void *pvParameters)
     }
 }
 
-{% if not has_business_flow %}
+{% if not has_behavior %}
 /* 经典事件处理器（测试环境不参与） */
 #ifndef TEST
 static void handle_minute_tick(void) {

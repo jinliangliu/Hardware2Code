@@ -370,7 +370,7 @@ class RegionModel(BaseModel):
     states: list[StateModel] = Field(default_factory=list)
 
 
-class BusinessFlowModel(BaseModel):
+class BehaviorModel(BaseModel):
     model_config = ConfigDict(extra="allow")
     initial_state: Optional[str] = None
     types: list[TypeDefModel] = Field(default_factory=list)
@@ -399,7 +399,7 @@ class HardwareModel(BaseModel):
     sleep: SleepModel = Field(default_factory=SleepModel)
     app_tasks: list[TaskModel] = Field(default_factory=list)
     peripherals: list[PeripheralModel] = Field(default_factory=list)
-    business_flow: Optional[BusinessFlowModel] = None
+    behavior: Optional[BehaviorModel] = None
     bootloader: Optional[BootloaderModel] = None
     hil: Optional[HilModel] = None
     heap_size: str = "0x200"
