@@ -9,6 +9,7 @@ __pycache__/
 anaconda3/
 
 *.trae/
+hw2c.code-workspace
 
 # Compiled files
 *.o
@@ -33,3 +34,6 @@ Release/
 # OS files
 .DS_Store
 Thumbs.db
+
+# MkDocs build output
+site/

@@ -1,8 +1,8 @@
-# Hardware2Code Template Development Guide
+# hw2c Template Development Guide
 
 ## Overview
 
-Hardware2Code uses the **Jinja2** template engine to generate complete embedded C projects from hardware description files (`hardware.yaml`). Templates are located in the `templates/` directory and rendered by the Python generator into the target output directory.
+hw2c uses the **Jinja2** template engine to generate complete embedded C projects from hardware description files (`hardware.yaml`). Templates are located in the `templates/` directory and rendered by the Python generator into the target output directory.
 
 ## Directory Structure
 
@@ -27,7 +27,16 @@ templates/
 │   ├── drv_pwm.c.j2 + .h.j2      # PWM output driver
 │   ├── drv_uart.c.j2 + .h.j2     # UART serial driver
 │   ├── drv_spi_flash.c.j2 + .h.j2 # SPI Flash (W25Q32) driver
-│   └── drv_i2c_mpu6050.c.j2 + .h.j2 # I2C MPU6050 sensor driver
+│   ├── drv_i2c_mpu6050.c.j2 + .h.j2 # I2C MPU6050 sensor driver
+│   ├── drv_eeprom.c.j2 + .h.j2   # I2C EEPROM storage driver
+│   ├── drv_rs485.c.j2 + .h.j2    # RS485 half-duplex transceiver driver
+│   ├── drv_cellular.c.j2 + .h.j2 # Cellular 4G Cat.1 modem driver
+│   ├── drv_ir.c.j2 + .h.j2       # Infrared NEC/SIR communication driver
+│   ├── drv_modbus.c.j2 + .h.j2   # Modbus RTU protocol driver
+│   ├── drv_mqtt.c.j2 + .h.j2     # MQTT 3.1.1 client driver
+│   ├── drv_cli.c.j2 + .h.j2      # UART CLI debug shell driver
+│   ├── drv_fota.c.j2 + .h.j2     # FOTA firmware update manager
+│   └── fota_bspatch.c.j2 + .h.j2 # BSDIFF patch application engine
 ├── bootloader/
 │   ├── boot_main.c.j2            # Bootloader entry point
 │   ├── boot_nvm.c.j2 + .h.j2     # Non-volatile storage (TAMP backup registers)
@@ -104,6 +113,15 @@ The generator parses `hardware.yaml` and builds a **context dictionary** passed 
 | `has_pwm` | bool | Any PWM peripheral configured |
 | `has_adc` | bool | Any ADC peripheral configured |
 | `has_uart` | bool | Any UART peripheral configured |
+| `has_iwdg` | bool | IWDG peripheral or bootloader enabled |
+| `has_eeprom` | bool | `I2C_EEPROM` peripheral configured |
+| `has_rs485` | bool | `RS485` peripheral configured |
+| `has_cellular` | bool | `Cellular_4G` peripheral configured |
+| `has_ir` | bool | `Internal_IR` peripheral configured |
+| `has_modbus` | bool | `Protocol_Modbus` peripheral configured |
+| `has_mqtt` | bool | `Protocol_MQTT` peripheral configured |
+| `has_cli` | bool | `Internal_CLI` peripheral configured |
+| `has_fota` | bool | FOTA peripheral configured |
 
 ### Boot Config Object
 
@@ -351,6 +369,68 @@ All driver templates follow a consistent pattern:
 ### `drivers/drv_i2c_mpu6050.c.j2` / `drivers/drv_i2c_mpu6050.h.j2`
 
 **Condition:** Generated when `has_mpu6050` is true (peripheral type `I2C_Sensor_MPU6050`).
+
+### `drivers/drv_eeprom.c.j2` / `drivers/drv_eeprom.h.j2`
+
+**Condition:** Generated when `has_eeprom` is true (peripheral type `I2C_EEPROM`).
+
+I2C EEPROM storage driver. Supports page-aligned read/write, configurable I2C address, page size, and total storage size.
+
+### `drivers/drv_rs485.c.j2` / `drivers/drv_rs485.h.j2`
+
+**Condition:** Generated when `has_rs485` is true (peripheral type `RS485`).
+
+RS485 half-duplex transceiver driver with automatic DE/RE direction control.
+
+### `drivers/drv_cellular.c.j2` / `drivers/drv_cellular.h.j2`
+
+**Condition:** Generated when `has_cellular` is true (peripheral type `Cellular_4G`).
+
+Cellular 4G Cat.1 modem driver. Manages AT command interaction, PDP activation, and network registration.
+
+### `drivers/drv_ir.c.j2` / `drivers/drv_ir.h.j2`
+
+**Condition:** Generated when `has_ir` is true (peripheral type `Internal_IR`).
+
+Infrared communication driver supporting NEC and SIR protocols for both transmit and receive.
+
+### `drivers/drv_modbus.c.j2` / `drivers/drv_modbus.h.j2`
+
+**Condition:** Generated when `has_modbus` is true (peripheral type `Protocol_Modbus`).
+
+Modbus RTU protocol driver. Supports master and slave roles, with configurable slave ID. Typically used with RS485 or UART as the underlying bearer.
+
+### `drivers/drv_mqtt.c.j2` / `drivers/drv_mqtt.h.j2`
+
+**Condition:** Generated when `has_mqtt` is true (peripheral type `Protocol_MQTT`).
+
+MQTT 3.1.1 client driver. Supports connect/publish/subscribe with configurable broker, client ID, and keep-alive. Typically used with Cellular_4G as the underlying bearer.
+
+### `drivers/drv_cli.c.j2` / `drivers/drv_cli.h.j2`
+
+**Condition:** Generated when `has_cli` is true (peripheral type `Internal_CLI`).
+
+UART-based interactive debug shell. Provides commands including `help`, `version`, `uptime`, `free`, `tasks`, `reset`, `gpio read/write`, `led on/off/toggle`, `rtc time/set`, and peripheral-specific commands (Modbus, Cellular, MQTT, FOTA).
+
+**Configuration:**
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `prompt` | `"> "` | Shell prompt string |
+| `stack_size` | `512` | CLI task stack size in words |
+| `priority` | `4` | CLI task priority |
+| `max_cmd_len` | `64` | Maximum command line length |
+
+### `drivers/drv_fota.c.j2` / `drivers/drv_fota.h.j2`
+
+**Condition:** Generated when `has_fota` is true.
+
+Firmware Over-The-Air (FOTA) update manager. Orchestrates the firmware update lifecycle: receiving patch data, triggering BSDIFF patch application, CRC verification, and slot switching.
+
+### `drivers/fota_bspatch.c.j2` / `drivers/fota_bspatch.h.j2`
+
+**Condition:** Generated together with `drv_fota` when `has_fota` is true.
+
+BSDIFF patch application engine. Applies binary diffs to firmware images in-place, minimizing OTA data transfer size. Works with the dual-slot bootloader to safely update firmware with rollback capability.
 
 ---
 

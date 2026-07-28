@@ -1,0 +1,15 @@
+Designator,Value,Footprint,Description
+U1,STM32G0B1RET6,LQFP-64,ARM Cortex-M0+ MCU
+U2,MPU6050,QFN-24,6-Axis IMU Sensor I2C
+U3,W25Q32JVSSIQ,SOIC-8,32Mbit SPI NOR Flash
+U4,MAX3232,SOIC-16,RS-232 Transceiver
+D1,LED_RED,LED_0805,Status Indicator
+SW1,BUTTON,SW_TACT_6x6mm,User Button
+C1,100nF,C_0805,Decoupling Capacitor
+C2,100nF,C_0805,Decoupling Capacitor
+C3,10uF,C_Ele_SMD_3x5.4mm,Bulk Capacitor
+C4,22pF,C_0805,Crystal Load Capacitor
+C5,22pF,C_0805,Crystal Load Capacitor
+R1,10K,R_0805,Pull-up Resistor nRST
+R2,330R,R_0805,LED Current Limit
+Y1,8MHz,Crystal_HC49-SMD,HSE Crystal

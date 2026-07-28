@@ -1,36 +1,50 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=64.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hardware2code"
-version = "1.0.0"
-description = "STM32G0B1 project generator from hardware YAML descriptions"
+name = "hw2c"
+version = "0.4.0"
+description = "Hardware2Code: Parse EDA netlist/BOM, generate MISRA-C embedded firmware for STM32"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
-dependencies = [
-    "jinja2>=3.1",
-    "pyyaml>=6.0",
-    "pydantic>=2.0",
-    "libcst>=1.0.0",
-    "click>=8.1.0",
+authors = [
+    {name = "hw2c contributors"},
 ]
-
-[project.scripts]
-hardware2code = "generator.generate:main"
-hw2c = "generator.generate:main"
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Embedded Systems",
+    "Topic :: Software Development :: Code Generators",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "pyyaml>=6.0",
+    "jinja2>=3.0",
+]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "flake8>=6.1.0",
-    "black>=23.11.0",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
 ]
 
-[tool.setuptools.packages.find]
-include = ["generator*", "parser*"]
+[project.scripts]
+hw2c = "parser.cli:main"
 
-[project.entry-points."hardware2code.backends"]
-stm32 = "generator.backends.stm32.backend:STM32Backend"
+[project.urls]
+Homepage = "https://github.com/user/hw2c"
+Repository = "https://github.com/user/hw2c"
+
+[tool.setuptools]
+packages = ["parser", "generator", "parser.tests", "generator.tests"]
+
+[tool.setuptools.package-data]
+parser = ["hardware_design/*"]
+generator = ["templates/**/*", "static/**/*"]

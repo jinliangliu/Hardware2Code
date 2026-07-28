@@ -1,8 +1,8 @@
-# Hardware2Code DSL Reference
+# hw2c DSL Reference
 
 ## Overview
 
-Hardware2Code uses a YAML-based DSL (Domain-Specific Language) to describe:
+hw2c uses a YAML-based DSL (Domain-Specific Language) to describe:
 1. **Hardware Configuration**: MCU, pins, peripherals, tasks, sleep mode
 2. **Business Flow**: State machines, transitions, actions, variables
 
@@ -41,6 +41,14 @@ Complete `hardware.yaml` top-level schema. Every key, its type, whether it is re
 | `app_tasks[].name` | string | Yes | - | Task name |
 | `app_tasks[].priority` | int | No | `1` | Task priority (0–31) |
 | `app_tasks[].stack_size` | int | No | `128` | Stack size in words |
+| `app_tasks[].run_mode` | string | No | `loop` | Execution mode: `loop` (continuous) or `once` (single-shot) |
+| `app_tasks[].triggers` | list | No | `[]` | Task wake-up triggers (timer / event / interrupt) |
+| `app_tasks[].triggers[].type` | string | Yes | - | Trigger type: `timer` / `event` / `interrupt` |
+| `app_tasks[].triggers[].source` | string | Varies | - | Event name or GPIO pin ID (for `event` / `interrupt` types) |
+| `app_tasks[].triggers[].period_ms` | int | Varies | - | Period in ms (for `timer` type) |
+| `app_tasks[].signals` | list | No | `[]` | Signals this task can emit |
+| `app_tasks[].signals[].name` | string | Yes | - | Signal / event name |
+| `app_tasks[].signals[].target` | string | No | - | Target task name (empty = broadcast) |
 | `sleep` | object | No | `{}` | Low-power configuration |
 | `sleep.mode` | string | No | `STOP0` | Sleep mode: `STOP0` / `STOP1` / `STOP2` / `STANDBY` / `SLEEP` |
 | `bootloader` | object | No | `{}` | Bootloader configuration |
@@ -149,7 +157,31 @@ app_tasks:
   - name: led_task             # Required: Task name
     priority: 2                # Optional: FreeRTOS priority (0-31, default: 1)
     stack_size: 128            # Optional: Stack size in words (default: 128)
+    run_mode: loop             # Optional: loop (continuous) or once (single-shot, default: loop)
+    triggers:                  # Optional: Wake-up triggers
+      - type: timer            # timer | event | interrupt
+        period_ms: 1000        # Timer period in ms
+      - type: event
+        source: "BUTTON_PRESS" # Event name from business_flow or another task
+      - type: interrupt
+        source: "PC13"         # GPIO pin ID (EXTI-capable pin)
+    signals:                   # Optional: Signals this task emits
+      - name: "DATA_READY"     # Signal / event name
+        target: "mqtt_task"    # Target task (empty = broadcast)
 ```
+
+**Trigger types**:
+| Type | Description | Required field |
+|------|-------------|----------------|
+| `timer` | Periodic wake-up at `period_ms` interval | `period_ms` |
+| `event` | Wake on event/semaphore from another task | `source` (event name) |
+| `interrupt` | Wake on GPIO EXTI interrupt | `source` (pin ID, e.g. `PC13`) |
+
+**Signal types**:
+| Field | Description |
+|-------|-------------|
+| `name` | Event/semaphore name emitted by this task |
+| `target` | Target task name to receive the signal (empty = broadcast to all) |
 
 **Special task names**:
 - `led_task`: LED control task (requires a pin labeled "LED")
@@ -582,9 +614,18 @@ app_tasks:
   - name: led_task
     priority: 2
     stack_size: 128
+    triggers:
+      - type: event
+        source: "BUTTON_PRESS"
   - name: rtc_demo_task
     priority: 3
     stack_size: 512
+    triggers:
+      - type: timer
+        period_ms: 1000
+    signals:
+      - name: "HEARTBEAT"
+        target: "led_task"
 
 peripherals:
   - name: "rtc"

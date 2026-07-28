@@ -1,0 +1,345 @@
+{
+  "version": "2.0.0",
+  "components": {
+    "gge1": {
+      "props": {
+        "Designator": "U1",
+        "Value": "STM32G0B1RET6",
+        "FootprintName": "LQFP-64_10x10mm_P0.5mm",
+        "DeviceName": "STM32G0B1RET6",
+        "Unique ID": "gge1",
+        "Add into BOM": "yes",
+        "Convert to PCB": "yes",
+        "Description": "ARM Cortex-M0+ MCU, 512KB Flash, 144KB RAM"
+      },
+      "pinInfoMap": {
+        "PB6": {
+          "name": "PB6",
+          "number": "PB6",
+          "net": "I2C1_SCL",
+          "props": { "Pin Number": "PB6" }
+        },
+        "PB7": {
+          "name": "PB7",
+          "number": "PB7",
+          "net": "I2C1_SDA",
+          "props": { "Pin Number": "PB7" }
+        },
+        "PA5": {
+          "name": "PA5",
+          "number": "PA5",
+          "net": "SPI1_SCK",
+          "props": { "Pin Number": "PA5" }
+        },
+        "PA6": {
+          "name": "PA6",
+          "number": "PA6",
+          "net": "SPI1_MISO",
+          "props": { "Pin Number": "PA6" }
+        },
+        "PA7": {
+          "name": "PA7",
+          "number": "PA7",
+          "net": "SPI1_MOSI",
+          "props": { "Pin Number": "PA7" }
+        },
+        "PB0": {
+          "name": "PB0",
+          "number": "PB0",
+          "net": "FLASH_nCS",
+          "props": { "Pin Number": "PB0" }
+        },
+        "PA2": {
+          "name": "PA2",
+          "number": "PA2",
+          "net": "USART2_TX",
+          "props": { "Pin Number": "PA2" }
+        },
+        "PA3": {
+          "name": "PA3",
+          "number": "PA3",
+          "net": "USART2_RX",
+          "props": { "Pin Number": "PA3" }
+        },
+        "PC13": {
+          "name": "PC13",
+          "number": "PC13",
+          "net": "USER_BTN",
+          "props": { "Pin Number": "PC13" }
+        }
+      }
+    },
+    "gge2": {
+      "props": {
+        "Designator": "U2",
+        "Value": "MPU6050",
+        "FootprintName": "QFN-24_4x4mm_P0.5mm",
+        "DeviceName": "MPU6050",
+        "Unique ID": "gge2",
+        "Add into BOM": "yes",
+        "Convert to PCB": "yes",
+        "Description": "6-Axis Gyroscope + Accelerometer, I2C"
+      },
+      "pinInfoMap": {
+        "23": {
+          "name": "SCL",
+          "number": "SCL",
+          "net": "I2C1_SCL",
+          "props": { "Pin Number": "23" }
+        },
+        "24": {
+          "name": "SDA",
+          "number": "SDA",
+          "net": "I2C1_SDA",
+          "props": { "Pin Number": "24" }
+        },
+        "8": {
+          "name": "VCC",
+          "number": "VCC",
+          "net": "3V3",
+          "props": { "Pin Number": "8" }
+        },
+        "18": {
+          "name": "GND",
+          "number": "GND",
+          "net": "GND",
+          "props": { "Pin Number": "18" }
+        }
+      }
+    },
+    "gge3": {
+      "props": {
+        "Designator": "U3",
+        "Value": "W25Q32JVSSIQ",
+        "FootprintName": "SOIC-8_5.23x5.23mm_P1.27mm",
+        "DeviceName": "W25Q32JVSSIQ",
+        "Unique ID": "gge3",
+        "Add into BOM": "yes",
+        "Convert to PCB": "yes",
+        "Description": "32Mbit SPI NOR Flash"
+      },
+      "pinInfoMap": {
+        "1": {
+          "name": "CS",
+          "number": "CS",
+          "net": "FLASH_nCS",
+          "props": { "Pin Number": "1" }
+        },
+        "2": {
+          "name": "SO",
+          "number": "SO",
+          "net": "SPI1_MISO",
+          "props": { "Pin Number": "2" }
+        },
+        "5": {
+          "name": "SI",
+          "number": "SI",
+          "net": "SPI1_MOSI",
+          "props": { "Pin Number": "5" }
+        },
+        "6": {
+          "name": "CLK",
+          "number": "CLK",
+          "net": "SPI1_SCK",
+          "props": { "Pin Number": "6" }
+        },
+        "3": {
+          "name": "WP",
+          "number": "WP",
+          "net": "3V3",
+          "props": { "Pin Number": "3" }
+        },
+        "7": {
+          "name": "HOLD",
+          "number": "HOLD",
+          "net": "3V3",
+          "props": { "Pin Number": "7" }
+        },
+        "4": {
+          "name": "GND",
+          "number": "GND",
+          "net": "GND",
+          "props": { "Pin Number": "4" }
+        },
+        "8": {
+          "name": "VCC",
+          "number": "VCC",
+          "net": "3V3",
+          "props": { "Pin Number": "8" }
+        }
+      }
+    },
+    "gge4": {
+      "props": {
+        "Designator": "U4",
+        "Value": "MAX3232",
+        "FootprintName": "SOIC-16_9.9x3.9mm_P1.27mm",
+        "DeviceName": "MAX3232",
+        "Unique ID": "gge4",
+        "Add into BOM": "yes",
+        "Convert to PCB": "yes",
+        "Description": "RS-232 Transceiver"
+      },
+      "pinInfoMap": {
+        "11": {
+          "name": "T1IN",
+          "number": "T1IN",
+          "net": "USART2_TX",
+          "props": { "Pin Number": "11" }
+        },
+        "12": {
+          "name": "R1OUT",
+          "number": "R1OUT",
+          "net": "USART2_RX",
+          "props": { "Pin Number": "12" }
+        }
+      }
+    },
+    "gge5": {
+      "props": {
+        "Designator": "D1",
+        "Value": "LED_RED",
+        "FootprintName": "LED_0805_2012Metric",
+        "DeviceName": "LED_RED",
+        "Unique ID": "gge5",
+        "Add into BOM": "yes",
+        "Convert to PCB": "yes"
+      },
+      "pinInfoMap": {
+        "1": {
+          "name": "1",
+          "number": "1",
+          "net": "LED_RED",
+          "props": { "Pin Number": "1" }
+        }
+      }
+    },
+    "gge6": {
+      "props": {
+        "Designator": "SW1",
+        "Value": "BUTTON",
+        "FootprintName": "SW_TACT_6x6mm",
+        "DeviceName": "SW_TACT",
+        "Unique ID": "gge6",
+        "Add into BOM": "yes",
+        "Convert to PCB": "yes"
+      },
+      "pinInfoMap": {
+        "1": {
+          "name": "1",
+          "number": "1",
+          "net": "USER_BTN",
+          "props": { "Pin Number": "1" }
+        }
+      }
+    },
+    "gge7": {
+      "props": {
+        "Designator": "C1",
+        "Value": "100nF",
+        "FootprintName": "C_0805_2012Metric",
+        "DeviceName": "Cap_0805",
+        "Unique ID": "gge7",
+        "Add into BOM": "yes",
+        "Convert to PCB": "yes",
+        "Voltage Rated": "50V"
+      },
+      "pinInfoMap": {
+        "1": {
+          "name": "1",
+          "number": "1",
+          "net": "3V3",
+          "props": { "Pin Number": "1" }
+        },
+        "2": {
+          "name": "2",
+          "number": "2",
+          "net": "GND",
+          "props": { "Pin Number": "2" }
+        }
+      }
+    },
+    "gge8": {
+      "props": {
+        "Designator": "R1",
+        "Value": "10K",
+        "FootprintName": "R_0805_2012Metric",
+        "DeviceName": "Res_0805",
+        "Unique ID": "gge8",
+        "Add into BOM": "yes",
+        "Convert to PCB": "yes",
+        "Tolerance": "5%"
+      },
+      "pinInfoMap": {
+        "1": {
+          "name": "1",
+          "number": "1",
+          "net": "3V3",
+          "props": { "Pin Number": "1" }
+        },
+        "2": {
+          "name": "2",
+          "number": "2",
+          "net": "nRST",
+          "props": { "Pin Number": "2" }
+        }
+      }
+    },
+    "gge9": {
+      "props": {
+        "Designator": "Y1",
+        "Value": "8MHz",
+        "FootprintName": "Crystal_HC49-SMD",
+        "DeviceName": "XTAL_8MHz",
+        "Unique ID": "gge9",
+        "Add into BOM": "yes",
+        "Convert to PCB": "yes",
+        "Frequency Tolerance": "20ppm",
+        "Load Capacitance": "20pF"
+      },
+      "pinInfoMap": {
+        "1": {
+          "name": "1",
+          "number": "1",
+          "net": "OSC_IN",
+          "props": { "Pin Number": "1" }
+        },
+        "2": {
+          "name": "2",
+          "number": "2",
+          "net": "OSC_OUT",
+          "props": { "Pin Number": "2" }
+        }
+      }
+    }
+  },
+  "designRule": {
+    "trackPhysics": {
+      "copperThickness1oz": {
+        "name": "copperThickness1oz",
+        "isDefault": true,
+        "unit": "mm",
+        "strokeValue": {
+          "common": {
+            "min": 0.127,
+            "max": 2.54,
+            "default": 0.254
+          }
+        }
+      }
+    },
+    "netRule": {
+      "3V3": {
+        "net": "3V3",
+        "ruleMap": { "TrackPhysics": "" }
+      },
+      "GND": {
+        "net": "GND",
+        "ruleMap": { "TrackPhysics": "" }
+      }
+    }
+  },
+  "differentialPair": {},
+  "netClass": {},
+  "equalLengthNetGroup": {}
+}

@@ -355,3 +355,150 @@ def test_pin_to_bus_unknown_pin():
     from parser.netlist_parser import _pin_to_bus_info
     func, af, bus = _pin_to_bus_info("PX0", "SPI")
     assert "SPI" in func
+
+
+# ---------------------------------------------------------------------------
+# S-Expression format tests (KiCad 6+)
+# ---------------------------------------------------------------------------
+
+SEXPR_NETLIST = """(kicad_netlist (version 20240108)
+  (components
+    (comp (ref "U1") (value "STM32G0B1RET6") (footprint "LQFP-64"))
+    (comp (ref "U2") (value "MPU6050") (footprint "QFN-24"))
+  )
+  (nets
+    (net (code 1) (name "Net-(U1-PB6)")
+      (node (ref "U1") (pin "PB6"))
+      (node (ref "U2") (pin "SCL"))
+    )
+    (net (code 2) (name "Net-(U1-PB7)")
+      (node (ref "U1") (pin "PB7"))
+      (node (ref "U2") (pin "SDA"))
+    )
+  )
+)"""
+
+SEXPR_SPI_NETLIST = """(kicad_netlist (version 20240108)
+  (components
+    (comp (ref "U1") (value "STM32G0B1RET6") (footprint "LQFP-64"))
+    (comp (ref "U3") (value "W25Q32JVSSIQ") (footprint "SOIC-8"))
+  )
+  (nets
+    (net (code 1) (name "SPI_SCK")
+      (node (ref "U1") (pin "PA5"))
+      (node (ref "U3") (pin "CLK"))
+    )
+    (net (code 2) (name "SPI_MISO")
+      (node (ref "U1") (pin "PA6"))
+      (node (ref "U3") (pin "SO"))
+    )
+    (net (code 3) (name "SPI_MOSI")
+      (node (ref "U1") (pin "PA7"))
+      (node (ref "U3") (pin "SI"))
+    )
+    (net (code 4) (name "SPI_CS")
+      (node (ref "U1") (pin "PB0"))
+      (node (ref "U3") (pin "CS"))
+    )
+  )
+)"""
+
+
+def test_sexpr_parse_mcu():
+    """S-Expr netlist: MCU detected."""
+    from parser.netlist_parser import parse_netlist_string
+    result = parse_netlist_string(SEXPR_NETLIST)
+    import yaml
+    hw = yaml.safe_load(result)
+    assert hw["mcu"]["part"] == "STM32G0B1RET6"
+
+
+def test_sexpr_parse_i2c():
+    """S-Expr netlist: I2C peripheral detected."""
+    from parser.netlist_parser import parse_netlist_string
+    result = parse_netlist_string(SEXPR_NETLIST)
+    assert "I2C_Sensor_MPU6050" in result
+    assert "I2C1_SCL" in result
+    assert "I2C1_SDA" in result
+
+
+def test_sexpr_parse_spi():
+    """S-Expr netlist: SPI peripheral and pins detected."""
+    from parser.netlist_parser import parse_netlist_string
+    result = parse_netlist_string(SEXPR_SPI_NETLIST)
+    assert "SPI_Flash_W25Q32" in result
+    assert "SPI1_SCK" in result
+    assert "SPI1_MISO" in result
+    assert "SPI1_MOSI" in result
+
+
+def test_sexpr_no_mcu_raises():
+    """S-Expr netlist without MCU raises ValueError."""
+    from parser.netlist_parser import parse_netlist_string
+    no_mcu = """(kicad_netlist (version 20240108)
+      (components
+        (comp (ref "U2") (value "MPU6050") (footprint "QFN-24"))
+      )
+      (nets)
+    )"""
+    try:
+        parse_netlist_string(no_mcu)
+        assert False, "Should have raised ValueError"
+    except ValueError as e:
+        assert "MCU" in str(e)
+
+
+def test_sexpr_format_detection():
+    """_detect_format correctly identifies S-Expr."""
+    from parser.netlist_parser import _detect_format
+    assert _detect_format(SEXPR_NETLIST) == "sexpr"
+    assert _detect_format(SAMPLE_NETLIST) == "xml"
+
+
+def test_sexpr_tokenizer():
+    """_tokenize_sexpr produces correct tokens."""
+    from parser.netlist_parser import _tokenize_sexpr
+    tokens = _tokenize_sexpr('(kicad_netlist (version "2024"))')
+    assert tokens == ['(', 'kicad_netlist', '(', 'version', '2024', ')', ')']
+
+
+def test_sexpr_parser_recursive():
+    """_parse_sexpr_tokens handles nested S-Expressions."""
+    from parser.netlist_parser import _parse_sexpr_tokens
+    from parser.netlist_parser import _tokenize_sexpr
+    tokens = _tokenize_sexpr('(a (b "c") (d "e"))')
+    result, _ = _parse_sexpr_tokens(tokens)
+    assert isinstance(result, list)
+    assert result[0] == "a"
+    assert len(result) == 3
+
+
+def test_sexpr_to_dict():
+    """_sexpr_to_dict converts parsed S-Expr to dict."""
+    from parser.netlist_parser import _sexpr_to_dict
+    from parser.netlist_parser import _tokenize_sexpr
+    from parser.netlist_parser import _parse_sexpr_tokens
+    tokens = _tokenize_sexpr(
+        '(root (comp (ref "U1") (value "STM32")))'
+    )
+    parsed, _ = _parse_sexpr_tokens(tokens)
+    d = _sexpr_to_dict(parsed)
+    comps = d.get("root", {}).get("comp", {})
+    assert comps.get("ref") == "U1"
+
+
+def test_sexpr_with_comments():
+    """S-Expr netlist with ; comments should parse correctly."""
+    from parser.netlist_parser import parse_netlist_string
+    text = """; Comment line
+; Another comment
+(kicad_netlist (version 20240108)
+  (components
+    (comp (ref "U1") (value "STM32G0B1RET6") (footprint "LQFP-64"))
+  )
+  (nets)
+)"""
+    result = parse_netlist_string(text)
+    import yaml
+    hw = yaml.safe_load(result)
+    assert hw["mcu"]["part"] == "STM32G0B1RET6"

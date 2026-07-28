@@ -1,0 +1,92 @@
+site_name: hw2c
+site_description: 从 YAML 硬件描述与业务 DSL 自动生成 STM32 + FreeRTOS 低功耗固件工程
+repo_name: jinliangliu/hw2c
+repo_url: https://github.com/jinliangliu/hw2c
+edit_uri: edit/main/docs/
+
+exclude_docs: |
+  dsl-design-guide.html
+
+theme:
+  name: material
+  language: zh
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      permalink: true
+
+plugins:
+  - search:
+      lang:
+        - en
+        - zh
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+  - User Guide:
+    - Hardware YAML Reference: user-guide/hardware-yaml.md
+    - CLI Commands: user-guide/cli-commands.md
+    - Examples: user-guide/examples.md
+  - Developer Guide:
+    - Template Development: developer-guide/template-development.md
+    - Architecture: developer-guide/architecture-overview.md
+    - Adding New MCU: developer-guide/adding-new-mcu.md
+    - Plugin Development: developer-guide/plugin-development.md
+  - Roadmap: roadmap/milestones.md
+  - About:
+    - Contributing: about/CONTRIBUTING.md
+    - Vision: vision/full-architecture.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/jinliangliu/hw2c
+
+copyright: Copyright &copy; 2026 hw2c

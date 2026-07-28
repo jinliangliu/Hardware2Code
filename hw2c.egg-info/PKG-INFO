@@ -1,3 +1,31 @@
+Metadata-Version: 2.4
+Name: hw2c
+Version: 0.4.0
+Summary: Hardware2Code: Parse EDA netlist/BOM, generate MISRA-C embedded firmware for STM32
+Author: hw2c contributors
+License: MIT
+Project-URL: Homepage, https://github.com/user/hw2c
+Project-URL: Repository, https://github.com/user/hw2c
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Embedded Systems
+Classifier: Topic :: Software Development :: Code Generators
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: jinja2>=3.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Dynamic: license-file
+
 # hw2c
 
 **解析 Netlist/BOM 硬件设计文件，自动映射外设资源；在硬件能力范围内可视化配置业务任务，一键生成符合 MISRA C 规范的 arm-none-eabi-gcc 嵌入式工程。**
@@ -151,39 +179,36 @@ EDA 设计输出              用户可视化配置              固件工程输
 
 ## 快速开始
 
-1. 安装 hw2c：
-
+1. 克隆仓库（包含子模块）：
    ```bash
    git clone --recurse-submodules https://github.com/jinliangliu/hw2c.git
    cd hw2c
-   pip install -e .          # 开发模式安装，含 hw2c CLI
    ```
 
-2. 解析网表/BOM → hardware.yaml：
-
+2. 安装 Python 依赖：
    ```bash
-   # 方式 A：从 EDA 设计文件自动生成 YAML
-   hw2c parse parser/hardware_design/stm32g0b1_demo.enet \
-       --bom parser/hardware_design/stm32g0b1_demo.csv \
-       -o hardware.yaml --summary
+   pip install -r requirements.txt
+   ```
 
-   # 方式 B：手写 hardware.yaml（参考 examples/ 中的示例）
-
-2. 生成嵌入式工程：
-
+3. 生成工程：
    ```bash
-   hw2c gen -i hardware.yaml -o output/my_project
-   cd output/my_project
+# 方式 A：从 EDA 设计文件自动生成 YAML（Phase 4）
+# 支持 EasyEDA Pro .enet / KiCad .net（XML / S-Expr）
+python -m parser.pipeline hardware.enet --bom hardware.csv -o hardware.yaml
+# 方式 B：手写 hardware.yaml
+   # (参考 examples/ 中的示例)
+   python generator/generate.py -i examples/blinky_g0/hardware.yaml -o output/blinky_g0
+   cd output/blinky_g0
    make
    ```
 
-3. 编译并烧录：
+4. 编译并烧录：
    ```bash
    make flash           # ST-Link 烧录
    make flash-daplink   # DAP-Link 烧录
    ```
 
-4. 运行单元测试：
+5. 运行单元测试：
    ```bash
    python generator/run_tests.py --test-dir output/blinky_g0/test
    ```

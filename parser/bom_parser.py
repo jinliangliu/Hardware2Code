@@ -14,19 +14,121 @@ from pathlib import Path
 # Same table as netlist_parser for consistency.
 # ---------------------------------------------------------------------------
 VALUE_TO_PERIPHERAL: Dict[str, Tuple[str, str]] = {
+    # I2C sensors
     "MPU6050":        ("I2C_Sensor_MPU6050", "I2C"),
+    "MPU9250":        ("I2C_Sensor_MPU9250", "I2C"),
+    "BMP280":         ("I2C_Sensor_BMP280", "I2C"),
+    "BME280":         ("I2C_Sensor_BME280", "I2C"),
+    "SHT30":          ("I2C_Sensor_SHT30", "I2C"),
+    "SHT31":          ("I2C_Sensor_SHT31", "I2C"),
+    "AHT20":          ("I2C_Sensor_AHT20", "I2C"),
+    "BH1750":         ("I2C_Sensor_BH1750", "I2C"),
+    "VL53L0X":        ("I2C_Sensor_VL53L0X", "I2C"),
+    "SSD1306":        ("I2C_Display_SSD1306", "I2C"),
+    "SH1106":         ("I2C_Display_SH1106", "I2C"),
+    "PCF8563":        ("I2C_RTC_PCF8563", "I2C"),
+    "DS3231":         ("I2C_RTC_DS3231", "I2C"),
+    # SPI Flash
     "W25Q32":         ("SPI_Flash_W25Q32", "SPI"),
     "W25Q64":         ("SPI_Flash_W25Q32", "SPI"),
     "W25Q128":        ("SPI_Flash_W25Q32", "SPI"),
+    "W25Q256":        ("SPI_Flash_W25Q32", "SPI"),
+    "GD25Q32":        ("SPI_Flash_W25Q32", "SPI"),
+    "GD25Q64":        ("SPI_Flash_W25Q32", "SPI"),
+    "GD25Q128":        ("SPI_Flash_W25Q32", "SPI"),
+    "MX25L6433":      ("SPI_Flash_W25Q32", "SPI"),
+    "SST26VF":        ("SPI_Flash_W25Q32", "SPI"),
+    # SPI displays
+    "ILI9341":        ("SPI_Display_ILI9341", "SPI"),
+    "ST7789":         ("SPI_Display_ST7789", "SPI"),
+    "ST7735":         ("SPI_Display_ST7735", "SPI"),
+    # SPI sensors
+    "NRF24L01":       ("SPI_Radio_NRF24L01", "SPI"),
+    "CC1101":         ("SPI_Radio_CC1101", "SPI"),
+    # I2C EEPROM
+    "AT24C02":        ("I2C_EEPROM", "I2C"),
+    "AT24C08":        ("I2C_EEPROM", "I2C"),
+    "AT24C16":        ("I2C_EEPROM", "I2C"),
     "AT24C32":        ("I2C_EEPROM", "I2C"),
+    "AT24C64":        ("I2C_EEPROM", "I2C"),
+    "AT24C128":        ("I2C_EEPROM", "I2C"),
     "AT24C256":       ("I2C_EEPROM", "I2C"),
+    "AT24C512":       ("I2C_EEPROM", "I2C"),
+    # RS485 transceivers
     "MAX485":         ("RS485", "UART"),
     "SP3485":         ("RS485", "UART"),
+    "MAX3485":        ("RS485", "UART"),
+    "SN65HVD72":      ("RS485", "UART"),
+    "ISL83485":       ("RS485", "UART"),
+    # RS232 transceivers
     "MAX3232":        ("UART_Serial", "UART"),
+    "MAX232":         ("UART_Serial", "UART"),
+    "SP3232":         ("UART_Serial", "UART"),
+    # Cellular modules
     "SIM800":         ("Cellular_4G", "UART"),
     "SIM7020":        ("Cellular_4G", "UART"),
+    "SIM7600":        ("Cellular_4G", "UART"),
     "AIR780":         ("Cellular_4G", "UART"),
-    "ESP8266":        ("UART_Serial", "UART"),
+    "AIR724":         ("Cellular_4G", "UART"),
+    "EC200":          ("Cellular_4G", "UART"),
+    "BC26":           ("Cellular_4G", "UART"),
+    "M5311":          ("Cellular_4G", "UART"),
+    # Wi-Fi
+    "ESP8266":        ("UART_WiFi_ESP8266", "UART"),
+    "ESP32":          ("UART_WiFi_ESP32", "UART"),
+    "ESP32C3":        ("UART_WiFi_ESP32C3", "UART"),
+    # Bluetooth
+    "HC05":           ("UART_BT_HC05", "UART"),
+    "HC06":           ("UART_BT_HC06", "UART"),
+    "JDY31":          ("UART_BT_JDY31", "UART"),
+    # GPS/GNSS
+    "ATGM336H":       ("UART_GNSS_ATGM336H", "UART"),
+    "NEO6M":          ("UART_GNSS_NEO6M", "UART"),
+    "NEO8M":          ("UART_GNSS_NEO8M", "UART"),
+    # CAN transceivers
+    "TJA1050":        ("CAN_Transceiver", "FDCAN"),
+    "SN65HVD230":     ("CAN_Transceiver", "FDCAN"),
+    "MCP2551":        ("CAN_Transceiver", "FDCAN"),
+    # USB
+    "CH340":          ("UART_USB_CH340", "UART"),
+    "CP2102":         ("UART_USB_CP2102", "UART"),
+    "FT232":          ("UART_USB_FT232", "UART"),
+    # Ethernet
+    "W5500":          ("SPI_Ethernet_W5500", "SPI"),
+    "ENC28J60":       ("SPI_Ethernet_ENC28J60", "SPI"),
+    # LoRa
+    "SX1276":         ("SPI_LoRa_SX1276", "SPI"),
+    "SX1278":         ("SPI_LoRa_SX1276", "SPI"),
+    "E220":           ("UART_LoRa_E220", "UART"),
+    # Motor drivers
+    "A4988":          ("Internal_Stepper", "GPIO"),
+    "DRV8825":        ("Internal_Stepper", "GPIO"),
+    "TMC2208":        ("UART_Stepper_TMC2208", "UART"),
+    "TMC2209":        ("UART_Stepper_TMC2209", "UART"),
+    "L298N":          ("Internal_MotorDC", "Internal"),
+    "TB6612":         ("Internal_MotorDC", "Internal"),
+    # Servo
+    "SG90":           ("Internal_Servo", "Internal"),
+    "MG996R":         ("Internal_Servo", "Internal"),
+    # ADC sensors
+    "ACS712":         ("Internal_ADC_Current", "ADC"),
+    "MAX6675":        ("SPI_Thermocouple_MAX6675", "SPI"),
+    "MAX31855":       ("SPI_Thermocouple_MAX31855", "SPI"),
+    "DS18B20":        ("OneWire_Temp_DS18B20", "GPIO"),
+    "DHT11":          ("OneWire_DHT11", "GPIO"),
+    "DHT22":          ("OneWire_DHT22", "GPIO"),
+    # Buzzer
+    "BUZZER":         ("Internal_Buzzer", "Internal"),
+    "BZ1":            ("Internal_Buzzer", "Internal"),
+    # Relay
+    "RELAY":           ("Internal_Relay", "Internal"),
+    "SRD05":          ("Internal_Relay", "Internal"),
+    # RGB LED
+    "WS2812":         ("Internal_Neopixel", "Internal"),
+    "SK6812":         ("Internal_Neopixel", "Internal"),
+    # Card readers
+    "RC522":          ("SPI_RFID_RC522", "SPI"),
+    "PN532":          ("I2C_NFC_PN532", "I2C"),
 }
 
 LED_PATTERNS = {"LED", "LED_RED", "LED_GREEN", "LED_BLUE", "LED_YELLOW"}
@@ -143,9 +245,9 @@ def parse_bom_string(csv_text: str) -> str:
     doc: dict = {}
 
     if mcu_part:
-        doc["mcu"] = {"part": mcu_part, "core_clock_mhz": 64}
+        doc["mcu"] = {"part": mcu_part, "core_clock_mhz": 64, "ram_kb": 144, "flash_kb": 512, "dual_bank": True}
     else:
-        doc["mcu"] = {"part": "STM32G0B1RET6", "core_clock_mhz": 64}
+        doc["mcu"] = {"part": "STM32G0B1RET6", "core_clock_mhz": 64, "ram_kb": 144, "flash_kb": 512, "dual_bank": True}
 
     # Add pins section for LEDs and buttons (without specific MCU pin assignments)
     pins: List[dict] = []
