@@ -37,3 +37,6 @@ Thumbs.db
 
 # MkDocs build output
 site/
+
+# Generated output (test artifacts)
+output/
