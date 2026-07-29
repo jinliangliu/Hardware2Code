@@ -19,8 +19,8 @@ add_compile_definitions(
     {{ mcu.part | upper }}
     STM32G0B1xx
     USE_HAL_DRIVER
-    HSE_VALUE=$<IF:$<BOOL:{{ mcu.hse_freq | default(8000000) }}>,{{ mcu.hse_freq | default(8000000) }},8000000>
-    HCLK_FREQ=$<IF:$<BOOL:{{ mcu.hclk_freq_hz }}>,{{ mcu.hclk_freq_hz }},64000000>
+    HSI_VALUE=16000000
+    HCLK_FREQ=16000000
 {% if has_bootloader %}
     VECT_TAB_OFFSET={{ boot_config.app_a_offset | default(0x2000) }}U
 {% endif %}
@@ -40,6 +40,9 @@ set(STARTUP_DIR       "${CMSIS_DEVICE_DIR}/Source/Templates/gcc")
 {% if not hil_mode %}
 set(FREERTOS_DIR      "${HARDWARE2CODE_STATIC}/FreeRTOS-Kernel")
 {% endif %}
+get_filename_component(HW2C_ROOT "${HARDWARE2CODE_STATIC}" DIRECTORY)
+set(LWRB_DIR          "${HW2C_ROOT}/third_party/lwrb")
+set(HW2C_CLI_DIR      "${HW2C_ROOT}/hw2c_cli")
 
 # ── Linker script ────────────────────────────────────────────────────────────
 set(LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/linker/{{ 'app_slot_a.ld' if has_bootloader else 'STM32G0B1RETx_FLASH.ld' }}")
@@ -56,6 +59,8 @@ set(COMMON_INCLUDES
 list(APPEND COMMON_INCLUDES
     ${FREERTOS_DIR}/include
     ${FREERTOS_DIR}/portable/GCC/ARM_CM0
+    ${LWRB_DIR}
+    ${HW2C_CLI_DIR}
 )
 {% endif %}
 
@@ -118,6 +123,10 @@ set(APP_SOURCES
 {% if has_log %}
     src/drivers/drv_log.c
 {% endif %}
+{% if not hil_mode %}
+    ${LWRB_DIR}/lwrb.c
+    ${HW2C_CLI_DIR}/hw2c_cli.c
+{% endif %}
 )
 
 # Per-driver includes (each driver may need its own headers)
@@ -130,6 +139,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE {{ inc | replace('$(HARDWARE2
 {% endfor %}
 
 add_executable(${PROJECT_NAME} ${APP_SOURCES})
+target_compile_definitions(${PROJECT_NAME} PRIVATE LWRB_DISABLE_ATOMIC)
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${COMMON_INCLUDES}
     ${CMAKE_SOURCE_DIR}/src

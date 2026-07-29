@@ -7,6 +7,7 @@ bootloader_context.
 
 import os
 import sys
+import re
 import yaml
 import importlib.util
 
@@ -53,9 +54,11 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     """
     # ---------- 基础信息提取 ----------
     mcu = hw.get("mcu", {})
-    mcu["core_clock_mhz"] = int(mcu.get("core_clock_mhz", 64))
+    mcu["core_clock_mhz"] = int(mcu.get("core_clock_mhz", 16))
+    mcu["clock_source"] = mcu.get("clock_source", "HSI").upper()
+    mcu["clock_freq_hz"] = int(mcu.get("clock_freq_hz", 16000000))
     mcu["hse_freq"] = int(mcu.get("hse_freq", 8000000))
-    mcu["hclk_freq_hz"] = mcu["core_clock_mhz"] * 1_000_000
+    mcu["hclk_freq_hz"] = mcu["clock_freq_hz"]
 
     pins = hw.get("pins", [])
     sleep = hw.get("sleep", {})
@@ -81,9 +84,30 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     has_ir = peri_result["has_ir"]
     has_cellular = peri_result["has_cellular"]
     has_cli = peri_result["has_cli"]
+    has_temp_sensor = peri_result["has_temp_sensor"]
     uart_name = peri_result["uart_name"]
     rs485_name = peri_result["rs485_name"]
     cli_uart_name = peri_result["cli_uart_name"]
+
+    # ---------- USART2 baudrate (from UART peripheral config) ----------
+    usart2_baudrate = 115200  # default
+    for p in peripherals:
+        if p.get("name") == cli_uart_name and p.get("type") == "UART_Serial":
+            extra = p.get("extra", {})
+            usart2_baudrate = int(extra.get("baudrate", 115200))
+            break
+
+    # USART2 clock source is HSI16 (always 16 MHz in this design)
+    usart2_clock_freq_hz = 16000000
+
+    # ---------- Temperature sensor offset ----------
+    temp_offset_deci = 0  # default: no offset
+    for p in peripherals:
+        if p.get("name") == "temp_sensor" and p.get("type") == "Internal_TempSensor":
+            extra = p.get("extra", {})
+            offset_c = float(extra.get("temp_offset", 0.0))
+            temp_offset_deci = int(round(offset_c * 10.0))
+            break
 
     # ---------- Bearer association (MQTT/Modbus) ----------
     bearer_result = associate_bearers(peripherals, drivers)
@@ -141,12 +165,73 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     has_led = any(pin.get('label') == 'LED' for pin in pins)
     has_led_task = any(t.get('name') == 'led_task' for t in app_tasks)
 
-    # ---------- Log subsystem (USART2 ring-buffer logging) ----------
+    led_active_low = False
+    for pin in pins:
+        if pin.get('label') == 'LED':
+            led_active_low = pin.get('active_level', '').lower() == 'low'
+            break
+
+    # ---------- Log subsystem: ring buffer size ----------
     log_config = hw.get('log', {})
     has_log = log_config.get('enable', False)
+    log_ring_buf_size = int(log_config.get('ring_buf_size', 1024))
+
+    # ---------- Log subsystem: UART pin / AF / IRQ derivation ----------
+    # Derive macro names from the CLI UART peripheral and its pins.
+    # This avoids hardcoding USART2/PA2/PA3/AF1 in the log driver template.
+    log_uart = {}
+
+    # Extract TX / RX pin info from the pins list
+    for pin in pins:
+        func = pin.get("function", "").upper()
+        pin_id = pin.get("id", "")
+        af = pin.get("af", 0)
+
+        # Parse port letter and pin number from pin id e.g. "PA2" → port='A', num=2
+        m = re.match(r'P([A-Z])(\d+)', pin_id.upper())
+        if not m:
+            continue
+        port_letter = m.group(1)
+        pin_number = int(m.group(2))
+
+        # Match USARTx_TX or USARTx_RX
+        if func == f"{cli_uart_name.upper()}_TX":
+            log_uart["tx_port"] = f"GPIO{port_letter}"
+            log_uart["tx_pin"] = f"GPIO_PIN_{pin_number}"
+            log_uart["tx_af"] = f"GPIO_AF{af}_{cli_uart_name.upper()}"
+        elif func == f"{cli_uart_name.upper()}_RX":
+            log_uart["rx_port"] = f"GPIO{port_letter}"
+            log_uart["rx_pin"] = f"GPIO_PIN_{pin_number}"
+            log_uart["rx_af"] = f"GPIO_AF{af}_{cli_uart_name.upper()}"
+
+    # Derive from USART instance (e.g., USART2)
+    inst = cli_uart_name.upper()  # "USART2"
+    log_uart["instance"] = inst
+    log_uart["rcc_usart_clk"] = f"__HAL_RCC_{inst}_CLK_ENABLE"
+
+    # STM32G0: USART2 shares IRQ with LPUART2, USART3 with LPUART1
+    irq_map = {
+        "USART1": "USART1_IRQn",
+        "USART2": "USART2_LPUART2_IRQn",
+        "USART3": "USART3_LPUART1_IRQn",
+    }
+    log_uart["irqn"] = irq_map.get(inst, f"{inst}_IRQn")
+
+    # CCIPR selectors
+    log_uart["ccipr_sel_msk"] = f"RCC_CCIPR_{inst}SEL_Msk"
+    log_uart["ccipr_hsi_src"] = f"RCC_{inst}CLKSOURCE_HSI"
+
+    # GPIO port clock enable (use TX port)
+    tx_port = log_uart.get("tx_port", "GPIOA")
+    log_uart["rcc_gpio_clk"] = f"__HAL_RCC_{tx_port}_CLK_ENABLE"
 
     # ---------- Tickless idle (requires FreeRTOS app_tasks + RTC) ----------
-    has_tickless = bool(app_tasks) and has_rtc
+    # sleep.tickless field can explicitly override the auto-detection
+    tickless_explicit = sleep.get("tickless", None)
+    if tickless_explicit is not None:
+        has_tickless = bool(tickless_explicit)
+    else:
+        has_tickless = bool(app_tasks) and has_rtc
 
     # ---------- 辅助函数：加载外部引用 ----------
     def load_external_flow(ref_path):
@@ -363,7 +448,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
             return name
 
         if name == 'defer':
-            return f"defer {params.get('after', 0)} => {params.get('do', '')}"
+            return f"defer {params.get('after', 0)} => {normalize_dict_action(params.get('do', ''))}"
         elif name == 'start_timer':
             return f"start_timer {params.get('name', '')} {params.get('ms', 0)}"
         elif name == 'stop_timer':
@@ -379,12 +464,15 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         elif name == 'publish_async':
             return f"publish_async {params.get('event', '')}"
         elif name == 'when':
-            return f"when {params.get('cond', '')} => {params.get('do', '')}"
+            # Support nested when: {when: {cond: "...", do: {when: {...}}}}
+            # Recursively normalize the 'do' sub-action.
+            sub_do = params.get('do', '')
+            return f"when {params.get('cond', '')} => {normalize_dict_action(sub_do)}"
         elif name == 'send_to':
             return f"send_to {params.get('region', '')} {params.get('event', '')}"
         elif name == 'timeline':
             if isinstance(params, list):
-                parts = [f"{item.get('ms', 0)}=>{item.get('do', '')}" for item in params]
+                parts = [f"{item.get('ms', 0)}=>{normalize_dict_action(item.get('do', ''))}" for item in params]
                 return "timeline: " + ", ".join(parts)
             return name
         else:
@@ -811,10 +899,15 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         "cli_uart_name": cli_uart_name,
         "has_led": has_led,
         "has_led_task": has_led_task,
+        "led_active_low": led_active_low,
         "led_task_name": led_task_name,
         "total_heap_size": total_heap_size,
         "test_mode": False,
         "has_log": has_log,
+        "log_uart": log_uart,
+        "log_ring_buf_size": log_ring_buf_size,
+        "usart2_baudrate": usart2_baudrate,
+        "usart2_clock_freq_hz": usart2_clock_freq_hz,
         "has_tickless": has_tickless,
         "has_behavior": has_behavior,
         "behavior": behavior,
@@ -822,6 +915,9 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         "has_bootloader": has_bootloader,
         "has_fota": has_fota,
         "has_iwdg": has_bootloader,
+        "has_temp_sensor": has_temp_sensor,
+        "temp_offset_deci": temp_offset_deci,
+        "flash_kb": mcu_flash_kb,
         "boot_config": boot_config,
         "boot_max_retries": boot_config.get('max_retries', 3),
         "boot_size_bytes": boot_size_bytes,

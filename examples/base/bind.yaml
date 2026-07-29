@@ -1,0 +1,31 @@
+# ============================================================
+# hw2c minimal system unit — binding layer
+#
+# Links hardware peripherals to software tasks.
+# ============================================================
+
+version: 1
+hardware: hardware.yaml
+task: task.yaml
+
+peripheral_assign:
+  - peripheral: usart2
+    task: shell_task
+    role: debug_console
+
+  - peripheral: shell
+    task: shell_task
+    role: cli
+
+  - peripheral: rtc
+    task: events_process_task
+    role: tick_timer
+
+  - peripheral: temp_sensor
+    task: shell_task
+    role: on_chip_temp
+
+interrupt:
+  - pin: PC13
+    task: button_task
+    event: EXTI13

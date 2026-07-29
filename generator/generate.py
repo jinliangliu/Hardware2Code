@@ -632,6 +632,16 @@ def generate_project(
         )
         logger.info("[OK] Three-layer merge complete")
 
+        # Cross-layer validation: bind → hardware/task reference integrity
+        if bind_raw:
+            from generator.validator import validate_bind_cross_refs
+            cross_errors = validate_bind_cross_refs(hw_raw, task_raw, bind_raw)
+            if cross_errors:
+                _report_validation_errors(cross_errors)
+                sys.exit(1)
+            else:
+                logger.info("[OK] Bind cross-reference validation passed")
+
         # Pydantic model validation
         hw_model = HardwareModel.model_validate(hw_raw)
         hw = hw_model.model_dump(exclude_none=True)

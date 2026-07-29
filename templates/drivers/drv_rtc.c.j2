@@ -174,18 +174,6 @@ void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     event_t evt = { .id = EVENT_RTC_TICK, .param = 0 };
     xQueueSendFromISR(event_queue, &evt, &xHigherPriorityTaskWoken);
-{% if has_log %}
-    /* Periodic log: print RTC time every 10 ticks (1 second) */
-    {
-        static uint32_t tick_count = 0;
-        if (++tick_count >= 10) {
-            tick_count = 0;
-            rtc_time_t now;
-            RTC_GetTime(&now);
-            log_info("RTC: %02d:%02d:%02d", (int)now.hour, (int)now.min, (int)now.sec);
-        }
-    }
-{% endif %}
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 

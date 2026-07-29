@@ -1,0 +1,54 @@
+# ============================================================
+# hw2c minimal system unit — software tasks layer
+#
+# Two mandatory system tasks form the skeleton of every
+# hw2c-generated firmware:
+#
+#   shell_task           CLI interaction + log output via USART2
+#   events_process_task  Centralized event dispatch via queue
+#
+# Additional application tasks extend this baseline.
+# ============================================================
+
+project:
+  name: base
+  version: "1.0.0"
+  heap_size: 16384
+
+event_task:
+  name: events_process_task
+  entry: vEventTask
+  priority: 3
+  stack_size: 512
+  queue_depth: 16
+
+app_tasks:
+  - name: shell_task
+    priority: 1
+    stack_size: 1024
+
+  - name: button_task
+    priority: 2
+    stack_size: 128
+
+  - name: sensor_task
+    priority: 3
+    stack_size: 512
+    behavior:
+      initial_state: IDLE
+      variables:
+        - name: counter
+          type: int32_t
+          initial: 0
+      states:
+        - name: IDLE
+          on_entry: [log "sensor: entering IDLE"]
+          transitions:
+            - event: RTC_TICK
+              target: ACTIVE
+              actions: [calc counter = counter + 1]
+        - name: ACTIVE
+          on_entry: [log "sensor: entering ACTIVE"]
+          transitions:
+            - event: RTC_TICK
+              target: IDLE

@@ -1,0 +1,14 @@
+model: "STM32G0_TempSensor"
+type: "Internal_TempSensor"
+interface: "internal"
+driver_template: "drivers/drv_temp_sensor.c.j2"
+header_template: "drivers/drv_temp_sensor.h.j2"
+capabilities:
+  - temperature_read
+notes:
+  on_chip: true
+  adc_channel: 16
+  cal1_addr: 0x1FFF75A8
+  cal2_addr: 0x1FFF75CA
+  cal1_temp: 30
+  cal2_temp: 110

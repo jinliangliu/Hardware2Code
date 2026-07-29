@@ -221,6 +221,18 @@ led_task_notify();
         {
             {{ sub.split(' ',1)[1] }};
         }
+        {% elif sub.startswith('start_timer ') %}
+        {
+            {% set tparts = sub.split(' ') %}
+            extern void start_user_timer(const char *name, uint32_t period_ms, void (*callback)(void));
+            start_user_timer("{{ tparts[1] }}", {{ tparts[2] }}, NULL);
+        }
+        {% elif sub.startswith('stop_timer ') %}
+        {
+            {% set tparts = sub.split(' ') %}
+            extern void stop_user_timer(const char *name);
+            stop_user_timer("{{ tparts[1] }}");
+        }
         {% elif sub.startswith('send_to ') %}
         {
             {% set sendparts = sub.split(' ', 2) %}
@@ -232,6 +244,9 @@ led_task_notify();
             event_t evt_pub = { .id = EVENT_RETURN, .param = 0 };
             statemachine_process(&evt_pub);
         }
+        {% elif sub.startswith('when ') %}
+        /* nested when: {{ sub }} */
+        {{ action_impl(sub, region_name) }}
         {% else %}
         /* when sub-action: {{ sub }} */
         {% endif %}
@@ -433,6 +448,25 @@ void statemachine_process(event_t *evt) {
 {% endif %}
                 (evt->id == EVENT_{{ trans.event | event_name }})
             ) {
+{% if state.states %}
+                /* Exit active child state before exiting parent */
+                switch (current_state_{{ region.name }}_{{ state.name }}) {
+{% for nested in state.states %}
+                case STATE_{{ region.name }}_{{ state.name }}_{{ nested.name }}:
+{% if nested.on_exit %}
+{{ process_actions_for_region(region.name, nested.on_exit) | indent(20, true) }}
+{% endif %}
+{% if nested.after %}
+                    if ({{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle) {
+                        RTC_TimerStop({{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle);
+                        RTC_TimerDelete({{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle);
+                        {{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle = NULL;
+                    }
+{% endif %}
+                    break;
+{% endfor %}
+                }
+{% endif %}
 {% if state.on_exit %}
 {{ process_actions_for_region(region.name, state.on_exit) | indent(16, true) }}
 {% endif %}
@@ -506,6 +540,41 @@ void statemachine_process(event_t *evt) {
 {% endfor %}
             }
 {% endfor %}
+{% if state.states %}
+            else if (evt->id == EVENT_RETURN) {
+                /* Return from compound state: exit active child first */
+                switch (current_state_{{ region.name }}_{{ state.name }}) {
+{% for nested in state.states %}
+                case STATE_{{ region.name }}_{{ state.name }}_{{ nested.name }}:
+{% if nested.on_exit %}
+{{ process_actions_for_region(region.name, nested.on_exit) | indent(20, true) }}
+{% endif %}
+{% if nested.after %}
+                    if ({{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle) {
+                        RTC_TimerStop({{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle);
+                        RTC_TimerDelete({{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle);
+                        {{ region.name }}_{{ state.name }}_{{ nested.name }}_timeout_handle = NULL;
+                    }
+{% endif %}
+                    break;
+{% endfor %}
+                }
+{% if state.on_exit %}
+{{ process_actions_for_region(region.name, state.on_exit) | indent(16, true) }}
+{% endif %}
+{% if state.states and state.history %}
+                current_state_{{ region.name }}_{{ state.name }}_history = current_state_{{ region.name }}_{{ state.name }};
+{% endif %}
+                *p_curr = STATE_{{ region.name }}_{{ region.initial_state }};
+{% for s in region.states %}
+{% if s.name == region.initial_state %}
+{% if s.on_entry %}
+{{ process_actions_for_region(region.name, s.on_entry) | indent(16, true) }}
+{% endif %}
+{% endif %}
+{% endfor %}
+            }
+{% endif %}
             break;
 {% endfor %}
         }
@@ -585,6 +654,25 @@ void statemachine_process(event_t *evt) {
 {% endif %}
             (evt->id == EVENT_{{ trans.event | event_name }})
         ) {
+{% if state.states %}
+        /* Exit active child state before exiting parent */
+        switch (current_state_{{ state.name }}) {
+{% for nested in state.states %}
+        case STATE_{{ state.name }}_{{ nested.name }}:
+{% if nested.on_exit %}
+{{ process_actions(nested.on_exit) | indent(12, true) }}
+{% endif %}
+{% if nested.after %}
+            if ({{ state.name }}_{{ nested.name }}_timeout_handle) {
+                RTC_TimerStop({{ state.name }}_{{ nested.name }}_timeout_handle);
+                RTC_TimerDelete({{ state.name }}_{{ nested.name }}_timeout_handle);
+                {{ state.name }}_{{ nested.name }}_timeout_handle = NULL;
+            }
+{% endif %}
+            break;
+{% endfor %}
+        }
+{% endif %}
 {% if state.on_exit %}
 {{ process_actions(state.on_exit) | indent(12, true) }}
 {% endif %}
@@ -658,6 +746,41 @@ void statemachine_process(event_t *evt) {
 {% endfor %}
         }
 {% endfor %}
+{% if state.states %}
+        else if (evt->id == EVENT_RETURN) {
+            /* Return from compound state: exit active child first */
+            switch (current_state_{{ state.name }}) {
+{% for nested in state.states %}
+            case STATE_{{ state.name }}_{{ nested.name }}:
+{% if nested.on_exit %}
+{{ process_actions(nested.on_exit) | indent(16, true) }}
+{% endif %}
+{% if nested.after %}
+                if ({{ state.name }}_{{ nested.name }}_timeout_handle) {
+                    RTC_TimerStop({{ state.name }}_{{ nested.name }}_timeout_handle);
+                    RTC_TimerDelete({{ state.name }}_{{ nested.name }}_timeout_handle);
+                    {{ state.name }}_{{ nested.name }}_timeout_handle = NULL;
+                }
+{% endif %}
+                break;
+{% endfor %}
+            }
+{% if state.on_exit %}
+{{ process_actions(state.on_exit) | indent(12, true) }}
+{% endif %}
+{% if state.states and state.history %}
+            current_state_{{ state.name }}_history = current_state_{{ state.name }};
+{% endif %}
+            current_state = STATE_{{ behavior.initial_state }};
+{% for s in behavior.states %}
+{% if s.name == behavior.initial_state %}
+{% if s.on_entry %}
+{{ process_actions(s.on_entry) | indent(12, true) }}
+{% endif %}
+{% endif %}
+{% endfor %}
+        }
+{% endif %}
         break;
 {% endfor %}
     }

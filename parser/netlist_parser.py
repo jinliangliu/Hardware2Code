@@ -563,13 +563,21 @@ def _tokenize_sexpr(text: str) -> List[str]:
 
     Returns:
         List of tokens: '(', ')', or string values (unquoted).
+
+    Raises:
+        ValueError: If an unclosed quoted string is detected.
     """
     tokens: List[str] = []
     i = 0
     n = len(text)
+    line_no = 1
 
     while i < n:
         ch = text[i]
+
+        # Track line numbers
+        if ch == '\n':
+            line_no += 1
 
         # Whitespace
         if ch in (' ', '\t', '\n', '\r'):
@@ -584,11 +592,18 @@ def _tokenize_sexpr(text: str) -> List[str]:
 
         # Quoted string
         if ch == '"':
+            start_line = line_no
             j = i + 1
             while j < n and text[j] != '"':
+                if text[j] == '\n':
+                    line_no += 1
                 if text[j] == '\\' and j + 1 < n:
                     j += 1  # skip escaped char
                 j += 1
+            if j >= n:
+                raise ValueError(
+                    f"Unclosed quoted string starting at line {start_line}"
+                )
             value = text[i+1:j]
             tokens.append(value)
             i = j + 1  # skip closing quote
@@ -600,6 +615,17 @@ def _tokenize_sexpr(text: str) -> List[str]:
             j += 1
         tokens.append(text[i:j])
         i = j
+
+    # Check for balanced parentheses
+    open_count = sum(1 for t in tokens if t == '(')
+    close_count = sum(1 for t in tokens if t == ')')
+    if open_count != close_count:
+        missing = open_count - close_count
+        raise ValueError(
+            f"Unbalanced parentheses in S-Expression: "
+            f"{open_count} '(' vs {close_count} ')' "
+            f"({missing} missing '{')' if missing > 0 else '('}')"
+        )
 
     return tokens
 

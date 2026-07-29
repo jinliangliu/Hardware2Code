@@ -33,14 +33,18 @@ class I2cMpu6050Builder(PeripheralBuilder):
         bus = peripheral.get("bus", "I2C1")
         bus_index = int(bus[-1]) if bus[-1].isdigit() else 1
         speed_hz = peripheral.get("extra", {}).get("speed_hz", 100_000)
-        timing = _calc_i2c_timing(_I2C_CLK_HZ_DEFAULT, speed_hz)
+        # Use the actual HCLK frequency from the MCU context, which already
+        # incorporates core_clock_mhz from the user's hardware.yaml.
+        # On STM32G0, I2C peripheral clock = PCLK1 = HCLK (APB1 prescaler /1).
+        i2c_clk_hz = mcu.get("hclk_freq_hz", _I2C_CLK_HZ_DEFAULT)
+        timing = _calc_i2c_timing(i2c_clk_hz, speed_hz)
         i2c_cfg = I2CConfig(
             instance=bus,
             bus_index=bus_index,
             timing_r=timing,
             speed_hz=speed_hz,
         )
-        logger.info(f"I2C {bus}: TIMINGR=0x{timing:08X} for {speed_hz}Hz @ {_I2C_CLK_HZ_DEFAULT}Hz")
+        logger.info(f"I2C {bus}: TIMINGR=0x{timing:08X} for {speed_hz}Hz @ {i2c_clk_hz}Hz")
         return {"i2c": i2c_cfg}
 
 

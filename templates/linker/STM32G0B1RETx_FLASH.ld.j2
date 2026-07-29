@@ -124,6 +124,8 @@ SECTIONS
     _sdata = .;        /* create a global symbol at data start */
     *(.data)           /* .data sections */
     *(.data*)          /* .data* sections */
+    *(.ramfunc)        /* RAM functions — copied to SRAM by startup */
+    *(.ramfunc*)       /* RAM functions (sub-sections, link-time ordering) */
 
     . = ALIGN(4);
     _edata = .;        /* define a global symbol at data end */

@@ -49,8 +49,8 @@ static void cli_test_inject_str(const char *str)
 static void cli_test_simulate_one_command(void)
 {
     if (xSemaphoreTake(cli_rx_sem, pdMS_TO_TICKS(0)) == pdTRUE) {
-        int c;
-        while ((c = ringbuf_get()) >= 0) {
+        uint8_t c;
+        while (lwrb_read(&cli_ringbuf, &c, 1) > 0) {
             if (c == '\r' || c == '\n') {
                 test_line_buf[test_line_pos] = '\0';
                 if (test_line_pos > 0) {
@@ -141,8 +141,7 @@ void setUp(void)
     cli_cmd_count = 0;
     memset(cli_commands, 0, sizeof(cli_commands));
     /* Reset ring buffer to prevent stale chars leaking between tests */
-    cli_ringbuf_head = 0;
-    cli_ringbuf_tail = 0;
+    lwrb_reset(&cli_ringbuf);
     cli_init(&mock_huart_storage);
 }
 
@@ -152,59 +151,68 @@ void tearDown(void)
 }
 
 /* ==================================================================
- *  Ring Buffer Tests
+ *  Ring Buffer Tests (LwRB API)
  * ================================================================== */
 
-void test_ringbuf_put_get_basic(void)
+void test_lwrb_basic_write_read(void)
 {
-    TEST_ASSERT_TRUE(ringbuf_put('H'));
-    TEST_ASSERT_TRUE(ringbuf_put('e'));
-    TEST_ASSERT_TRUE(ringbuf_put('y'));
-    TEST_ASSERT_EQUAL('H', ringbuf_get());
-    TEST_ASSERT_EQUAL('e', ringbuf_get());
-    TEST_ASSERT_EQUAL('y', ringbuf_get());
+    uint8_t w1 = 'H', w2 = 'e', w3 = 'y';
+    uint8_t r[3];
+    TEST_ASSERT_EQUAL(1, lwrb_write(&cli_ringbuf, &w1, 1));
+    TEST_ASSERT_EQUAL(1, lwrb_write(&cli_ringbuf, &w2, 1));
+    TEST_ASSERT_EQUAL(1, lwrb_write(&cli_ringbuf, &w3, 1));
+    TEST_ASSERT_EQUAL(1, lwrb_read(&cli_ringbuf, &r[0], 1));
+    TEST_ASSERT_EQUAL('H', r[0]);
+    TEST_ASSERT_EQUAL(1, lwrb_read(&cli_ringbuf, &r[1], 1));
+    TEST_ASSERT_EQUAL('e', r[1]);
+    TEST_ASSERT_EQUAL(1, lwrb_read(&cli_ringbuf, &r[2], 1));
+    TEST_ASSERT_EQUAL('y', r[2]);
 }
 
-void test_ringbuf_empty_returns_negative(void)
+void test_lwrb_empty_read_returns_zero(void)
 {
-    TEST_ASSERT_EQUAL(-1, ringbuf_get());
+    uint8_t dummy;
+    TEST_ASSERT_EQUAL(0, lwrb_read(&cli_ringbuf, &dummy, 1));
 }
 
-void test_ringbuf_overflow_protection(void)
+void test_lwrb_overflow_protection(void)
 {
     /* Fill all usable slots (CLI_RINGBUF_SIZE - 1) */
     for (int i = 0; i < CLI_RINGBUF_SIZE - 1; i++) {
-        bool ok = ringbuf_put((uint8_t)(i & 0xFF));
-        TEST_ASSERT_TRUE(ok);
+        uint8_t val = (uint8_t)(i & 0xFF);
+        TEST_ASSERT_EQUAL(1, lwrb_write(&cli_ringbuf, &val, 1));
     }
-    /* Next put must fail (buffer full) */
-    TEST_ASSERT_FALSE(ringbuf_put(0xFF));
+    /* Next write must fail (buffer full) */
+    uint8_t extra = 0xFF;
+    TEST_ASSERT_EQUAL(0, lwrb_write(&cli_ringbuf, &extra, 1));
 }
 
-void test_ringbuf_wraparound(void)
+void test_lwrb_wraparound(void)
 {
+    uint8_t val;
+
     /* Fill buffer completely */
     for (int i = 0; i < CLI_RINGBUF_SIZE - 1; i++) {
-        ringbuf_put((uint8_t)(i & 0xFF));
+        val = (uint8_t)(i & 0xFF);
+        lwrb_write(&cli_ringbuf, &val, 1);
     }
     /* Drain first 50 bytes */
     for (int i = 0; i < 50; i++) {
-        ringbuf_get();
+        lwrb_read(&cli_ringbuf, &val, 1);
     }
     /* Put 50 more — must wrap around */
     for (int i = 0; i < 50; i++) {
-        TEST_ASSERT_TRUE(ringbuf_put((uint8_t)((100 + i) & 0xFF)));
+        val = (uint8_t)((100 + i) & 0xFF);
+        TEST_ASSERT_EQUAL(1, lwrb_write(&cli_ringbuf, &val, 1));
     }
     /* Verify remaining original data */
     for (int i = 50; i < CLI_RINGBUF_SIZE - 1; i++) {
-        int val = ringbuf_get();
-        if (val < 0) break;
+        if (lwrb_read(&cli_ringbuf, &val, 1) == 0) break;
         TEST_ASSERT_EQUAL((i & 0xFF), val);
     }
     /* Verify wrapped-around data */
     for (int i = 0; i < 50; i++) {
-        int val = ringbuf_get();
-        if (val < 0) break;
+        if (lwrb_read(&cli_ringbuf, &val, 1) == 0) break;
         TEST_ASSERT_EQUAL(((100 + i) & 0xFF), val);
     }
 }
@@ -563,11 +571,11 @@ int main(void)
 {
     UNITY_BEGIN();
 
-    /* Ring buffer */
-    RUN_TEST(test_ringbuf_put_get_basic);
-    RUN_TEST(test_ringbuf_empty_returns_negative);
-    RUN_TEST(test_ringbuf_overflow_protection);
-    RUN_TEST(test_ringbuf_wraparound);
+    /* Ring buffer (LwRB) */
+    RUN_TEST(test_lwrb_basic_write_read);
+    RUN_TEST(test_lwrb_empty_read_returns_zero);
+    RUN_TEST(test_lwrb_overflow_protection);
+    RUN_TEST(test_lwrb_wraparound);
 
     /* Tokenizer */
     RUN_TEST(test_tokenize_simple);

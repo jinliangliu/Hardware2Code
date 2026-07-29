@@ -8,7 +8,7 @@
  *          - ISR-safe via ring buffer + interrupt-driven TX
  *          - Zero dynamic allocation, C99 compatible
  *
- *          Output: USART2 (PA2 TX, PA3 RX) @ 115200-8-N-1
+ *          Output: UART (pinout from hardware.yaml) @ 115200-8-N-1
  *          Protocol: printf-style via ring buffer + TXE interrupt
  *
  *          Reference: https://github.com/rxi/log.c (MIT License)
@@ -18,6 +18,7 @@
 #define DRV_LOG_H
 
 #include <stdint.h>
+#include "lwrb.h"
 
 /* ================================================================
  * Log Level Definitions
@@ -38,7 +39,7 @@
 /* ================================================================
  * Ring Buffer Configuration
  * ================================================================ */
-#define LOG_RING_BUF_SIZE  1024  /* must be power of 2 for efficient masking */
+#define LOG_RING_BUF_SIZE  {{ log_ring_buf_size }}
 
 /* ================================================================
  * Public API
@@ -46,7 +47,7 @@
 
 /**
  * @brief  Initialize the log subsystem
- * @note   Configures USART2 (PA2/PA3), ring buffer, and TXE interrupt.
+ * @note   Configures UART (pinout from hardware.yaml), ring buffer, and TXE interrupt.
  *         Must be called after HAL_Init() and GPIO clock enable.
  */
 void log_init(void);
@@ -64,7 +65,7 @@ void log_set_level(int level);
  * @param  line  : source line number (use __LINE__)
  * @param  fmt   : printf format string
  * @param  ...   : format arguments
- * @note   ISR-safe: writes to ring buffer, actual TX happens in USART2 IRQ.
+ * @note   ISR-safe: writes to ring buffer, actual TX happens in UART IRQ.
  *         Messages exceeding ring buffer space are silently dropped.
  */
 void log_output(int level, const char *file, int line, const char *fmt, ...);
@@ -80,6 +81,49 @@ void log_system_info(void);
  * @brief  Flush ring buffer (blocking, for critical shutdown)
  */
 void log_flush(void);
+
+/**
+ * @brief  Return the UART handle used by the log subsystem.
+ *
+ *          The CLI shell shares the same UART as the log output.
+ *          Callers can pass this handle to cli_init() to avoid
+ *          duplicating HAL_UART_Init (which would clear TXEIE).
+ *
+ * @return Pointer to the initialized UART_HandleTypeDef.
+ */
+void *log_get_huart(void);
+
+/**
+ * @brief  Enable UART STOP-mode wakeup (start-bit detection).
+ *
+ *          Must be called BEFORE the MCU enters STOP mode.
+ *          Configures HSI16 as UART clock with HSI keeper enabled
+ *          so the UART can detect a falling edge (start bit) and
+ *          wake the CPU from STOP0/STOP1.
+ *
+ * @note   Call log_stop_wakeup_clear() after waking from STOP.
+ */
+void log_uart_stop_wakeup_enable(void);
+
+/**
+ * @brief  Clear UART STOP wakeup flag and restore normal operation.
+ *
+ *          Must be called AFTER the MCU wakes from STOP mode.
+ */
+void log_uart_stop_wakeup_clear(void);
+
+/**
+ * @brief  Re-initialize UART hardware registers after STOP mode exit.
+ *
+ *          STOP mode powers down the USART peripheral, losing register
+ *          configuration (baud rate, mode, CR1/CR2/CR3). This function
+ *          restores all USART register settings without touching the
+ *          ring buffer, preserving any pending log data queued before
+ *          entering STOP.
+ *
+ * @note   Call after SystemClock_Config() and log_uart_stop_wakeup_clear().
+ */
+void log_uart_reinit(void);
 
 /* ================================================================
  * Convenience Macros

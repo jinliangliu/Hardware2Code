@@ -30,12 +30,14 @@ class PinConflictError:
         func_b: str,
         label_a: Optional[str] = None,
         label_b: Optional[str] = None,
+        alternatives: Optional[List[str]] = None,
     ):
         self.pin = pin
         self.func_a = func_a
         self.func_b = func_b
         self.label_a = label_a
         self.label_b = label_b
+        self.alternatives = alternatives or []
 
     def __str__(self) -> str:
         detail = f"Pin {self.pin} conflict: '{self.func_a}'"
@@ -44,6 +46,13 @@ class PinConflictError:
         detail += f" vs '{self.func_b}'"
         if self.label_b:
             detail += f" [{self.label_b}]"
+        if self.alternatives:
+            detail += (
+                f". Alternative free pins for '{self.func_b}': "
+                + ", ".join(self.alternatives[:5])
+            )
+            if len(self.alternatives) > 5:
+                detail += f" ... and {len(self.alternatives) - 5} more"
         return detail
 
 
@@ -130,6 +139,34 @@ def _is_af_function(func: str) -> bool:
     return _parse_function(func) is not None
 
 
+def _find_alternative_pins(
+    mcu_db: Any,
+    peripheral: str,
+    signal: str,
+    used_pins: Dict[str, Any],
+) -> List[str]:
+    """Find free pins that support the given peripheral+signal combination.
+
+    Args:
+        mcu_db: MCUDatabase instance.
+        peripheral: Peripheral name (e.g. 'I2C1').
+        signal: Signal name (e.g. 'SCL').
+        used_pins: Currently occupied pins dict.
+
+    Returns:
+        List of free pin names that support the function.
+    """
+    all_pins = mcu_db.get_peripheral_signals(peripheral)
+    free: List[str] = []
+    for entry in all_pins:
+        pin = entry["pin"]
+        sig = entry["signal"]
+        if sig == signal and pin.upper() not in used_pins:
+            free.append(pin)
+    # Sort by port letter then pin number (e.g., PA0 < PA1 < PB0)
+    return sorted(free, key=lambda p: (p[1], int(p[2:])))
+
+
 # ---------------------------------------------------------------------------
 # Main validator
 # ---------------------------------------------------------------------------
@@ -201,12 +238,17 @@ def validate_pin_conflicts(
                 }
             elif existing["function"] != function:
                 # Two different AF functions on same pin = conflict
+                # Query MCU database for alternative free pins
+                alt_pins: List[str] = _find_alternative_pins(
+                    mcu_db, periph, signal, used_pins
+                )
                 errors.append(PinConflictError(
                     pin_id,
                     existing["function"],
                     function,
                     existing.get("label"),
                     label,
+                    alternatives=alt_pins,
                 ))
             else:
                 # Same function reused on same pin = duplicate assignment

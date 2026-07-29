@@ -19,6 +19,7 @@ hw2c.code-workspace
 *.map
 *.out
 build/
+build.bak/
 Debug/
 Release/
 

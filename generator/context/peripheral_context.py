@@ -21,6 +21,7 @@ def detect_peripherals(peripherals: list, load_model_func) -> dict:
     has_i2c = has_rtc = has_mpu6050 = has_pwm = has_spi = False
     has_spi_flash = has_adc = has_uart = has_rs485 = False
     has_ir = has_cellular = has_cli = False
+    has_temp_sensor = False
     uart_name = rs485_name = cli_uart_name = ""
 
     for p in peripherals:
@@ -76,6 +77,9 @@ def detect_peripherals(peripherals: list, load_model_func) -> dict:
                 cli_uart_name = uart_ref
                 if not uart_name:
                     uart_name = uart_ref
+        if model.get('type') == 'Internal_TempSensor':
+            has_temp_sensor = True
+            has_adc = True
 
     return {
         "drivers": drivers,
@@ -91,6 +95,7 @@ def detect_peripherals(peripherals: list, load_model_func) -> dict:
         "has_ir": has_ir,
         "has_cellular": has_cellular,
         "has_cli": has_cli,
+        "has_temp_sensor": has_temp_sensor,
         "uart_name": uart_name,
         "rs485_name": rs485_name,
         "cli_uart_name": cli_uart_name,

@@ -1,75 +1,119 @@
 {#
     drv_cli.h.j2 - CLI debug shell driver header
-    Provides typedefs, constants, and API for an interactive UART-based
-    command-line interface. Commands are registered at init time and
-    dispatched by the cli_task FreeRTOS task.
+    Powered by hw2c_cli (hw2c project native CLI engine).
+    Public API kept stable for backward compatibility.
 #}
-#ifndef __DRV_{{ peripheral.name | upper }}_H
-#define __DRV_{{ peripheral.name | upper }}_H
+
+#ifndef DRV_{{ peripheral.name | upper }}_H
+#define DRV_{{ peripheral.name | upper }}_H
 
 #include <stdint.h>
-#include <stdbool.h>
+#include <stddef.h>
 
-/* ---------- Maximum dimensions ---------- */
-#define CLI_MAX_COMMANDS    32
-#define CLI_MAX_CMD_LEN     64
-#define CLI_RINGBUF_SIZE    256
-#define CLI_MAX_ARGS        8
-#define CLI_PROMPT_DEFAULT  "> "
+/* ---- User-configurable constants ---- */
 
-/* ---------- Callback typedefs ---------- */
+/** Maximum number of registered commands */
+#define CLI_MAX_COMMANDS               32
 
-/**
- * @brief  Output function passed to every command handler.
- *         The handler writes output by calling out("text\r\n").
- */
+/** Maximum command line length in bytes (including '\0') */
+#define CLI_MAX_CMD_LEN               128
+
+/** Input ring buffer size */
+#define CLI_RINGBUF_SIZE              256
+
+/** Maximum argument count per command */
+#define CLI_MAX_ARGS                   10
+
+/** Default prompt string */
+#define CLI_PROMPT_DEFAULT             "> "
+
+/* hw2c_cli compile-time configuration — must precede the include,
+ * and must be defined AFTER CLI_* constants above */
+#define HW2C_CLI_CFG_MAX_ARGS           CLI_MAX_ARGS
+#define HW2C_CLI_CFG_MAX_CMD_LEN        CLI_MAX_CMD_LEN
+#define HW2C_CLI_CFG_HISTORY            1
+#define HW2C_CLI_CFG_HISTORY_DEPTH      8
+#define HW2C_CLI_CFG_TAB_COMPLETION     1
+#define HW2C_CLI_CFG_THREAD_SAFE        0   /* ISR/task sync via LwRB */
+#define HW2C_CLI_CFG_DYN_CMD            0   /* static table only      */
+#define HW2C_CLI_CFG_NO_ESCAPE          1   /* no VT100 on serial     */
+
+#include "hw2c_cli.h"
+
+/* ---- Public types ---- */
+
+/** Formatted output callback — same signature as cli_output */
 typedef void (*cli_output_fn)(const char *fmt, ...);
 
 /**
- * @brief  CLI command handler signature.
+ * @brief  Command handler callback.
+ *
+ *          When hw2c_cli dispatches a command, it calls this handler
+ *          with the parsed arguments and cli_output as the output
+ *          function.  This is the legacy signature retained for
+ *          backward compatibility — all built-in handlers use it.
+ *
  * @param  argc  Argument count (argv[0] is the command name)
- * @param  argv  Null-terminated array of tokens
- * @param  out   Output callback for writing responses
+ * @param  argv  Parsed token array, null-terminated.
+ * @param  out   Formatted output function (maps to cli_output)
  */
-typedef void (*cli_cmd_handler_t)(int argc, char *argv[], cli_output_fn out);
+typedef void (*cli_cmd_handler_t)(int argc, char *argv[],
+                                  cli_output_fn out);
 
-/* ---------- Command table entry ---------- */
+/** Registered command descriptor */
 typedef struct {
     const char         *name;
     const char         *help;
     cli_cmd_handler_t   handler;
 } cli_command_t;
 
-/* ---------- Public API ---------- */
+/* ---- Public API ---- */
 
 /**
- * @brief  Initialize the CLI subsystem on a pre-initialized UART.
- * @param  huart  Pointer to UART_HandleTypeDef already configured by main.c
- * @note   Configures NVIC, creates the RX semaphore, and starts interrupt RX.
- *         Does NOT call HAL_UART_Init — the caller must do that first.
+ * @brief  Initialise CLI subsystem (hw2c_cli + LwRB ring buffer +
+ *         UART interrupt-driven RX).
+ * @param  huart  Pointer to initialised UART_HandleTypeDef.
  */
 void cli_init(void *huart);
 
 /**
- * @brief  Register a user-defined command (called at init time).
- * @param  name     Command name (e.g. "gpio")
- * @param  help     Single-line help string
- * @param  handler  Function to call when the command is entered
+ * @brief  Register a command at runtime.
+ * @param  name     Command name (case-sensitive).
+ * @param  help     One-line help text.
+ * @param  handler  Handler function.
  */
 void cli_register_command(const char *name, const char *help,
                           cli_cmd_handler_t handler);
 
 /**
- * @brief  FreeRTOS task entry point for the CLI loop.
- *         Reads the ring buffer, edits a line, tokenizes, and dispatches.
- * @param  arg  Unused (required by FreeRTOS TaskFunction_t)
+ * @brief  FreeRTOS task entry point for the CLI shell.
+ *
+ *          Blocks on cli_rx_sem, drains the LwRB ring buffer, and
+ *          feeds each byte into hw2c_cli_input().  hw2c_cli handles
+ *          line editing, VT100 escape sequences, history navigation,
+ *          and tab completion.  When CR is pressed, the registered
+ *          command handler is invoked via a thin wrapper.
+ *
+ * @param  arg  Unused (required by FreeRTOS TaskFunction_t).
  */
 void cli_task(void *arg);
 
 /**
- * @brief  Formatted output to the CLI UART (printf-style).
- *         Safe for use from any task or command handler.
+ * @brief  Formatted output to the CLI UART.
+ *
+ *          Uses a stack-local 128-byte buffer (vsnprintf) and
+ *          transmits each byte via blocking HAL_UART_Transmit.
+ *          Safe to call from command handlers but NOT from ISR
+ *          (blocking HAL calls).
+ *
+ * @param  fmt  printf-style format string.
+ * @param  ...  Format arguments.
  */
 void cli_output(const char *fmt, ...);
 
-#endif /* __DRV_{{ peripheral.name | upper }}_H */
+/** Register built-in commands at boot. Called automatically from
+ *  cli_task(), but exposed for unit tests that need command
+ *  registration without starting the task loop. */
+void cli_register_builtin_commands(void);
+
+#endif /* DRV_{{ peripheral.name | upper }}_H */

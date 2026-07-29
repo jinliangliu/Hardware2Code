@@ -178,7 +178,7 @@ class TaskModel(BaseModel):
 
 VALID_PERIPHERAL_TYPES: frozenset[str] = frozenset({
     "Internal_RTC", "Internal_PWM", "Internal_ADC", "Internal_IR",
-    "Internal_CLI", "Internal_IWDG",
+    "Internal_CLI", "Internal_IWDG", "Internal_TempSensor",
     "UART_Serial",
     "I2C_Sensor_MPU6050", "I2C_EEPROM",
     "SPI_Flash_W25Q32", "SPI_Flash_Generic",
@@ -241,6 +241,7 @@ class PeripheralModel(BaseModel):
 class SleepModel(BaseModel):
     model_config = ConfigDict(extra="allow")
     mode: Optional[SleepMode] = None
+    tickless: Optional[bool] = None
 
 
 class LogModel(BaseModel):

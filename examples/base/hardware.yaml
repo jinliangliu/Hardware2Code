@@ -1,0 +1,78 @@
+# ============================================================
+# hw2c minimal system unit — hardware description layer
+#
+# The smallest viable hw2c-generated project. Every generated
+# firmware starts with this baseline:
+#
+#   MCU        STM32G0B1RET6 @ 16 MHz (HSI)
+#   Shell      USART2 (PA2/PA3) — CLI + log output @ 115200 baud
+#   RTC        LSE 32.768 kHz — 1 s periodic wakeup
+#   SysTick    TIM14 — 1 kHz FreeRTOS timebase (auto)
+# ============================================================
+
+mcu:
+  part: STM32G0B1RET6
+  clock_source: HSI             # HSI or HSE
+  clock_freq_hz: 16000000       # oscillator frequency in Hz
+  core_clock_mhz: 16            # SYSCLK = clock_freq / 1e6
+  hse_freq: 8000000             # HSE frequency (used if clock_source=HSE)
+
+pins:
+  # Indicator LED — startup heartbeat + user controllable via CLI
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+
+  # Button — EXTI falling edge input
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: falling
+
+  # Shell UART — debug CLI + log output (ST-Link virtual COM port)
+  - id: PA2
+    function: USART2_TX
+    af: 1
+  - id: PA3
+    function: USART2_RX
+    af: 1
+
+peripherals:
+  # Serial transport for the shell
+  - name: usart2
+    type: UART_Serial
+    instance: USART2
+    interface: uart
+    extra:
+      baudrate: 115200
+
+  # CLI interactive shell (registers commands, prints logs)
+  - name: shell
+    type: Internal_CLI
+    uart: usart2
+    extra:
+      prompt: "hw2c> "
+
+  # RTC (LSE) — 1 s periodic wakeup, timer service for state machines
+  - name: rtc
+    type: Internal_RTC
+    bus: RTC
+    extra:
+      clock_source: LSE
+
+  # On-chip temperature sensor (ADC1 CH16) — calibrated 0.1°C reading
+  - name: temp_sensor
+    type: Internal_TempSensor
+    extra:
+      temp_offset: 25.0          # manual calibration offset in °C
+
+log:
+  enable: true
+  ring_buf_size: 1024
+
+sleep:
+  mode: STOP1

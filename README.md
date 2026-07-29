@@ -47,7 +47,7 @@ flowchart LR
     subgraph Engine["代码生成引擎"]
         D1["Context Builder"]
         D2["Pin Allocator"]
-        D3["Jinja2 渲染<br>62 个模板"]
+        D3["Jinja2 渲染<br>模板"]
     end
 
     subgraph Output["固件输出"]
@@ -133,7 +133,7 @@ flowchart TB
 
     Inputs --> Merge --> Validate --> Context
 
-    Context --> J2["Jinja2 模板引擎<br>62 个 .j2 → .c/.h/CMakeLists.txt"]
+    Context --> J2["Jinja2 模板引擎<br>.j2 → .c/.h/CMakeLists.txt"]
 ```
 
 > 无论旧格式（单体 YAML）还是新格式（三层拆分），`mapper.py` 确保上游零改动。
@@ -145,15 +145,18 @@ flowchart TB
 | 类别 | 能力 |
 |------|------|
 | **硬件解析** | EasyEDA Pro `.enet` / KiCad XML / S-Expr 网表，CSV BOM，100+ 外设芯片启发式匹配 |
-| **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485、红外、EEPROM — 17 种驱动模板 |
+| **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485、红外、EEPROM、温度传感器 — 18 种驱动模板 |
 | **业务 DSL** | 层级状态机（复合子状态 / 并行区域 / 历史状态）、defer/timeline 时间控制、when 条件动作、ref 引用复用 |
 | **任务系统** | FreeRTOS 任务定义 + 优先级/栈配置，可视化拖拽绑定中断源与外设 |
-| **低功耗** | 自动唤醒源分析，Tickless Idle 钩子，STOP/STANDBY/SLEEP 支持 |
+| **低功耗** | 自动唤醒源分析，Tickless Idle 钩子，STOP/STANDBY/SLEEP 支持，USART 起始位唤醒 |
 | **Bootloader** | 双槽位 A/B，硬件 CRC32，TAMP 备份寄存器，启动失败自动回退 |
 | **FOTA** | BSDIFF 差分升级，减小 OTA 传输体积，完整性校验 + 回滚 |
+| **CLI 调试** | 交互式命令行，支持 help/version/uptime/free/tasks/sysinfo/reset/gpio/led/rtc 等 10+ 命令 |
+| **日志** | 环形缓冲区 + 中断驱动 USART TX，ISR 安全，零阻塞 |
 | **测试** | Unity 框架 + Mock HAL，PC 端脱离硬件运行，覆盖率报告 |
 | **通信** | Modbus RTU / MQTT 3.1.1 / RS485 半双工 / Cellular 4G Cat.1 |
 | **工具链** | `arm-none-eabi-gcc` + CMake + Ninja，VSCode launch/tasks 自动生成，ST-Link + DAP-Link 烧录 |
+| **可配置性** | 时钟源（HSI/HSE + PLL）、USART 波特率、GPIO/AF/IRQ 全部从 hardware.yaml 派生，无硬编码 |
 
 ---
 
@@ -164,19 +167,16 @@ flowchart TB
 git clone --recurse-submodules https://github.com/jinliangliu/hw2c.git
 cd hw2c && pip install -e .
 
-# 2. 从网表生成硬件描述
-hw2c parse parser/hardware_design/stm32g0b1_demo.enet \
-    --bom parser/hardware_design/stm32g0b1_demo.csv \
-    -o hardware.yaml --task task.yaml
+# 2. 直接生成基础示例（HSI 16MHz + USART2 CLI + RTC + 温度传感器）
+python -m generator.generate -i examples/base/hardware.yaml -o output/my_project
 
-# 3. 编辑 task.yaml / bind.yaml（或用 Web 前端辅助）
-
-# 4. 一键生成工程
-hw2c gen -i hardware.yaml --task task.yaml --bind bind.yaml -o output/my_project
-
-# 5. 编译烧录
-cd output/my_project && cmake -B build -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake && cmake --build build
+# 3. 编译烧录
+cd output/my_project
+cmake -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake && cmake --build build
 cmake --build build --target flash
+
+# 4. 连接串口（115200-8N1），回车激活 CLI
+# hw2c> help
 ```
 
 > Web 可视化配置台：[hw2c-web](https://github.com/jinliangliu/hw2c-web) — 提供拖拽式任务编排、引脚封装预览、时钟树配置与 YAML 实时编辑。
@@ -191,22 +191,46 @@ cmake --build build --target flash
 |------|------|------|-------|-----|------|
 | STM32G0 | STM32G0B1RE | Cortex-M0+ | 512 KB | 144 KB | 已验证 |
 
+### EDA 工具兼容性
+
+| EDA 工具 | 网表格式 | 导出方式 | 状态 |
+|----------|----------|----------|:--:|
+| EasyEDA Pro (嘉立创EDA专业版) | `.enet` JSON v2.0 | 原理图 → 导出 → 网表 (.enet) | 已支持 |
+| KiCad (Legacy) | `.net` XML (`<export version="D">`) | 文件 → 导出 → 网表 | 已支持 |
+| KiCad 6+ | S-Expression (`.kicad_net`) | 文件 → 导出 → 网表 | 已支持 |
+| Altium Designer | — | — | 不支持 |
+| OrCAD / Cadence | — | — | 不支持 |
+
+BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三列。支持 80+ 类外设芯片的启发式匹配（I2C 传感器、SPI Flash、RS485、4G 模块、WiFi/BT、GPS、CAN、电机驱动等）。
+
+参考文档：[EasyEDA Pro 网表格式](docs/reference/easyeda-pro-netlist-format.md) | [KiCad 网表格式](docs/reference/kicad-netlist-format.md)
+
 ### 外设覆盖
 
-| 外设 | 驱动 | 单元测试 | 业务示例 |
-|------|------|----------|----------|
-| GPIO + EXTI | `gpio.c` | `test_gpio.c` | `blinky_g0` |
-| USART | `drv_uart.c`, `drv_log.c` | `test_uart.c` | `cli_demo` |
-| I2C MPU6050 | `drv_i2c_mpu6050.c` | `test_mpu6050.c` | `mpu6050` |
-| SPI W25Q32 | `drv_spi_flash.c` | `test_spi_flash.c` | `spi_flash` |
-| ADC | `drv_adc.c` | `test_adc.c` | `adc_uart` |
-| PWM | `drv_pwm.c` | `test_pwm.c` | `pwm` |
-| RTC | `drv_rtc.c` | `test_rtc.c` | `rtc_advanced` |
-| IWDG | `drv_iwdg.c` | — | `bootloader_demo` |
-| RS485 | `drv_rs485.c` | — | `modbus_demo` |
-| Cellular 4G | `drv_cellular.c` | — | `cellular_mqtt` |
-| 红外 NEC/SIR | `drv_ir.c` | — | — |
-| I2C EEPROM | `drv_eeprom.c` | — | `i2c_spi_demo` |
+| 外设 | 驱动模板 | Builder | 单元测试 | 业务示例 |
+|------|----------|:--:|----------|----------|
+| GPIO + EXTI | `gpio.c` | ✓ | `test_gpio.c` | `blinky_g0` |
+| USART | `drv_uart.c`, `drv_log.c` | ✓ | `test_uart.c` | `cli_demo` |
+| I2C MPU6050 | `drv_i2c_mpu6050.c` | ✓ | `test_mpu6050.c` | `mpu6050` |
+| I2C EEPROM | `drv_eeprom.c` | ✓ | — | `i2c_spi_demo` |
+| SPI W25Q32 | `drv_spi_flash.c` | ✓ | `test_spi_flash.c` | `spi_flash` |
+| ADC | `drv_adc.c` | — | `test_adc.c` | — |
+| Internal TempSensor | `drv_temp_sensor.c` | — | — | VREFINT 补偿 + 手动偏移校准 |
+| PWM | `drv_pwm.c` | — | `test_pwm.c` | `pwm` |
+| RTC | `drv_rtc.c` | — | `test_rtc.c` | `rtc_advanced` |
+| IWDG | `drv_iwdg.c` | — | — | `bootloader_demo` |
+| RS485 | `drv_rs485.c` | ✓ | — | `modbus_demo` |
+| Cellular 4G | `drv_cellular.c` | ✓ | — | `cellular_mqtt` |
+| 红外 NEC/SIR | `drv_ir.c` | — | — | — |
+| MQTT 3.1.1 | `drv_mqtt.c` | — | `test_mqtt.c` | — |
+| Modbus RTU | `drv_modbus.c` | — | `test_modbus.c` | — |
+| CLI 调试终端 | `drv_cli.c` | — | `test_cli.c` | 10+ 命令，STOP 模式唤醒 |
+| FOTA 差分升级 | `drv_fota.c` | — | `test_fota_*.c` | `fota_demo` |
+| Bootloader (A/B) | `boot_*.c` | — | `test_boot_*.c` | `bootloader_demo` |
+| Log (日志) | `drv_log.c` | — | — | 环形缓冲 + 中断 TXE，GPIO/AF 可配 |
+| Sleep (低功耗) | `sleep.c` | — | — | `low_power_demo`, USART 唤醒 |
+
+> **未实现的外设**：FDCAN、USB Device、LPUART、LPTIM、DAC、COMP、CEC — MCU 硬件支持但驱动模板尚未实现。
 
 ### 状态机 DSL
 
@@ -228,19 +252,96 @@ behavior:
 
 ---
 
+## 开源资源
+
+本项目基于以下开源项目构建：
+
+### 嵌入式固件（Vendored C/C++）
+
+| 项目 | 版本 | 许可证 | 用途 |
+|------|------|--------|------|
+| [FreeRTOS-Kernel](https://github.com/FreeRTOS/FreeRTOS-Kernel) | V11.1.0 (202406 LTS) | MIT | RTOS 内核，任务调度 / Tickless 低功耗 / 队列 / 信号量 / 软件定时器 |
+| [CMSIS Core](https://github.com/ARM-software/CMSIS_5) | V5.3.0 | Apache 2.0 | Cortex-M0+ 核心访问层，编译器抽象头文件 |
+| STM32CubeG0 CMSIS Device | V1.4.5 | Apache 2.0 | STM32G0xx 设备定义、启动代码、system 初始化 |
+| STM32CubeG0 HAL | V1.4.5 (Bundle) | BSD-3-Clause | 硬件抽象层：GPIO / UART / SPI / I2C / ADC / RTC / DMA / FDCAN / TIM 等外设驱动 |
+| [LwRB](https://github.com/MaJerle/lwrb) | v3.2.0 | MIT | 轻量级无锁环形缓冲区，用于 USART 日志和 CLI 输入缓冲 |
+| [Unity](http://www.throwtheswitch.org/unity) | 2007–2026 | MIT | C 语言单元测试框架，PC 端离线验证驱动和状态机逻辑 |
+
+### Python 工具链（pip 安装）
+
+| 项目 | 最低版本 | 许可证 | 用途 |
+|------|----------|--------|------|
+| [PyYAML](https://pyyaml.org/) | >= 6.0 | MIT | 硬件 / 任务 / 绑定 YAML 配置文件解析 |
+| [Jinja2](https://jinja.palletsprojects.com/) | >= 3.0 | BSD-3-Clause | C 代码模板引擎，94 个 `.j2` 模板渲染为 `.c/.h` |
+| [Pydantic](https://docs.pydantic.dev/) | >= 2.0 | MIT | 类型安全数据模型与 Schema 校验 |
+| [libcst](https://libcst.readthedocs.io/) | >= 1.0.0 | MIT | C 源代码解析与 USER CODE 块合并 |
+| [Click](https://click.palletsprojects.com/) | >= 8.1.0 | BSD-3-Clause | CLI 命令行框架（`hw2c gen` / `hw2c parse`） |
+| [pytest](https://pytest.org/) | >= 7.0 | MIT | Python 单元测试运行器（开发依赖） |
+
+### 构建工具（系统安装）
+
+| 工具 | 用途 |
+|------|------|
+| [arm-none-eabi-gcc](https://developer.arm.com/Tools%20and%20Software/GNU%20Toolchain) | Cortex-M0+ 交叉编译器 |
+| [CMake](https://cmake.org/) >= 3.20 | 构建系统生成器 |
+| [OpenOCD](https://openocd.org/) | 可选 — 通过 CMSIS-DAP / ST-Link 烧录固件 |
+
+### 设计参考
+
+| 项目 | 许可证 | 说明 |
+|------|--------|------|
+| [rxi/log.c](https://github.com/rxi/log.c) | MIT | 日志子系统架构灵感来源（非直接引入） |
+
+> 上述所有依赖均为宽松许可证（MIT / Apache 2.0 / BSD-3-Clause），无 GPL/LGPL 等传染性许可证，对商业闭源使用无限制。
+
+---
+
 ## 目录
 
 ```
 hw2c
 ├── parser/          # 网表/BOM 解析管线
 ├── generator/       # 代码生成引擎（mapper / context / schemas / builders）
-├── templates/       # 62 个 Jinja2 模板（驱动 / 测试 / 配置 / CMake / 链接脚本）
-├── models/          # 17 个外设模型 YAML
-├── examples/        # 22 个示例项目（从 blinky 到 FOTA）
+├── templates/       # Jinja2 模板（18 类驱动 / 测试 / 配置 / CMake / 链接脚本）
+├── models/          # 18 个外设模型 YAML
+├── examples/        # 示例项目（base 最小系统 + 各外设 demo）
 ├── docs/            # MkDocs 文档（用户指南 / 开发者指南 / 路线图）
-├── static/          # Git 子模块（HAL / CMSIS / FreeRTOS / Unity）
+├── static/          # Git 子模块（HAL / CMSIS / FreeRTOS / Unity）+ third_party（LwRB）
 └── tests/           # 78 个生成器单元测试
 ```
+
+---
+
+## 已知限制
+
+### MCU 支持
+- 仅 **STM32G0B1RE** 经过完整测试验证；BOM 解析虽能识别 AT32/GD32 型号，但缺少对应的 MCU 数据库 JSON
+- Cortex-M0+ 无硬件浮点单元（FPU），不支持非对齐内存访问
+
+### 编译链
+- 仅支持 `arm-none-eabi-gcc` + CMake + Ninja，不支持 IAR / Keil MDK
+
+### 引脚与时钟
+- 引脚-总线映射表硬编码（`_STM32G0_PIN_BUS`），新增 MCU 需手动添加映射
+- I2C TIMINGR 使用预计算查找表（仅覆盖 16 MHz / 64 MHz I2C 时钟场景），非全频率自适应
+- 时钟源（HSI/HSE）和 PLL 倍频/分频参数可通过 `hardware.yaml` 配置，支持动态生成 SystemClock_Config
+
+### 网表与 BOM
+- BOM 解析依赖启发式字符串匹配，非标准元件名可能漏识别
+- 仅支持 CSV 格式 BOM，不支持 `.xlsx` 或 EasyEDA 原生 BOM 格式
+- SPI CS 引脚自动检测在复杂拓扑中可能分配不准
+
+### 状态机
+- 仅支持 **一层** 嵌套复合状态（`state.states`），不支持多层深嵌套
+- 不支持 Choice Point（选择伪状态）和 Fork/Join（同步伪状态）
+- `event_t` 结构仅含 `id`，不支持事件参数传递
+
+### 模拟外设
+- 内部温度传感器（ADC1 CH16）绝对精度约 ±5-10°C，需通过 `temp_offset` 手动校准；适合相对温度变化检测，不适合精密测温
+
+### Web 前端
+- 解析进度无可视化反馈（目前为 WebSocket 单次推送最终结果）
+- Web 端 YAML 编辑器仅支持单体 legacy 格式预览，三层拆分编辑功能开发中
 
 ---
 
@@ -252,6 +353,6 @@ hw2c
 | v0.6 | `bind.yaml` 事件系统完整实现，Web 前端 BindGraph 联动 |
 | v1.0 | 免编程工作流闭环，EDA 上传 → 拖拽编排 → 一键固件 |
 
-详见：[ROADMAP.md](ROADMAP.md) | [three-layer-split.md](docs/plans/three-layer-split.md)
+详见：[milestones](docs/roadmap/milestones.md) | [three-layer-split](docs/plans/three-layer-split.md)
 
 ---

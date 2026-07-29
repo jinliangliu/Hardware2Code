@@ -41,7 +41,10 @@ def parse_netlist_enet(enet_text: str) -> str:
     try:
         enet = json.loads(enet_text)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in .enet netlist: {e}") from e
+        raise ValueError(
+            f"Invalid JSON in .enet netlist at line {e.lineno}, "
+            f"column {e.colno} (pos {e.pos}): {e.msg}"
+        ) from e
 
     components_raw = enet.get("components", {})
     if not components_raw:

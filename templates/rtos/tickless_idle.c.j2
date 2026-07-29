@@ -7,10 +7,18 @@
  * Clock strategy:
  *   - RTCCLK_DIV16 (2048 Hz) for sub-second resolution (max ~32s sleep)
  *   - CK_SPRE (1 Hz) fallback for very long sleeps (> 32s)
+ *
+ * STOP mode strategy:
+ *   - The WFI + SLEEPDEEP-clear sequence is placed in SRAM (.ramfunc section)
+ *     because Flash is not immediately accessible after STOP exit — the first
+ *     instruction fetch after WFI would HardFault if executed from Flash.
+ *   - The linker places .ramfunc inside .data (RAM AT>FLASH), so the startup
+ *     code automatically copies it to SRAM before main().
  */
 #include "stm32g0xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "drv_log.h"
 
 /* RTC handle - must be initialized by main before scheduler starts */
 extern RTC_HandleTypeDef hrtc;
@@ -27,6 +35,62 @@ extern void SystemClock_Config(void);
 #define TICKLESS_MAX_COUNTER    0xFFFF
 
 /*
+ * enter_stop0_and_wake — EXECUTED FROM SRAM
+ *
+ * This function must live in SRAM because after STOP mode exit, Flash is
+ * not immediately accessible. The first instruction fetch after WFI would
+ * cause a bus fault → HardFault if executed from Flash.
+ *
+ * The function:
+ * 1. Enables USART2 STOP-mode wakeup (UESM + HSI keeper)
+ * 2. Enters STOP0 with main regulator ON via WFI with SLEEPDEEP
+ * 3. On wakeup (RTC or USART2), clears SLEEPDEEP (SCB access, always safe)
+ * 4. Clears USART2 wakeup flag
+ *
+ * All post-WFI code uses stack-based addressing (no Flash literal pools).
+ */
+__attribute__((section(".ramfunc"), used))
+static void enter_stop0_and_wake(void)
+{
+    /*
+     * Configure USART2 for STOP-mode wakeup:
+     *  - HSI16 as USART2 clock (stays alive in STOP)
+     *  - HSIKERON to keep HSI oscillator running
+     *  - UESM to allow USART to generate wakeup on start-bit
+     *
+     * Note: Setting UESM gates the USART kernel clock after the
+     * current frame completes, blocking TX until STOP is entered.
+     * After wakeup, UESM is cleared and the USART is re-initialized
+     * in vPortSuppressTicksAndSleep.
+     */
+    log_uart_stop_wakeup_enable();
+
+    /* Configure STOP0 with main regulator ON */
+    CLEAR_BIT(PWR->CR1, PWR_CR1_LPMS);
+
+    /* Keep debug clocks running during STOP so SWD stays alive. */
+    SET_BIT(DBG->CR, DBG_CR_DBG_STOP);
+
+    /* Load SCB->SCR address into local variable (stack = SRAM, not Flash).
+     * This avoids the compiler placing a literal pool load after WFI. */
+    volatile uint32_t * const scr = &(SCB->SCR);
+
+    /* Set SLEEPDEEP and enter STOP mode */
+    *scr |= SCB_SCR_SLEEPDEEP_Msk;
+    __WFI();
+
+    /*
+     * ---------- WAKEUP FROM STOP ----------
+     * HSI16 auto-restarts; CPU resumes here.
+     * We are executing from SRAM: no Flash read → no bus fault.
+     * scr points to stack variable → no literal pool access.
+     */
+
+    /* Clear SLEEPDEEP — SCB PPB bus is always accessible */
+    *scr &= ~SCB_SCR_SLEEPDEEP_Msk;
+}
+
+/*
  * vPortSuppressTicksAndSleep - FreeRTOS tickless idle hook.
  * Called by the idle task when configUSE_TICKLESS_IDLE = 1.
  *
@@ -34,15 +98,15 @@ extern void SystemClock_Config(void);
  * 1. Calculate sleep duration in RTC counter ticks (RTCCLK_DIV16)
  * 2. Disable interrupts and check if a task was woken since we calculated
  * 3. Configure RTC WakeUp Timer for the sleep duration
- * 4. Enter STOP mode (HAL_PWR_EnterSTOPMode)
- * 5. On wake, reconfigure system clock (HSI)
+ * 4. Enter STOP mode via SRAM-based enter_stop0_and_wake()
+ * 5. On wake, reconfigure system clock (HSI) and USART2
  * 6. Inform FreeRTOS how many ticks elapsed
  * 7. Restore periodic RTC wakeup timer
  */
 void vPortSuppressTicksAndSleep(TickType_t xExpectedIdleTime)
 {
     if (xExpectedIdleTime <= 2) {
-        /* Too short to justify sleep overhead - just do WFI */
+        /* Too short to justify sleep overhead - just do WFI (SLEEP, not STOP) */
         __WFI();
         return;
     }
@@ -99,17 +163,28 @@ void vPortSuppressTicksAndSleep(TickType_t xExpectedIdleTime)
     HAL_SuspendTick();
 
     /*
-     * STOP0 mode: HSI off, HSE off, PLL off. Wake on RTC or EXTI.
-     * STM32G0 STOP0 current ~3-5 uA (typ).
-     * LSI/LSE keep running, so RTC wakeup timer continues counting.
+     * Enter STOP0 with main regulator ON.
+     * The enter_stop0_and_wake() function executes from SRAM so that
+     * post-WFI instruction fetch does not access Flash (which would
+     * cause a bus fault → HardFault).
      */
-    HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+    enter_stop0_and_wake();
 
     /* -------- Wakeup: reconfigure clocks -------- */
-    /* System clock was stopped — reconfigure HSI.
+    /*
+     * System clock was stopped — reconfigure HSI.
      * RTC backup domain (LSI/LSE) survives STOP, but the APB interface
-     * needs re-synchronization before accessing RTC registers. */
+     * needs re-synchronization before accessing RTC registers.
+     */
     SystemClock_Config();
+
+    /*
+     * Clear USART2 UESM + wakeup flag. Must happen AFTER SystemClock_Config
+     * because USART APB registers require a stable peripheral clock.
+     * Then re-initialize USART hardware (powered down during STOP).
+     */
+    log_uart_stop_wakeup_clear();
+    log_uart_reinit();
 
     /* Resume SysTick */
     HAL_ResumeTick();

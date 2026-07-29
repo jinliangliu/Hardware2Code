@@ -1,0 +1,188 @@
+{#
+    drv_temp_sensor.c.j2 - STM32G0 on-chip temperature sensor driver
+
+    ADC1_CH16 reads the internal bandgap temperature sensor. The STM32G0B1
+    datasheet (DS13560) specifies factory calibration at 30°C and 110°C
+    stored in system memory at TS_CAL1 (0x1FFF75A8) and TS_CAL2 (0x1FFF75CA).
+
+    VREFINT compensation corrects for VDDA deviation from the factory
+    calibration voltage (3.0 V).  Without this, a VDDA of 3.3 V can cause
+    ~10 % error in the computed temperature.
+
+    Formula:
+        Temp = TS_CAL1_TEMP + (TS_CAL2_TEMP - TS_CAL1_TEMP) *
+              (TS_DATA_cal - TS_CAL1) / (TS_CAL2 - TS_CAL1)
+
+        where TS_DATA_cal = TS_DATA_raw * VREFINT_CAL / VREFINT_meas
+
+    The result is scaled by 10 (fixed-point, unit 0.1°C) and returned as
+    int16_t.  Conversion uses 32-bit intermediate arithmetic to avoid
+    overflow on 12-bit ADC values.
+#}
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#endif
+
+#include "drv_{{ peripheral.name }}.h"
+
+/*
+ * STM32G0B1 factory calibration values in system memory.
+ * These are factory-programmed and valid for VDDA = 3.0V.
+ */
+#ifndef TS_CAL1_ADDR
+#define TS_CAL1_ADDR      ((uint16_t *)0x1FFF75A8U)
+#endif
+#ifndef VREFINT_CAL_ADDR
+#define VREFINT_CAL_ADDR  ((uint16_t *)0x1FFF75AAU)
+#endif
+#ifndef TS_CAL2_ADDR
+#define TS_CAL2_ADDR      ((uint16_t *)0x1FFF75CAU)
+#endif
+#define TS_CAL1_TEMP   30   /* °C at TS_CAL1 */
+#define TS_CAL2_TEMP   110  /* °C at TS_CAL2 */
+
+/* Private handle — shared with drv_adc if both are present */
+#ifndef TEST
+static ADC_HandleTypeDef htsens_adc;
+static int initialized = 0;
+#endif
+
+void temp_sensor_init(void)
+{
+#ifndef TEST
+    uint32_t wait_loops;
+
+    /* ADC1 clock may already be enabled by system init or drv_adc */
+    __HAL_RCC_ADC_CLK_ENABLE();
+
+    htsens_adc.Instance = ADC1;
+    htsens_adc.Init.ClockPrescaler        = ADC_CLOCK_SYNC_PCLK_DIV2;
+    htsens_adc.Init.Resolution            = ADC_RESOLUTION_12B;
+    htsens_adc.Init.DataAlign             = ADC_DATAALIGN_RIGHT;
+    htsens_adc.Init.ScanConvMode          = ADC_SCAN_DISABLE;
+    htsens_adc.Init.EOCSelection          = ADC_EOC_SINGLE_CONV;
+    htsens_adc.Init.LowPowerAutoWait      = DISABLE;
+    htsens_adc.Init.LowPowerAutoPowerOff  = DISABLE;
+    htsens_adc.Init.ContinuousConvMode    = DISABLE;
+    htsens_adc.Init.NbrOfConversion       = 1;
+    htsens_adc.Init.DiscontinuousConvMode = DISABLE;
+    htsens_adc.Init.ExternalTrigConv      = ADC_SOFTWARE_START;
+    htsens_adc.Init.ExternalTrigConvEdge  = ADC_EXTERNALTRIGCONVEDGE_NONE;
+    htsens_adc.Init.DMAContinuousRequests = DISABLE;
+    htsens_adc.Init.Overrun               = ADC_OVR_DATA_PRESERVED;
+
+    if (HAL_ADC_Init(&htsens_adc) != HAL_OK) {
+        while (1) {}
+    }
+
+    /* Enable temperature sensor and internal voltage reference */
+    SET_BIT(ADC1_COMMON->CCR, ADC_CCR_TSEN);
+    SET_BIT(ADC1_COMMON->CCR, ADC_CCR_VREFEN);
+
+    /*
+     * Wait for temperature sensor startup (DS13560: tSTART max 10 µs).
+     * At 64 MHz HCLK, 640 cycles ≈ 10 µs.
+     */
+    for (wait_loops = 0; wait_loops < 640U; wait_loops++) {
+        __NOP();
+    }
+
+    initialized = 1;
+#endif
+}
+
+int16_t temp_sensor_read_celsius(void)
+{
+#ifndef TEST
+    uint16_t ts_data_raw, ts_cal1, ts_cal2;
+    uint16_t vrefint_meas, vrefint_cal;
+    uint32_t ts_data_cal;
+    int32_t numerator, denominator;
+
+    if (!initialized) {
+        return 0;
+    }
+
+    /* Read factory calibration constants from system memory */
+    ts_cal1      = *TS_CAL1_ADDR;
+    vrefint_cal  = *VREFINT_CAL_ADDR;
+    ts_cal2      = *TS_CAL2_ADDR;
+
+    /*
+     * Step 1: Read VREFINT to measure actual VDDA.
+     * VREFINT is a stable ~1.2 V bandgap reference.
+     * VREFINT_CAL / VREFINT_meas = VDDA_actual / 3.0 V
+     */
+    {
+        ADC_ChannelConfTypeDef sConfig = {0};
+        sConfig.Channel      = ADC_CHANNEL_VREFINT;
+        sConfig.Rank         = ADC_REGULAR_RANK_1;
+        sConfig.SamplingTime = ADC_SAMPLETIME_160CYCLES_5;
+        HAL_ADC_ConfigChannel(&htsens_adc, &sConfig);
+    }
+    HAL_ADC_Start(&htsens_adc);
+    if (HAL_ADC_PollForConversion(&htsens_adc, 10) != HAL_OK) {
+        HAL_ADC_Stop(&htsens_adc);
+        return 0;
+    }
+    vrefint_meas = (uint16_t)HAL_ADC_GetValue(&htsens_adc);
+    HAL_ADC_Stop(&htsens_adc);
+
+    if (vrefint_meas == 0) {
+        return 0;  /* corrupted reading */
+    }
+
+    /*
+     * Step 2: Read temperature sensor (ADC channel 16).
+     */
+    {
+        ADC_ChannelConfTypeDef sConfig = {0};
+        sConfig.Channel      = ADC_CHANNEL_TEMPSENSOR;
+        sConfig.Rank         = ADC_REGULAR_RANK_1;
+        sConfig.SamplingTime = ADC_SAMPLETIME_160CYCLES_5;
+        HAL_ADC_ConfigChannel(&htsens_adc, &sConfig);
+    }
+    HAL_ADC_Start(&htsens_adc);
+    if (HAL_ADC_PollForConversion(&htsens_adc, 10) != HAL_OK) {
+        HAL_ADC_Stop(&htsens_adc);
+        return 0;
+    }
+    ts_data_raw = (uint16_t)HAL_ADC_GetValue(&htsens_adc);
+    HAL_ADC_Stop(&htsens_adc);
+
+    /*
+     * Step 3: Compensate TS_DATA for VDDA deviation.
+     * TS_DATA_cal = TS_DATA_raw * VREFINT_CAL / VREFINT_meas
+     *
+     * Example: if VDDA = 3.3 V:
+     *   VREFINT_meas ≈ VREFINT_CAL * 3.0 / 3.3  (lower)
+     *   TS_DATA_cal  ≈ TS_DATA_raw * 3.3 / 3.0   (higher, restores 3.0 V eq.)
+     */
+    ts_data_cal = (uint32_t)ts_data_raw
+                * (uint32_t)vrefint_cal
+                / (uint32_t)vrefint_meas;
+
+    /*
+     * Step 4: Linear interpolation using compensated TS_DATA.
+     *
+     * Temperature(°C * 10) = TS_CAL1_TEMP * 10
+     *     + (TS_CAL2_TEMP - TS_CAL1_TEMP) * 10
+     *     * (TS_DATA_cal - TS_CAL1) / (TS_CAL2 - TS_CAL1)
+     *
+     *   = 300 + 800 * (TS_DATA_cal - TS_CAL1) / (TS_CAL2 - TS_CAL1)
+     */
+    denominator = (int32_t)ts_cal2 - (int32_t)ts_cal1;
+    if (denominator == 0) {
+        return 0;  /* corrupted calibration */
+    }
+    numerator = (int32_t)(TS_CAL2_TEMP - TS_CAL1_TEMP) * 10
+              * ((int32_t)ts_data_cal - (int32_t)ts_cal1);
+
+    return (int16_t)((int32_t)(TS_CAL1_TEMP * 10) + numerator / denominator);
+#else
+    (void)0;
+    return 250;  /* 25.0°C for test mocks */
+#endif
+}

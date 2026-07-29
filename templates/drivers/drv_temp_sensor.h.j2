@@ -1,0 +1,34 @@
+{#
+    drv_temp_sensor.h.j2 - STM32G0 on-chip temperature sensor driver header
+
+    Reads the internal temperature sensor via ADC1_CH16 with factory
+    calibration values from system memory.
+
+    Returns temperature in unit of 0.1 °C (e.g. 255 = 25.5°C).
+#}
+#ifndef __DRV_{{ peripheral.name | upper }}_H
+#define __DRV_{{ peripheral.name | upper }}_H
+
+#include <stdint.h>
+
+#ifndef TEST
+#include "stm32g0xx_hal.h"
+#endif
+
+/**
+ * @brief   Initialize ADC1 for internal temperature sensor (CH16)
+ * @note    Enables TSEN and VREFEN in ADC_CCR.
+ *          Must be called after HAL_Init() and system clock config.
+ *          Safe to call even if ADC_Init() from drv_adc already ran.
+ */
+void temp_sensor_init(void);
+
+/**
+ * @brief   Read on-chip temperature via ADC1 CH16 with calibration
+ * @return  Temperature in 0.1 °C units (e.g. 273 = 27.3°C).
+ *          On STM32G0B1 the sensor range is -40 to +125 °C.
+ * @note    Calls HAL_ADC functions; assumes ADC1 is already initialized.
+ */
+int16_t temp_sensor_read_celsius(void);
+
+#endif /* __DRV_{{ peripheral.name | upper }}_H */

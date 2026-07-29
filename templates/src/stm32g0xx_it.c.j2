@@ -31,9 +31,6 @@ void {{ handler }}(void)
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
         event_t evt = { .id = EVENT_BUTTON_PRESS, .param = 0 };
         xQueueSendFromISR(event_queue, &evt, &xHigherPriorityTaskWoken);
-{% if has_log %}
-        log_info("BUTTON pressed (PC13)");
-{% endif %}
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
     {% endif %}
@@ -50,12 +47,22 @@ void TIM14_IRQHandler(void)
     HAL_TIM_IRQHandler(&TimHandle);
 }
 
+{% if has_log or has_cli %}
+/* USART2 interrupt — TXE forwarded to log, RXNE forwarded to CLI */
 {% if has_log %}
-/* USART2 日志输出中断 — 转发到 drv_log.c 中的处理函数 */
 extern void log_uart_irq_handler(void);
+{% endif %}
+{% if has_cli %}
+extern void cli_uart_irq_handler(void);
+{% endif %}
 
 void USART2_LPUART2_IRQHandler(void)
 {
+{% if has_log %}
     log_uart_irq_handler();
+{% endif %}
+{% if has_cli %}
+    cli_uart_irq_handler();
+{% endif %}
 }
 {% endif %}

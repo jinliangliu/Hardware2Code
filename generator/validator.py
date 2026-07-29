@@ -603,3 +603,150 @@ def validate_hardware(hw: dict) -> list[ValidationError]:
                         errors.append(f"[WARNING] Variable '{var.get('name', 'unknown')}' has type '{var['type']}' which is not in the recommended list: {sorted(_VALID_C_TYPES)} and not a custom type.")
 
     return [_parse_error(e) for e in errors]
+
+
+# =========================================================================
+# Cross-layer validation: bind.yaml → hardware.yaml / task.yaml
+# =========================================================================
+
+def validate_bind_cross_refs(
+    hw_raw: dict,
+    task_raw: dict | None,
+    bind_raw: dict | None,
+) -> list[ValidationError]:
+    """Validate that bind.yaml references are consistent with hardware.yaml
+    and task.yaml.
+
+    Checks:
+      - bind.interrupt[].pin exists in hw.pins
+      - bind.interrupt[].task exists in task.app_tasks
+      - bind.interrupt[].event matches a pin with EXTI enabled
+      - bind.peripheral_assign[].peripheral exists in hw.peripherals
+      - bind.peripheral_assign[].task exists in task.app_tasks
+      - bind.routing[].from / .to tasks exist in task.app_tasks
+      - bind.routing has required 'signal' field
+
+    Args:
+        hw_raw:  Parsed hardware.yaml dict.
+        task_raw: Parsed task.yaml dict (may be None).
+        bind_raw: Parsed bind.yaml dict (may be None).
+
+    Returns:
+        List of ValidationError objects.
+    """
+    errors: list[str] = []
+
+    if not bind_raw or not isinstance(bind_raw, dict):
+        return []
+
+    # ---------- Collect validated name sets ----------
+    pin_ids: set[str] = set()
+    for p in hw_raw.get("pins", []):
+        if isinstance(p, dict) and p.get("id"):
+            pin_ids.add(p["id"].upper())
+
+    task_names: set[str] = set()
+    if task_raw and isinstance(task_raw, dict):
+        # System event task name is also a valid task target
+        et = task_raw.get("event_task", {})
+        if isinstance(et, dict) and et.get("name"):
+            task_names.add(et["name"])
+        for t in task_raw.get("app_tasks", []):
+            if isinstance(t, dict) and t.get("name"):
+                task_names.add(t["name"])
+
+    peri_names: set[str] = set()
+    for p in hw_raw.get("peripherals", []):
+        if isinstance(p, dict) and p.get("name"):
+            peri_names.add(p["name"])
+
+    # ---------- Validate interrupt bindings ----------
+    for i, binding in enumerate(bind_raw.get("interrupt", [])):
+        if not isinstance(binding, dict):
+            continue
+        pin_id = binding.get("pin", "")
+        task_name = binding.get("task", "")
+        event_name = binding.get("event", "")
+        loc = f"bind.yaml interrupt #{i + 1}"
+
+        if pin_id:
+            if pin_id.upper() not in pin_ids:
+                errors.append(
+                    f"[ERROR] {loc}: pin '{pin_id}' not found in hardware.yaml pins. "
+                    f"Available: {sorted(pin_ids)}"
+                )
+            else:
+                # Check EXTI is enabled for this pin
+                pin_info = next(
+                    (p for p in hw_raw.get("pins", [])
+                     if isinstance(p, dict) and p.get("id", "").upper() == pin_id.upper()),
+                    None,
+                )
+                if pin_info:
+                    exti = pin_info.get("exti", {})
+                    if isinstance(exti, dict) and not exti.get("enable"):
+                        errors.append(
+                            f"[WARNING] {loc}: pin '{pin_id}' has event "
+                            f"'{event_name}' but EXTI is not enabled in hardware.yaml."
+                        )
+
+        if task_name and task_names:
+            if task_name not in task_names:
+                errors.append(
+                    f"[ERROR] {loc}: task '{task_name}' not found in task.yaml "
+                    f"app_tasks. Available: {sorted(task_names)}"
+                )
+
+    # ---------- Validate peripheral_assign ----------
+    for i, assign in enumerate(bind_raw.get("peripheral_assign", [])):
+        if not isinstance(assign, dict):
+            continue
+        peri_name = assign.get("peripheral", "")
+        task_name = assign.get("task", "")
+        loc = f"bind.yaml peripheral_assign #{i + 1}"
+
+        if peri_name and peri_name not in peri_names:
+            # Case-insensitive check
+            peri_lower = {p.lower(): p for p in peri_names}
+            if peri_name.lower() in peri_lower:
+                errors.append(
+                    f"[WARNING] {loc}: peripheral '{peri_name}' case mismatch. "
+                    f"Did you mean '{peri_lower[peri_name.lower()]}'?"
+                )
+            else:
+                errors.append(
+                    f"[ERROR] {loc}: peripheral '{peri_name}' not found in "
+                    f"hardware.yaml peripherals. Available: {sorted(peri_names)}"
+                )
+
+        if task_name and task_names and task_name not in task_names:
+            errors.append(
+                f"[ERROR] {loc}: task '{task_name}' not found in task.yaml "
+                f"app_tasks. Available: {sorted(task_names)}"
+            )
+
+    # ---------- Validate routing ----------
+    for i, route in enumerate(bind_raw.get("routing", [])):
+        if not isinstance(route, dict):
+            continue
+        from_task = route.get("from", "")
+        to_task = route.get("to", "")
+        signal = route.get("signal", "")
+        loc = f"bind.yaml routing #{i + 1}"
+
+        if not signal:
+            errors.append(f"[ERROR] {loc}: missing required 'signal' field.")
+
+        if from_task and task_names and from_task not in task_names:
+            errors.append(
+                f"[ERROR] {loc}: from_task '{from_task}' not found in "
+                f"task.yaml app_tasks. Available: {sorted(task_names)}"
+            )
+
+        if to_task and task_names and to_task not in task_names:
+            errors.append(
+                f"[ERROR] {loc}: to_task '{to_task}' not found in "
+                f"task.yaml app_tasks. Available: {sorted(task_names)}"
+            )
+
+    return [_parse_error(e) for e in errors]

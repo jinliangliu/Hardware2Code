@@ -71,12 +71,36 @@ void cli_task(void *arg);
 void fota_task(void *arg);
 {% endif %}
 
-/* ------- System clock configuration (HSI 16MHz default) ------- */
+/* ------- System clock configuration ------- */
 void SystemClock_Config(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
+{% if mcu.clock_source == 'HSE' %}
+    /* HSE oscillator */
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+    RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+{% if mcu.clock_freq_hz > mcu.hse_freq %}
+    /* PLL enabled: HSE × PLLN / PLLM / PLLR */
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+    RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV1;
+    RCC_OscInitStruct.PLL.PLLN = {{ (mcu.clock_freq_hz / mcu.hse_freq) | int }};
+    RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV1;
+{% else %}
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+{% endif %}
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) while(1);
+
+    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1;
+{% if mcu.clock_freq_hz > mcu.hse_freq %}
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+{% else %}
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
+{% endif %}
+{% else %}
+    /* HSI oscillator */
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
     RCC_OscInitStruct.HSIState = RCC_HSI_ON;
     RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -85,9 +109,16 @@ void SystemClock_Config(void)
 
     RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1;
     RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+{% endif %}
     RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+{% if mcu.clock_freq_hz <= 16000000 %}
     if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) while(1);
+{% elif mcu.clock_freq_hz <= 48000000 %}
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK) while(1);
+{% else %}
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) while(1);
+{% endif %}
 }
 
 /* ------- I2C initialization (if peripherals with I2C are present) ------- */
@@ -254,6 +285,9 @@ int main(void)
 {% endif %}
 {% elif p.type == 'Internal_RTC' %}
     RTC_Init();
+{% elif p.type == 'Internal_TempSensor' %}
+    temp_sensor_init();
+    log_info("temp_sensor_init() OK");
 {% elif p.type == 'UART_Serial' %}
 {% if not (has_log and p.instance == 'USART2') %}
     MX_{{ p.instance }}_UART_Init();
@@ -265,7 +299,12 @@ int main(void)
 {% endfor %}
 
 {% if has_cli %}
+{% if has_log and cli_uart_name == 'usart2' %}
+    /* USART2 shared with log — reuse log's initialized handle */
+    cli_init(log_get_huart());
+{% else %}
     cli_init(&huart_{{ cli_uart_name }});
+{% endif %}
 {% endif %}
 
 {% if has_rtc %}
