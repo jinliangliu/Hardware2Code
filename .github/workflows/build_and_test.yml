@@ -115,7 +115,7 @@ jobs:
         id: generate
         run: |
           mkdir -p ${{ env.OUTPUT_DIR }}
-          python generator/generate.py \
+          python -m generator.generate \
             -i ${{ env.EXAMPLE_PATH }}/hardware.yaml \
             --task ${{ env.EXAMPLE_PATH }}/task.yaml \
             --bind ${{ env.EXAMPLE_PATH }}/bind.yaml \
