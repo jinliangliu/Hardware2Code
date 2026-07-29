@@ -4,7 +4,7 @@
 
 - **功能**：HSI 16MHz 最小系统，含 CLI 交互终端、RTC、内部温度传感器（VREFINT 补偿）、STOP1 低功耗 USART 唤醒。所有 GPIO/AF/IRQ 从 `hardware.yaml` pins 派生，无硬编码。
 - **硬件连接**：USART2 → PA2(TX)/PA3(RX) (115200bps)；LED → PC0（低电平有效）；按键 → PC13。
-- **生成命令**：`python -m generator.generate -i examples/base/hardware.yaml -o output/my_project`
+- **生成命令**：`python -m generator.generate -i examples/base/hardware.yaml -o output/my_project --task examples/base/task.yaml --bind examples/base/bind.yaml`
 
 ### hardware.yaml 关键配置
 
