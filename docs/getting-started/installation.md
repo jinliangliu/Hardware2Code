@@ -50,14 +50,15 @@ pip install -e ".[dev]"
 ## Verify Installation
 
 ```bash
-python generator/generate.py -i examples/blinky_g0/hardware.yaml -o output/blinky_g0
+hw2c gen -i examples/blinky_g0/hardware.yaml -o output/blinky_g0 --task examples/blinky_g0/task.yaml --bind examples/blinky_g0/bind.yaml
 ```
 
 If successful, you should see output confirming the project generation, followed by:
 
 ```bash
 cd output/blinky_g0
-make
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake
+cmake --build build
 ```
 
 ## Toolchain Setup

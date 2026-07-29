@@ -43,7 +43,9 @@ cd hw2c
 pip install -r requirements.txt
 
 # 3. 生成工程
-python generator/generate.py -i examples/blinky_g0/hardware.yaml -o output/blinky_g0
+hw2c gen -i examples/blinky_g0/hardware.yaml -o output/blinky_g0 --task examples/blinky_g0/task.yaml --bind examples/blinky_g0/bind.yaml
 
 # 4. 编译
-cd output/blinky_g0 && make
+cd output/blinky_g0
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake
+cmake --build build
