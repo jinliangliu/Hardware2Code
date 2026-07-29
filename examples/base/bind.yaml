@@ -27,5 +27,5 @@ peripheral_assign:
 
 interrupt:
   - pin: PC13
-    task: button_task
+    task: events_process_task
     event: EXTI13

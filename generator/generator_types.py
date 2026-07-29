@@ -123,6 +123,7 @@ class BuildContext(TypedDict):
     modbus_name: str
     cli_uart_name: str
     behavior: dict
+    periodic_events: list[dict]
     boot_config: dict
     hil: HilConfig
     boot_max_retries: int

@@ -161,6 +161,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     # ---------- 业务逻辑 DSL ----------
     behavior = hw.get('behavior', {})
     has_behavior = bool(behavior)
+    periodic_events = hw.get('periodic_events', [])
 
     has_led = any(pin.get('label') == 'LED' for pin in pins)
     has_led_task = any(t.get('name') == 'led_task' for t in app_tasks)
@@ -801,10 +802,44 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
 
     # ---------- 预计算：RTC 时钟源 ----------
     rtc_clock_source = "LSI"
+    rtc_wakeup_interval_ms = 100  # default: 100 ms
+    rtc_alarms = []               # list of {period_s: int, event: str}
+    rtc_init_time = {"year": 0, "month": 1, "day": 1, "hour": 0, "min": 0, "sec": 0}
     for p in peripherals:
         if p.get("type") == "Internal_RTC":
-            rtc_clock_source = p.get("clock_source", rtc_clock_source)
+            rtc_clock_source = p.get("extra", {}).get("clock_source", rtc_clock_source)
             p["_clock_source"] = rtc_clock_source  # inject into peripheral dict
+            extra = p.get("extra", {})
+            # Parse wakeup interval
+            wkup = extra.get("wakeup_interval_ms", None)
+            if wkup is not None:
+                rtc_wakeup_interval_ms = int(wkup)
+            # Parse alarms
+            alarms_raw = extra.get("alarms", [])
+            for alarm in alarms_raw:
+                rtc_alarms.append({
+                    "period_ms": int(alarm.get("period_s", 0)) * 1000,
+                    "event": alarm.get("event", "").upper(),
+                })
+            # Parse initial_time from extra config
+            init_str = extra.get("initial_time", "")
+            if init_str:
+                try:
+                    # Format: "YYYY-MM-DD HH:MM:SS"
+                    date_part, time_part = init_str.split(" ")
+                    y, mo, d = date_part.split("-")
+                    h, mi, s = time_part.split(":")
+                    rtc_year = int(y) - 2000
+                    rtc_init_time = {
+                        "year": max(0, min(99, rtc_year)),
+                        "month": int(mo),
+                        "day": int(d),
+                        "hour": int(h),
+                        "min": int(mi),
+                        "sec": int(s),
+                    }
+                except (ValueError, AttributeError):
+                    pass  # malformed, use defaults
 
     # ---------- 预计算：Bootloader 字节大小 ----------
     boot_size_bytes = boot_config.get("size_kb", 8) * 1024 if has_bootloader else 0
@@ -879,6 +914,9 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         "rtc_async_prediv": 127 if has_rtc else None,
         "rtc_sync_prediv": 255 if has_rtc else None,
         "rtc_clock_source": rtc_clock_source,
+        "rtc_wakeup_interval_ms": rtc_wakeup_interval_ms,
+        "rtc_alarms": rtc_alarms,
+        "rtc_init_time": rtc_init_time,
         "has_pwm": has_pwm,
         "pwm_tim_prescaler": pwm_tim_prescaler,
         "pwm_tim_period": pwm_tim_period,
@@ -911,6 +949,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         "has_tickless": has_tickless,
         "has_behavior": has_behavior,
         "behavior": behavior,
+        "periodic_events": periodic_events,
         "has_substate": has_substate,
         "has_bootloader": has_bootloader,
         "has_fota": has_fota,

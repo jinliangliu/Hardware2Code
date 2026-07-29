@@ -22,8 +22,11 @@
 /* Private handle */
 RTC_HandleTypeDef hrtc;
 
+/* Guard: RTC_GetTime safe to call only after RTC_Init completes */
+static bool rtc_ready = false;
+
 /* RTC tick 间隔 (毫秒) - 必须与 RTC_WakeUp_Config 配置的唤醒周期一致 */
-#define RTC_TICK_INTERVAL_MS    100
+#define RTC_TICK_INTERVAL_MS    {{ rtc_wakeup_interval_ms }}
 
 /* 软件定时器链表 */
 typedef struct rtc_timer {
@@ -47,6 +50,12 @@ static void hour_timer_cb(void *arg) {
     event_t evt = { .id = EVENT_HOUR_TICK, .param = 0 };
     xQueueSend(event_queue, &evt, 0);
 }
+{% for alarm in rtc_alarms %}
+static void alarm_{{ alarm.event | lower }}_cb(void *arg) {
+    event_t evt = { .id = EVENT_{{ alarm.event }}, .param = 0 };
+    xQueueSend(event_queue, &evt, 0);
+}
+{% endfor %}
 
 #ifndef TEST
 /* ========== 硬件实现区域 ========== */
@@ -79,21 +88,25 @@ void HAL_RTC_MspInit(RTC_HandleTypeDef* hrtc)
         PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;
 
         {% if peripheral._clock_source == 'LSE' %}
-        /* 尝试使用外部低速晶振 LSE (32.768kHz)，失败则回退到 LSI */
-        RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-        RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE
-                                          | RCC_OSCILLATORTYPE_LSI;
-        RCC_OscInitStruct.LSEState = RCC_LSE_ON;
-        RCC_OscInitStruct.LSIState = RCC_LSI_ON;
-        if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-            /* LSE 启动失败，关闭 LSE 仅用 LSI */
-            RCC_OscInitStruct.LSEState = RCC_LSE_OFF;
-            if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-                Error_Handler();
+        /* Enable LSI first as fallback, then attempt LSE. */
+        __HAL_RCC_LSI_ENABLE();
+        while (!__HAL_RCC_GET_FLAG(RCC_FLAG_LSIRDY)) {}
+
+        {
+            RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+            RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE;
+            RCC_OscInitStruct.LSEState = RCC_LSE_ON;
+
+            if (HAL_RCC_OscConfig(&RCC_OscInitStruct) == HAL_OK) {
+                PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
+                log_info("RTC clock source: LSE (32.768kHz)");
+            } else {
+                log_warn("LSE startup failed, falling back to LSI");
+                RCC_OscInitStruct.LSEState = RCC_LSE_OFF;
+                HAL_RCC_OscConfig(&RCC_OscInitStruct);
+                PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
             }
         }
-        PeriphClkInit.RTCClockSelection = (RCC_OscInitStruct.LSEState == RCC_LSE_ON) ?
-                                           RCC_RTCCLKSOURCE_LSE : RCC_RTCCLKSOURCE_LSI;
         {% else %}
         /* 使用内部低速振荡器 LSI (32kHz) */
         __HAL_RCC_LSI_ENABLE();
@@ -138,12 +151,47 @@ void RTC_Init(void)
         Error_Handler();
     }
 
+    /*
+     * Force prescaler write regardless of INITS flag.
+     * HAL_RTC_Init skips prescaler configuration when INITS=1
+     * (backup domain preserved from previous firmware), leaving
+     * the RTC running with possibly wrong timing.
+     */
+    __HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
+    if (RTC_EnterInitMode(&hrtc) == HAL_OK) {
+        hrtc.Instance->PRER = (uint32_t){{ rtc_sync_prediv }};
+        hrtc.Instance->PRER |= (uint32_t)({{ rtc_async_prediv }} << RTC_PRER_PREDIV_A_Pos);
+        RTC_ExitInitMode(&hrtc);
+    }
+    __HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+
     /* Explicitly clear stale RTC wakeup/alarm flags from previous runs
      * (RTC backup domain survives system reset). Must be done BEFORE
      * enabling the NVIC to prevent spurious ISR firing that could crash
      * FreeRTOS before the scheduler starts. */
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
     __HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRAF);
+
+{% if rtc_init_time %}
+    /*
+     * Set initial RTC time from hardware.yaml config.
+     * Format: "YYYY-MM-DD HH:MM:SS" → parsed by generator context builder.
+     * Skip if initial time is zero (all fields = 0) — use backup domain
+     * preserved time after power-cycle.
+     */
+    {
+        RTC_TimeTypeDef sTime = {0};
+        RTC_DateTypeDef sDate = {0};
+        sTime.Hours   = {{ rtc_init_time.hour }};
+        sTime.Minutes = {{ rtc_init_time.min }};
+        sTime.Seconds = {{ rtc_init_time.sec }};
+        sDate.Year    = {{ rtc_init_time.year }};
+        sDate.Month   = {{ rtc_init_time.month }};
+        sDate.Date    = {{ rtc_init_time.day }};
+        HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+        HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+    }
+{% endif %}
 
     /* 配置唤醒定时器 (100ms 周期) */
     RTC_WakeUp_Config();
@@ -157,6 +205,14 @@ void RTC_Init(void)
     rtc_timer_handle_t t_hour = RTC_TimerCreate(3600000, RTC_TIMER_MODE_PERIODIC, hour_timer_cb, NULL);
     RTC_TimerStart(t_min);
     RTC_TimerStart(t_hour);
+{% for alarm in rtc_alarms %}
+    /* {{ alarm.event }} alarm: {{ alarm.period_ms }} ms period */
+    {
+        rtc_timer_handle_t t_{{ alarm.event | lower }} = RTC_TimerCreate({{ alarm.period_ms }}, RTC_TIMER_MODE_PERIODIC, alarm_{{ alarm.event | lower }}_cb, NULL);
+        RTC_TimerStart(t_{{ alarm.event | lower }});
+    }
+{% endfor %}
+    rtc_ready = true;
 }
 
 void RTC_Start(void)
@@ -352,6 +408,32 @@ void RTC_GetTime(rtc_time_t *time)
 {
     RTC_TimeTypeDef sTime = {0};
     RTC_DateTypeDef sDate = {0};
+
+    /*
+     * Guard: return zeros if RTC_Init has not completed yet.
+     * INITS/RSF from backup domain are unreliable before the clock
+     * source is configured (RTCSEL reset by system reset).
+     * HAL_RTC_WaitForSynchro would hang when RTC clock is absent.
+     */
+    if (!rtc_ready) {
+        time->sec   = 0;
+        time->min   = 0;
+        time->hour  = 0;
+        time->day   = 0;
+        time->month = 0;
+        time->year  = 0;
+        time->ssr   = 0;
+        return;
+    }
+
+    /*
+     * Wait for RSF (Register Synchronization Flag) before reading.
+     * STM32G0 HAL_RTC_GetTime does NOT wait for RSF internally,
+     * so stale shadow register values may be returned if RSF is
+     * not explicitly polled here.
+     */
+    HAL_RTC_WaitForSynchro(&hrtc);
+
     HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
     HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
     time->sec   = sTime.Seconds;
@@ -360,6 +442,7 @@ void RTC_GetTime(rtc_time_t *time)
     time->day   = sDate.Date;
     time->month = sDate.Month;
     time->year  = sDate.Year;
+    time->ssr   = (uint16_t)sTime.SubSeconds;
 }
 
 void RTC_SetTime(rtc_time_t *time)

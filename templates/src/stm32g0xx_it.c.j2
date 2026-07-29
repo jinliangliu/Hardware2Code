@@ -29,7 +29,14 @@ void {{ handler }}(void)
     if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
     {
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-        event_t evt = { .id = EVENT_BUTTON_PRESS, .param = 0 };
+        /* Read pin level: pull-up + active-low → LOW = pressed, HIGH = released */
+        event_t evt;
+        if (HAL_GPIO_ReadPin(GPIO{{ pin.id | pin_port }}, GPIO_PIN_{{ pin.id | pin_number }}) == GPIO_PIN_RESET) {
+            evt.id = EVENT_BUTTON_PRESS;
+        } else {
+            evt.id = EVENT_BUTTON_RELEASE;
+        }
+        evt.param = 0;
         xQueueSendFromISR(event_queue, &evt, &xHigherPriorityTaskWoken);
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }

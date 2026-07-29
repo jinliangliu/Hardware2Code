@@ -14,6 +14,9 @@ typedef enum {
     EVENT_MINUTE_TICK,
     EVENT_HOUR_TICK,
     EVENT_BUTTON_PRESS,
+{% for alarm in rtc_alarms %}
+    EVENT_{{ alarm.event }},
+{% endfor %}
     EVENT_RTC_ALARM,
     EVENT_RTC_TICK,
 {% for p in peripherals %}

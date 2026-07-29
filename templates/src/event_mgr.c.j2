@@ -32,6 +32,18 @@ event_mgr.c.j2 - Central event manager task
 extern TaskHandle_t {{ led_task_name }}_handle;
 {% endif %}
 
+{% if has_led %}
+#ifndef TEST
+#include "stm32g0xx_hal.h"
+{% for pin in pins %}
+{% if pin.label == 'LED' %}
+#define LED_GPIO_Port  GPIO{{ pin.id | pin_port }}
+#define LED_GPIO_Pin   GPIO_PIN_{{ pin.id | pin_number }}
+{% endif %}
+{% endfor %}
+#endif /* !TEST */
+{% endif %}
+
 /* event_queue 在真实环境和测试环境中都由此定义 */
 QueueHandle_t event_queue = NULL;
 
@@ -40,6 +52,7 @@ QueueHandle_t event_queue = NULL;
 static void handle_minute_tick(void);
 static void handle_hour_tick(void);
 static void handle_button_press(void);
+static void handle_button_release(void);
 {% for p in peripherals %}
 {% if p.type == 'I2C_Sensor_MPU6050' %}
 static void handle_mpu6050_alert(void);
@@ -69,6 +82,21 @@ void EventMgr_Task(void *pvParameters)
 {% endif %}
             }
             statemachine_process(&evt);
+{% if has_log %}
+{% for pe in periodic_events %}
+            if (evt.id == EVENT_{{ pe.event }}) {
+{% for action in pe.actions %}
+{% if action.startswith('log ') %}
+                log_info("{{ action[4:].strip().strip('\"') }}");
+{% endif %}
+{% endfor %}
+                log_info("=== System Info ===");
+                log_debug("  Heap free: %u bytes", (unsigned int)xPortGetFreeHeapSize());
+                log_debug("  Task count: %u", (unsigned int)uxTaskGetNumberOfTasks());
+                log_debug("  Runtime: %lu ms", (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS));
+            }
+{% endfor %}
+{% endif %}
 {% else %}
             switch(evt.id) {
                 case EVENT_MINUTE_TICK:
@@ -79,6 +107,9 @@ void EventMgr_Task(void *pvParameters)
                     break;
                 case EVENT_BUTTON_PRESS:
                     handle_button_press();
+                    break;
+                case EVENT_BUTTON_RELEASE:
+                    handle_button_release();
                     break;
 {% for p in peripherals %}
 {% if p.type == 'I2C_Sensor_MPU6050' %}
@@ -122,6 +153,15 @@ static void handle_hour_tick(void) {}
 static void handle_button_press(void) {
     {% if has_led_task %}
     if ({{ led_task_name }}_handle) xTaskNotify({{ led_task_name }}_handle, 0, eSetBits);
+    {% elif has_led %}
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_GPIO_Pin);
+    {% endif %}
+}
+static void handle_button_release(void) {
+    {% if has_led_task %}
+    if ({{ led_task_name }}_handle) xTaskNotify({{ led_task_name }}_handle, 0, eSetBits);
+    {% elif has_led %}
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_GPIO_Pin);
     {% endif %}
 }
 {% for p in peripherals %}

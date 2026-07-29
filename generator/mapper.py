@@ -66,6 +66,11 @@ def merge(
     if bf:
         merged["behavior"] = bf
 
+    # ---- Merge periodic_events ----
+    periodic = task.get("periodic_events", [])
+    if periodic:
+        merged["periodic_events"] = periodic
+
     # ---- Apply bind: interrupt → notify_task on pins ----
     interrupts = bind.get("interrupt", [])
     if interrupts and "pins" in merged:

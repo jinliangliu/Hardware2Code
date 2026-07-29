@@ -27,28 +27,39 @@ app_tasks:
     priority: 1
     stack_size: 1024
 
-  - name: button_task
-    priority: 2
-    stack_size: 128
+# Button behavior — handled by event_task state machine
+behavior:
+  initial_state: RELEASED
+  states:
+    - name: RELEASED
+      transitions:
+        - event: BUTTON_PRESS
+          target: PRESSED
+          actions:
+            - start_timer long_press 3000
+            - toggle_led
+            - 'log "button: PRESS"'
+    - name: PRESSED
+      transitions:
+        - event: BUTTON_RELEASE
+          target: RELEASED
+          actions:
+            - stop_timer long_press
+            - toggle_led
+            - 'log "button: RELEASE"'
+        - event: TIMER_EXPIRED_long_press
+          target: LONG_PRESS
+          actions:
+            - 'log "button: LONG_PRESS"'
+            - "timeline: 0=>toggle_led, 200=>toggle_led, 400=>toggle_led, 600=>toggle_led, 800=>toggle_led, 1000=>toggle_led"
+    - name: LONG_PRESS
+      transitions:
+        - event: BUTTON_RELEASE
+          target: RELEASED
+          actions: ['log "button: LONG_PRESS released"']
 
-  - name: sensor_task
-    priority: 3
-    stack_size: 512
-    behavior:
-      initial_state: IDLE
-      variables:
-        - name: counter
-          type: int32_t
-          initial: 0
-      states:
-        - name: IDLE
-          on_entry: [log "sensor: entering IDLE"]
-          transitions:
-            - event: RTC_TICK
-              target: ACTIVE
-              actions: [calc counter = counter + 1]
-        - name: ACTIVE
-          on_entry: [log "sensor: entering ACTIVE"]
-          transitions:
-            - event: RTC_TICK
-              target: IDLE
+# 5-minute system heartbeat — independent periodic event
+periodic_events:
+  - event: MINUTE_5
+    actions:
+      - 'log "system: 5-min alive"'

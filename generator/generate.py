@@ -707,6 +707,8 @@ def generate_project(
             hw["app_tasks"] = merged["app_tasks"]
         if "behavior" in merged:
             hw["behavior"] = merged["behavior"]
+        if "periodic_events" in merged:
+            hw["periodic_events"] = merged["periodic_events"]
         if "bind_routings" in merged:
             hw["bind_routings"] = merged["bind_routings"]
 

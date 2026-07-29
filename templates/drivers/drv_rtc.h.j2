@@ -12,12 +12,13 @@ typedef void (*rtc_timer_cb_t)(void *arg);
 #define RTC_TIMER_MODE_PERIODIC     1
 
 typedef struct {
-    uint8_t hour;
-    uint8_t min;
-    uint8_t sec;
-    uint8_t day;
-    uint8_t month;
-    uint8_t year;
+    uint8_t  hour;
+    uint8_t  min;
+    uint8_t  sec;
+    uint8_t  day;
+    uint8_t  month;
+    uint8_t  year;
+    uint16_t ssr;   /* sub-second register value from HAL_RTC_GetTime */
 } rtc_time_t;
 
 void RTC_Init(void);

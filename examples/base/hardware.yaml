@@ -24,14 +24,14 @@ pins:
     label: "LED"
     active_level: low
 
-  # Button — EXTI falling edge input
+  # Button — EXTI both-edge input (press + release)
   - id: PC13
     function: GPIO_Input
     label: "BUTTON"
     pull: up
     exti:
       enable: true
-      trigger: falling
+      trigger: both
 
   # Shell UART — debug CLI + log output (ST-Link virtual COM port)
   - id: PA2
@@ -63,6 +63,11 @@ peripherals:
     bus: RTC
     extra:
       clock_source: LSE
+      wakeup_interval_ms: 1000      # 1 second wakeup tick
+      initial_time: "2026-07-29 22:07:00"
+      alarms:
+        - period_s: 300             # 5 minute alarm
+          event: MINUTE_5
 
   # On-chip temperature sensor (ADC1 CH16) — calibrated 0.1°C reading
   - name: temp_sensor

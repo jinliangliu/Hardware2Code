@@ -6,7 +6,7 @@
  *          1. Ring buffer (power-of-2, lock-free single-producer single-consumer)
  *          2. UART TXE interrupt drains ring buffer byte-by-byte
  *          3. log_output() formats message into ring buffer (ISR-safe)
- *          4. Output format: "[LEVEL] file:line | message\r\n"
+ *          4. Output format: "[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] message\r\n"
  *
  *          Reference: https://github.com/rxi/log.c (MIT License)
  */
@@ -18,6 +18,9 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "drv_log.h"
+{% if has_rtc %}
+#include "drv_rtc.h"
+{% endif %}
 
 /* ================================================================
  * Local Constants — derived from hardware.yaml via context builder
@@ -155,10 +158,30 @@ void log_output(int level, const char *file, int line, const char *fmt, ...)
     char msg_buf[LOG_MSG_BUF_SIZE];
     int  msg_len;
 
-    /* Format: "[INF] " prefix */
+{% if has_rtc %}
+    /* Get current RTC time for timestamp */
+    rtc_time_t now;
+    RTC_GetTime(&now);
+
+    /*
+     * Derive milliseconds from RTC sub-second counter (via RTC_GetTime).
+     * SSR counts down from SYNC_PREDIV to 0.
+     * For LSE 32768 Hz with SyncPrediv=255: each SSR step = 1000/256 ≈ 3.9 ms.
+     */
+    uint32_t ms  = (({{ rtc_sync_prediv }} - now.ssr) * 1000U) / ({{ rtc_sync_prediv }} + 1U);
+
+    /* Format: "[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] " prefix */
+    msg_len = snprintf(msg_buf, sizeof(msg_buf),
+                       "[%04u-%02u-%02u %02u:%02u:%02u.%03u] [%s] ",
+                       2000U + now.year, now.month, now.day,
+                       now.hour, now.min, now.sec, (unsigned int)ms,
+                       level_strings[level]);
+{% else %}
+    /* Format: "[LEVEL] " prefix */
     msg_len = snprintf(msg_buf, sizeof(msg_buf),
                        "[%s] ",
                        level_strings[level]);
+{% endif %}
 
     if (msg_len < 0 || (size_t)msg_len >= sizeof(msg_buf)) {
         return;   /* overflow, safe to drop */
