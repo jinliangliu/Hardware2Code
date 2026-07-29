@@ -95,7 +95,7 @@ jobs:
         uses: carlosperate/arm-none-eabi-gcc-action@v1
         with:
           # 使用稳定版本，与项目要求匹配
-          release: "13.2.rel1"
+          release: "13.2.Rel1"
 
       # 验证工具链安装
       - name: Verify Toolchain
