@@ -4,11 +4,11 @@ import importlib.util
 
 from .paths import MODELS_DIR, EXAMPLES_DIR
 
-# Load generator/types.py with explicit module name to avoid collision
+# Load generator/generator_types.py with explicit module name to avoid collision
 # with Python's stdlib 'types' module which is frozen at interpreter startup.
 _types_spec = importlib.util.spec_from_file_location(
     "hw2c_types",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "types.py")
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "generator_types.py")
 )
 _types_module = importlib.util.module_from_spec(_types_spec)
 _types_spec.loader.exec_module(_types_module)
