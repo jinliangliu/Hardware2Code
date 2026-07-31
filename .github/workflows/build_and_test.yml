@@ -150,6 +150,20 @@ jobs:
           cmake --build build 2>&1 | tee -a build.log
         continue-on-error: false
 
+      # ---------- 7b. Run generated host unit tests ----------
+      - name: Run generated unit tests (host C)
+        working-directory: ${{ env.OUTPUT_DIR }}/test
+        run: |
+          python run_tests.py
+
+      # ---------- 7c. Build & run SIL component tests ----------
+      - name: Build and run SIL component tests
+        working-directory: ${{ env.OUTPUT_DIR }}/test/sil
+        run: |
+          cmake -B build -S .
+          cmake --build build
+          ./build/test_component_sil
+
       # 上传构建日志（无论成功失败都保留）
       - name: Upload build logs
         if: always()
