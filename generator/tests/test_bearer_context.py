@@ -1,11 +1,6 @@
 """Tests for generator/context/bearer_context.py"""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from context.bearer_context import associate_bearers
+from generator.context.bearer_context import associate_bearers
 
 
 def test_associate_bearers_mqtt():

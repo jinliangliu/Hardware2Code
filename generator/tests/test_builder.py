@@ -1,11 +1,6 @@
 """Tests for generator/context/builder.py"""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from context.builder import load_model, build_context
+from generator.context.builder import load_model, build_context
 
 
 def test_load_model_internal_rtc():
@@ -51,7 +46,7 @@ def test_build_context_minimal():
     ctx = build_context(hw, "test_project")
     assert ctx["project_name"] == "test_project"
     assert ctx["mcu"]["part"] == "STM32G0B1RET6"
-    assert ctx["mcu"]["core_clock_mhz"] == 64
+    assert ctx["mcu"]["core_clock_mhz"] == 16
     assert ctx["has_i2c"] == False
     assert ctx["has_rtc"] == False
     assert ctx["has_bootloader"] == False

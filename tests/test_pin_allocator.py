@@ -460,6 +460,7 @@ def test_peripheral_signals_coverage():
     from generator.schemas.hardware import VALID_PERIPHERAL_TYPES
     missing = VALID_PERIPHERAL_TYPES - set(_PERIPHERAL_SIGNALS.keys()) - {
         "Internal_RTC", "Internal_CLI", "Internal_IWDG",
+        "Internal_TempSensor",
         "Protocol_Modbus", "Protocol_MQTT",
     }
     assert missing == set(), f"Missing signal mapping for: {missing}"

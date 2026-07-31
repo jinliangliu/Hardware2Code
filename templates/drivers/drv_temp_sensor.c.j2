@@ -1,22 +1,34 @@
 {#
     drv_temp_sensor.c.j2 - STM32G0 on-chip temperature sensor driver
 
-    ADC1_CH16 reads the internal bandgap temperature sensor. The STM32G0 datasheet (DS13560) specifies factory calibration at 30°C and 130°C
-    stored in system memory at TS_CAL1 (0x1FFF75A8) and TS_CAL2 (0x1FFF75CA).
+    The temperature sensor is connected to ADC VIN[12] (RM0444: "The TSEN
+    bit must be set to enable the conversion of ADC VIN[12] (temperature
+    sensor) and the VREFEN bit must be set to enable the conversion of
+    ADC VIN[13] (VREFINT)").  The STM32G0B1 datasheet specifies factory
+    calibration at 30 degC and 130 degC stored in system memory at
+    TS_CAL1 (0x1FFF75A8) and TS_CAL2 (0x1FFF75CA).
 
     VREFINT compensation corrects for VDDA deviation from the factory
-    calibration voltage (3.0 V).  Without this, a VDDA of 3.3 V can cause
+    calibration voltage (3.0 V).  Without it, a VDDA of 3.3 V causes
     ~10 % error in the computed temperature.
 
-    Formula:
+    Temperature conversion uses the official ST HAL helpers:
+        VDDA  = __LL_ADC_CALC_VREFANALOG_VOLTAGE(VREFINT_meas, 12b)
+        Temp  = __LL_ADC_CALC_TEMPERATURE(VDDA, TS_DATA_raw, 12b)
+    which is equivalent to the hand-written formula
+        TS_DATA_cal = TS_DATA_raw * VREFINT_CAL / VREFINT_meas
         Temp = TS_CAL1_TEMP + (TS_CAL2_TEMP - TS_CAL1_TEMP) *
               (TS_DATA_cal - TS_CAL1) / (TS_CAL2 - TS_CAL1)
 
-        where TS_DATA_cal = TS_DATA_raw * VREFINT_CAL / VREFINT_meas
+    Cold-start note: the very first conversion after power-up is biased
+    high on this MCU, so the first read discards one conversion pair.
 
-    The result is scaled by 10 (fixed-point, unit 0.1°C) and returned as
+    The result is scaled by 10 (fixed-point, unit 0.1 degC) and returned as
     int16_t.  Conversion uses 32-bit intermediate arithmetic to avoid
     overflow on 12-bit ADC values.
+
+    Note: RM0444 requires disabling the temperature sensor and internal
+    voltage reference (clear TSEN/VREFEN) before entering any Stop mode.
 #}
 #ifdef TEST
 #include "mock_hal.h"
@@ -26,9 +38,11 @@
 
 #include "drv_{{ peripheral.name }}.h"
 
+#include "stm32g0xx_ll_adc.h"
+
 /*
  * STM32G0B1 factory calibration values in system memory.
- * These are factory-programmed and valid for VDDA = 3.0V.
+ * These are factory-programmed and valid for VDDA = 3.0 V.
  */
 #ifndef TS_CAL1_ADDR
 #define TS_CAL1_ADDR      ((uint16_t *)0x1FFF75A8U)
@@ -39,14 +53,32 @@
 #ifndef TS_CAL2_ADDR
 #define TS_CAL2_ADDR      ((uint16_t *)0x1FFF75CAU)
 #endif
-#define TS_CAL1_TEMP   30   /* °C at TS_CAL1 */
-#define TS_CAL2_TEMP   130  /* °C at TS_CAL2 */
+#define TS_CAL1_TEMP   30   /* degC at TS_CAL1 */
+#define TS_CAL2_TEMP   130  /* degC at TS_CAL2 */
 
-/* Private handle — shared with drv_adc if both are present */
+/* Private handle - shared with drv_adc if both are present */
 #ifndef TEST
 static ADC_HandleTypeDef htsens_adc;
 static int initialized = 0;
+static int first_read_pending = 1;
 #endif
+
+/*
+ * Ensure the ADC is fully disabled (ADEN=0, ADDIS=0).  RM0444 makes
+ * CFGR1/CHSELR writable only while ADEN=0, so every reconfiguration of
+ * the sequencer mode or channel selection must start from this state.
+ */
+static void temp_sensor_adc_disable(void)
+{
+#ifndef TEST
+    if (READ_BIT(htsens_adc.Instance->CR, ADC_CR_ADEN)) {
+        SET_BIT(htsens_adc.Instance->CR, ADC_CR_ADDIS);
+        while (READ_BIT(htsens_adc.Instance->CR,
+                        ADC_CR_ADEN | ADC_CR_ADDIS)) {
+        }
+    }
+#endif
+}
 
 void temp_sensor_init(void)
 {
@@ -77,26 +109,36 @@ void temp_sensor_init(void)
     }
 
     /*
-     * Run ADC self-calibration (RM0444 §16.3.9).
-     * ADC must be disabled during calibration — HAL_ADC_Init enables
-     * the internal regulator but leaves ADEN=0, satisfying the prerequisite.
-     * Calibration compensates offset/gain errors; skipping it causes
-     * several LSBs of error that become significant for the temperature
-     * sensor's narrow 2-3 mV/°C slope.
+     * Run ADC self-calibration (RM0444).  Calibration compensates
+     * offset/gain errors; skipping it causes several LSBs of error that
+     * become significant for the temperature sensor's narrow slope.
      */
     if (HAL_ADCEx_Calibration_Start(&htsens_adc) != HAL_OK) {
         while (1) {}
     }
 
-    /* Enable temperature sensor and internal voltage reference */
+    /*
+     * Sampling time: STM32G0 SMPR has two global sampling times
+     * (SMP1/SMP2); each channel selects one via a 1-bit SMPSELx field.
+     * Channels default to SMPSELx=0 (use SMP1) after reset, so setting
+     * SMP1 covers every channel used here.  160.5 ADC cycles ~= 20 us at
+     * 8 MHz, above the temperature-sensor minimum specified in the
+     * datasheet.
+     */
+    temp_sensor_adc_disable();
+    MODIFY_REG(htsens_adc.Instance->SMPR,
+               ADC_SMPR_SMP1,
+               (LL_ADC_SAMPLINGTIME_160CYCLES_5 << ADC_SMPR_SMP1_Pos));
+
+    /* Enable temperature sensor (VIN12) and VREFINT (VIN13) paths */
     SET_BIT(ADC1_COMMON->CCR, ADC_CCR_TSEN);
     SET_BIT(ADC1_COMMON->CCR, ADC_CCR_VREFEN);
 
     /*
-     * Wait for temperature sensor startup (DS13560: tSTART max 10 µs).
-     * At 16 MHz SYSCLK, 160 cycles ≈ 10 µs.
+     * Wait for temperature sensor startup (datasheet: tSTART max 10 us);
+     * keep a margin (~100 us at 16 MHz).
      */
-    for (wait_loops = 0; wait_loops < 160U; wait_loops++) {
+    for (wait_loops = 0; wait_loops < 1600U; wait_loops++) {
         __NOP();
     }
 
@@ -104,35 +146,60 @@ void temp_sensor_init(void)
 #endif
 }
 
+/* Select one channel in bitmap mode; ADC must be disabled. */
+static void temp_sensor_select_channel(uint32_t chsel_bit)
+{
+#ifndef TEST
+    temp_sensor_adc_disable();
+    /*
+     * HAL_ADC_Init sets CFGR1.CHSELRMOD = 1 (fully configurable
+     * sequencer), in which CHSELR bits are rank fields rather than a
+     * channel bitmap and channels > 15 cannot be selected.  Force bitmap
+     * mode (CHSELRMOD = 0) so each CHSELR bit directly enables one
+     * channel (VIN12 = temperature sensor, VIN13 = VREFINT).
+     */
+    CLEAR_BIT(htsens_adc.Instance->CFGR1, ADC_CFGR1_CHSELRMOD);
+    htsens_adc.Instance->CHSELR = chsel_bit;
+#endif
+}
+
+/* Discard the first conversion after power-up (observed bias). */
+static void temp_sensor_warmup(void)
+{
+#ifndef TEST
+    if (first_read_pending) {
+        uint16_t dummy;
+        temp_sensor_select_channel(ADC_CHSELR_CHSEL12);
+        HAL_ADC_Start(&htsens_adc);
+        if (HAL_ADC_PollForConversion(&htsens_adc, 10) == HAL_OK) {
+            dummy = (uint16_t)HAL_ADC_GetValue(&htsens_adc);
+            (void)dummy;
+        }
+        HAL_ADC_Stop(&htsens_adc);
+        first_read_pending = 0;
+    }
+#endif
+}
+
 int16_t temp_sensor_read_celsius(void)
 {
 #ifndef TEST
-    uint16_t ts_data_raw, ts_cal1, ts_cal2;
-    uint16_t vrefint_meas, vrefint_cal;
-    uint32_t ts_data_cal;
-    int32_t numerator, denominator;
+    uint16_t ts_data_raw;
+    uint16_t vrefint_meas;
+    uint32_t vdda_mv;
+    int32_t temp;
 
     if (!initialized) {
         return 0;
     }
 
-    /* Read factory calibration constants from system memory */
-    ts_cal1      = *TS_CAL1_ADDR;
-    vrefint_cal  = *VREFINT_CAL_ADDR;
-    ts_cal2      = *TS_CAL2_ADDR;
+    temp_sensor_warmup();
 
     /*
-     * Step 1: Read VREFINT to measure actual VDDA.
+     * Step 1: Read VREFINT (VIN13) to measure actual VDDA.
      * VREFINT is a stable ~1.2 V bandgap reference.
-     * VREFINT_CAL / VREFINT_meas = VDDA_actual / 3.0 V
      */
-    {
-        ADC_ChannelConfTypeDef sConfig = {0};
-        sConfig.Channel      = ADC_CHANNEL_VREFINT;
-        sConfig.Rank         = ADC_REGULAR_RANK_1;
-        sConfig.SamplingTime = ADC_SAMPLETIME_160CYCLES_5;
-        HAL_ADC_ConfigChannel(&htsens_adc, &sConfig);
-    }
+    temp_sensor_select_channel(ADC_CHSELR_CHSEL13);
     HAL_ADC_Start(&htsens_adc);
     if (HAL_ADC_PollForConversion(&htsens_adc, 10) != HAL_OK) {
         HAL_ADC_Stop(&htsens_adc);
@@ -146,24 +213,10 @@ int16_t temp_sensor_read_celsius(void)
     }
 
     /*
-     * Step 2: Read temperature sensor on ADC_IN16 via direct register
-     *         access (CHSELR bitmap mode).
-     *
-     * NOTE: STM32G0x1 devices route the internal temperature sensor to
-     * ADC_IN16 (CHSELR bit 16).  The shared STM32G0xx HAL defines
-     * ADC_CHANNEL_TEMPSENSOR as LL_ADC_CHANNEL_12 (G0x0 mapping),
-     * which is incorrect for G0x1.
-     *
-     * HAL_ADC_Stop() clears ADC_CFGR1.CHSELRMOD to 0 (bitmap mode),
-     * so a subsequent HAL_ADC_ConfigChannel() cannot use the
-     * channel-number-based sequencer.  Instead we directly set
-     * CHSELR to enable the temperature sensor bit, then trigger a
-     * single conversion.
+     * Step 2: Read temperature sensor on VIN12 (CHSELR bit 12).
+     * RM0444: TSEN must be set (done in init) to enable this channel.
      */
-    LL_ADC_SetChannelSamplingTime(htsens_adc.Instance,
-                                  LL_ADC_CHANNEL_16,
-                                  LL_ADC_SAMPLINGTIME_160CYCLES_5);
-    htsens_adc.Instance->CHSELR = ADC_CHSELR_CHSEL16;
+    temp_sensor_select_channel(ADC_CHSELR_CHSEL12);
     HAL_ADC_Start(&htsens_adc);
     if (HAL_ADC_PollForConversion(&htsens_adc, 10) != HAL_OK) {
         HAL_ADC_Stop(&htsens_adc);
@@ -172,37 +225,18 @@ int16_t temp_sensor_read_celsius(void)
     ts_data_raw = (uint16_t)HAL_ADC_GetValue(&htsens_adc);
     HAL_ADC_Stop(&htsens_adc);
 
-    /*
-     * Step 3: Compensate TS_DATA for VDDA deviation.
-     * TS_DATA_cal = TS_DATA_raw * VREFINT_CAL / VREFINT_meas
-     *
-     * Example: if VDDA = 3.3 V:
-     *   VREFINT_meas ≈ VREFINT_CAL * 3.0 / 3.3  (lower)
-     *   TS_DATA_cal  ≈ TS_DATA_raw * 3.3 / 3.0   (higher, restores 3.0 V eq.)
-     */
-    ts_data_cal = (uint32_t)ts_data_raw
-                * (uint32_t)vrefint_cal
-                / (uint32_t)vrefint_meas;
-
-    /*
-     * Step 4: Linear interpolation using compensated TS_DATA.
-     *
-     * Temperature(°C * 10) = TS_CAL1_TEMP * 10
-     *     + (TS_CAL2_TEMP - TS_CAL1_TEMP) * 10
-     *     * (TS_DATA_cal - TS_CAL1) / (TS_CAL2 - TS_CAL1)
-     *
-     *   = 300 + 1000 * (TS_DATA_cal - TS_CAL1) / (TS_CAL2 - TS_CAL1)
-     */
-    denominator = (int32_t)ts_cal2 - (int32_t)ts_cal1;
-    if (denominator == 0) {
+    /* Step 3: VDDA from VREFINT, then official HAL temperature macro.
+     * Returns temperature in degC; scale to 0.1 degC fixed-point. */
+    vdda_mv = __LL_ADC_CALC_VREFANALOG_VOLTAGE(vrefint_meas,
+                                               LL_ADC_RESOLUTION_12B);
+    temp = __LL_ADC_CALC_TEMPERATURE(vdda_mv, ts_data_raw,
+                                     LL_ADC_RESOLUTION_12B);
+    if (temp == LL_ADC_TEMPERATURE_CALC_ERROR) {
         return 0;  /* corrupted calibration */
     }
-    numerator = (int32_t)(TS_CAL2_TEMP - TS_CAL1_TEMP) * 10
-              * ((int32_t)ts_data_cal - (int32_t)ts_cal1);
-
-    return (int16_t)((int32_t)(TS_CAL1_TEMP * 10) + numerator / denominator);
+    return (int16_t)(temp * 10);
 #else
     (void)0;
-    return 250;  /* 25.0°C for test mocks */
+    return 250;  /* 25.0 degC for test mocks */
 #endif
 }

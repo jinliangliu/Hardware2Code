@@ -1,13 +1,8 @@
 """Tests for generator/context/bootloader_context.py"""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from context.bootloader_context import (build_boot_config,
-                                          inject_bootloader_drivers,
-                                          get_boot_led_pin)
+from generator.context.bootloader_context import (build_boot_config,
+                                                  inject_bootloader_drivers,
+                                                  get_boot_led_pin)
 
 
 def test_build_boot_config_disabled():

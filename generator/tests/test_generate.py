@@ -1,14 +1,8 @@
 """Minimal test to verify dependency injection in generate_project()."""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-
 def test_generate_with_mock_validator():
     """Verify that generate_project accepts and uses an injected validator."""
-    from generate import generate_project
+    from generator.generate import generate_project
 
     # Track that mock was called
     called_validator = []
@@ -42,7 +36,7 @@ def test_generate_with_mock_validator():
 
 def test_generate_with_mock_context_builder():
     """Verify that generate_project accepts and uses an injected context builder."""
-    from generate import generate_project
+    from generator.generate import generate_project
 
     called_builder = []
 

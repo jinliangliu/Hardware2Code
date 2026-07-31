@@ -75,9 +75,10 @@ def _auto_import_builders() -> None:
     _pending_auto_import = False
 
     builders_dir = os.path.dirname(os.path.abspath(__file__))
+    pkg = __package__ or "builders"
     for fname in os.listdir(builders_dir):
         if fname.endswith("_builder.py") and fname != "base.py":
-            mod_name = f"builders.{fname[:-3]}"
+            mod_name = f"{pkg}.{fname[:-3]}"
             try:
                 importlib.import_module(mod_name)
             except ImportError as e:

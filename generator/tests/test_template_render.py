@@ -1,14 +1,8 @@
 """Snapshot tests for Jinja2 template rendering."""
 
-import sys
-import os
-
-# Ensure generator/ is on path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from jinja2 import Environment, FileSystemLoader
-from paths import TEMPLATES_DIR
-from jinja_filters import register_filters
+from generator.paths import TEMPLATES_DIR
+from generator.jinja_filters import register_filters
 
 
 def _make_env():
@@ -28,6 +22,8 @@ def _minimal_context():
         "project_name": "test_proj",
         "mcu": {
             "part": "STM32G0B1RET6",
+            "clock_source": "HSI",
+            "clock_freq_hz": 16000000,
             "core_clock_mhz": 64,
             "hse_freq": 8000000,
         },
@@ -191,8 +187,9 @@ def test_main_c_template_with_led_task():
 
     assert "led_task_handle" in rendered
     assert "void led_task(void *pvParameters)" in rendered
-    assert "HAL_GPIO_TogglePin" in rendered
-    assert "ulTaskNotifyTake" in rendered
+    # LED handling moved to the component framework; the task body is now
+    # the generic periodic loop rendered for every app task.
+    assert "vTaskDelay(1000)" in rendered
 
 
 def test_main_c_template_with_cli():

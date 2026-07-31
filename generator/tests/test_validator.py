@@ -1,11 +1,19 @@
 """Tests for generator/validator.py"""
 
-import sys
-import os
+import pytest
+from pydantic import ValidationError
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from validator import validate_hardware
+from generator.validator import validate_hardware
+from generator.schemas.hardware import (
+    BootloaderModel,
+    ExtiConfig,
+    HardwareModel,
+    McuModel,
+    PeripheralModel,
+    PinConfig,
+    SleepModel,
+    TaskModel,
+)
 
 
 # ---------- Helpers ----------
@@ -184,22 +192,17 @@ def test_valid_exti_pin():
 # ---------- Invalid scenarios (at least 10) ----------
 
 def test_missing_mcu_part():
-    """CRITICAL error when mcu.part missing"""
-    hw = {
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "CRITICAL", "Missing 'mcu.part'")
+    """mcu is required - rejected by HardwareModel/McuModel (Pydantic)"""
+    with pytest.raises(ValidationError):
+        HardwareModel.model_validate({
+            "pins": [{"id": "PA5", "function": "GPIO_Output"}],
+        })
 
 
 def test_invalid_mcu_format():
-    """ERROR for invalid MCU part format"""
-    hw = {
-        "mcu": {"part": "atmel328p"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "Invalid MCU part number format")
+    """Invalid MCU part format rejected by McuModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="Invalid MCU part number"):
+        McuModel(part="atmel328p")
 
 
 def test_valid_pin_basic():
@@ -216,13 +219,9 @@ def test_valid_pin_basic():
 
 
 def test_invalid_pin_id():
-    """Invalid pin ID format triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "X99", "function": "GPIO_Output"}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "Invalid pin ID format")
+    """Invalid pin ID format rejected by PinConfig (Pydantic)"""
+    with pytest.raises(ValidationError, match="Invalid pin ID"):
+        PinConfig(id="X99", function="GPIO_Output")
 
 
 def test_invalid_pin_function():
@@ -236,38 +235,31 @@ def test_invalid_pin_function():
 
 
 def test_duplicate_pins():
-    """Duplicate pin IDs trigger ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [
-            {"id": "PA5", "function": "GPIO_Output"},
-            {"id": "PA5", "function": "GPIO_Input"},
-        ],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "Duplicate pin IDs")
+    """Duplicate pin IDs rejected by HardwareModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="Duplicate pin IDs"):
+        HardwareModel.model_validate({
+            "mcu": {"part": "STM32G0B1RET6"},
+            "pins": [
+                {"id": "PA5", "function": "GPIO_Output"},
+                {"id": "PA5", "function": "GPIO_Input"},
+            ],
+        })
 
 
 def test_led_task_without_led():
-    """led_task without LED labeled pin triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "app_tasks": [{"name": "led_task", "priority": 5}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "led_task")
+    """led_task without an LED-labeled pin rejected by HardwareModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="led_task"):
+        HardwareModel.model_validate({
+            "mcu": {"part": "STM32G0B1RET6"},
+            "pins": [{"id": "PA5", "function": "GPIO_Output"}],
+            "app_tasks": [{"name": "led_task", "priority": 5}],
+        })
 
 
 def test_invalid_peripheral_type():
-    """Invalid peripheral type triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "peripherals": [{"name": "bad1", "type": "NonExistent_Type"}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "invalid type")
+    """Unknown peripheral type rejected by PeripheralModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="Unknown peripheral type"):
+        PeripheralModel(name="bad1", type="NonExistent_Type")
 
 
 def test_i2c_missing_bus():
@@ -331,48 +323,21 @@ def test_modbus_missing_bearer():
 
 
 def test_bootloader_invalid_size():
-    """Invalid bootloader size_kb triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "bootloader": {
-            "enabled": True,
-            "size_kb": 64,
-        },
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "size_kb")
+    """Invalid bootloader size_kb rejected by BootloaderModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="size_kb"):
+        BootloaderModel(size_kb=64)
 
 
 def test_bootloader_invalid_max_retries():
-    """Invalid bootloader max_retries triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "bootloader": {
-            "enabled": True,
-            "size_kb": 8,
-            "max_retries": 20,
-        },
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "max_retries")
+    """Invalid bootloader max_retries rejected by BootloaderModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="max_retries"):
+        BootloaderModel(max_retries=20)
 
 
 def test_bootloader_app_a_gte_app_b():
-    """app_a_offset >= app_b_offset triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "bootloader": {
-            "enabled": True,
-            "size_kb": 8,
-            "app_a_offset": 0x50000,
-            "app_b_offset": 0x40000,
-        },
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "app_a_offset")
+    """app_a_offset >= app_b_offset rejected by BootloaderModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="app_a_offset"):
+        BootloaderModel(app_a_offset=0x50000, app_b_offset=0x40000)
 
 
 def test_exti_missing_trigger():
@@ -392,52 +357,27 @@ def test_exti_missing_trigger():
 
 
 def test_exti_invalid_trigger():
-    """EXTI with invalid trigger triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [
-            {
-                "id": "PA0",
-                "function": "GPIO_Input",
-                "exti": {"enable": True, "trigger": "high_level"},
-            }
-        ],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "invalid EXTI trigger")
+    """Invalid EXTI trigger rejected by ExtiConfig (Pydantic)"""
+    with pytest.raises(ValidationError, match="trigger"):
+        ExtiConfig(enable=True, trigger="high_level")
 
 
 def test_task_no_name():
-    """Task without name triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "app_tasks": [{"priority": 5}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "has no 'name'")
+    """Task without name rejected by TaskModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="name"):
+        TaskModel(priority=5)
 
 
 def test_task_invalid_priority():
-    """Task with invalid priority triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "app_tasks": [{"name": "my_task", "priority": 100}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "invalid priority")
+    """Task with invalid priority rejected by TaskModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="priority"):
+        TaskModel(name="my_task", priority=100)
 
 
 def test_peripheral_no_name():
-    """Peripheral without name triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "peripherals": [{"type": "Internal_RTC"}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "has no 'name'")
+    """Peripheral without name rejected by PeripheralModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="name"):
+        PeripheralModel(type="Internal_RTC")
 
 
 def test_peripheral_no_type():
@@ -471,14 +411,9 @@ def test_no_pins_warning():
 
 
 def test_sleep_invalid_mode_warning():
-    """Invalid sleep mode triggers WARNING"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "sleep": {"mode": "DEEP_SLEEP"},
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "WARNING", "sleep mode")
+    """Invalid sleep mode rejected by SleepModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="mode"):
+        SleepModel(mode="DEEP_SLEEP")
 
 
 # ---------- Business flow tests ----------
@@ -1298,19 +1233,9 @@ def test_bf_region_transition_no_target():
 
 
 def test_bootloader_app_a_below_size():
-    """app_a_offset below bootloader size triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "bootloader": {
-            "enabled": True,
-            "size_kb": 16,
-            "app_a_offset": 0x2000,
-            "app_b_offset": 0x40000,
-        },
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "must be >= bootloader size")
+    """app_a_offset below bootloader size rejected by BootloaderModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="bootloader size"):
+        BootloaderModel(size_kb=16, app_a_offset=0x2000, app_b_offset=0x40000)
 
 
 def test_peripheral_model_not_found():
@@ -1346,24 +1271,15 @@ def test_pull_valid_up():
 
 
 def test_pull_invalid_value():
-    """Invalid pull value triggers WARNING"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA0", "function": "GPIO_Input", "pull": "none"}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "WARNING", "invalid pull value")
+    """Invalid pull value rejected by PinConfig PullMode enum (Pydantic)"""
+    with pytest.raises(ValidationError, match="pull"):
+        PinConfig(id="PA0", function="GPIO_Input", pull="none")
 
 
 def test_stack_size_invalid():
-    """Invalid stack_size triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"id": "PA5", "function": "GPIO_Output"}],
-        "app_tasks": [{"name": "my_task", "priority": 5, "stack_size": 0}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "invalid stack_size")
+    """Invalid stack_size rejected by TaskModel (Pydantic)"""
+    with pytest.raises(ValidationError, match="stack_size"):
+        TaskModel(name="my_task", priority=5, stack_size=0)
 
 
 def test_modbus_bearer_not_found():
@@ -1380,13 +1296,9 @@ def test_modbus_bearer_not_found():
 
 
 def test_pin_no_id():
-    """Pin without id triggers ERROR"""
-    hw = {
-        "mcu": {"part": "STM32G0B1RET6"},
-        "pins": [{"function": "GPIO_Output"}],
-    }
-    result = validate_hardware(hw)
-    assert _has_error(result, "ERROR", "has no 'id'")
+    """Pin without id rejected by PinConfig (Pydantic)"""
+    with pytest.raises(ValidationError, match="id"):
+        PinConfig(function="GPIO_Output")
 
 
 def test_pin_no_function():

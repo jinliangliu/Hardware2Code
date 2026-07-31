@@ -1,11 +1,6 @@
 """Tests for generator/context/hal_context.py"""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from context.hal_context import BASE_HAL_SOURCES, compute_hal_sources
+from generator.context.hal_context import BASE_HAL_SOURCES, compute_hal_sources
 
 
 def test_base_hal_sources_not_empty():

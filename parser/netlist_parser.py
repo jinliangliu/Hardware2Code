@@ -423,7 +423,9 @@ def _build_yaml(
             func, af, bus = _pin_to_bus_info(mcu_pin, "SPI")
             # Determine role: SCK/MISO/MOSI/CS
             if any(s in peri_pin.upper() for s in ["CS", "NSS", "SS"]):
-                pin_config["function"] = f"{bus}_NSS"
+                # CS lines are almost always software-controlled GPIO;
+                # keep the bus-aware label for cs_pin matching below.
+                pin_config["function"] = "GPIO_Output"
                 pin_config["label"] = f"{bus}_NSS"
                 pin_config["active_level"] = "low"
                 pin_config["af"] = 0

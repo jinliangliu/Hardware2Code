@@ -6,15 +6,16 @@ generator/bsdiff_tool.py
 generator/context_builder.py
 generator/fota_sender.py
 generator/generate.py
+generator/generator_types.py
 generator/hil_runner.py
 generator/jinja_filters.py
+generator/mapper.py
 generator/mcu_database.py
 generator/models.py
 generator/patch_crc.py
 generator/paths.py
 generator/registry.py
 generator/run_tests.py
-generator/types.py
 generator/validator.py
 generator/tests/__init__.py
 generator/tests/test_bearer_context.py

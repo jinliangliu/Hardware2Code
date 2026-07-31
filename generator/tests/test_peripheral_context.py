@@ -1,12 +1,7 @@
 """Tests for generator/context/peripheral_context.py"""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from context.peripheral_context import detect_peripherals
-from context.bearer_context import associate_bearers
+from generator.context.peripheral_context import detect_peripherals
+from generator.context.bearer_context import associate_bearers
 
 
 # ---------- Mock model data ----------

@@ -1,11 +1,6 @@
 """Tests for generator/context/pin_context.py"""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from context.pin_context import process_pins
+from generator.context.pin_context import process_pins
 
 
 def test_process_pins_adds_defaults():

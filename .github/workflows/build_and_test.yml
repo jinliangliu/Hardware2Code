@@ -16,8 +16,8 @@ env:
   # 锁定 Python 版本，避免行为不一致
   PYTHON_VERSION: "3.11"
   # 示例项目路径（可根据需要调整）
-  EXAMPLE_PATH: "examples/rtc_advanced"
-  OUTPUT_DIR: "output/rtc_adv"
+  EXAMPLE_PATH: "examples/base"
+  OUTPUT_DIR: "output/base"
 
 jobs:
   # ============================================================
@@ -85,6 +85,11 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt 2>/dev/null || pip install pyyaml jinja2 pydantic
 
+      # ---------- Run Python unit tests ----------
+      - name: Run Python unit tests
+        run: |
+          python -m pytest tests parser/tests generator/tests -q --no-header
+
       # ---------- 3. Install system dependencies ----------
       - name: Install system packages
         run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
@@ -119,6 +124,9 @@ jobs:
             -i ${{ env.EXAMPLE_PATH }}/hardware.yaml \
             --task ${{ env.EXAMPLE_PATH }}/task.yaml \
             --bind ${{ env.EXAMPLE_PATH }}/bind.yaml \
+            --components ${{ env.EXAMPLE_PATH }}/components.yaml \
+            --params ${{ env.EXAMPLE_PATH }}/params.yaml \
+            --pubsub ${{ env.EXAMPLE_PATH }}/pubsub.yaml \
             -o ${{ env.OUTPUT_DIR }} \
             --force -v
         continue-on-error: false

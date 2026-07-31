@@ -4,16 +4,10 @@ Tests GPIOBuilder pin calculation, Registry auto-discovery,
 I2C timing calculation, and SPI prescaler computation.
 """
 
-import sys
-import os
-
-# Ensure generator/ is on sys.path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from builders.gpio_builder import GpioBuilder, _compute_pin_entry
-from builders.i2c_builder import _calc_i2c_timing
-from builders.spi_builder import _calc_spi_prescaler
-from builders.registry import get_builder, get_all_builders
+from generator.builders.gpio_builder import GpioBuilder, _compute_pin_entry
+from generator.builders.i2c_builder import _calc_i2c_timing
+from generator.builders.spi_builder import _calc_spi_prescaler
+from generator.builders.registry import get_builder, get_all_builders
 
 
 # =========================================================================
