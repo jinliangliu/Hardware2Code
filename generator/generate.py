@@ -443,7 +443,12 @@ def render_templates(env: Environment, context: dict, output_dir: str,
     if context.get("has_pwm"):
         test_templates["test/test_pwm.c.j2"] = os.path.join(test_dir, "test_pwm.c")
 
-    if context.get("has_adc"):
+    # test_adc exercises the standalone ADC driver (drv_adc), which is only
+    # generated for an explicit Internal_ADC peripheral.  has_adc also covers
+    # Internal_TempSensor (which reuses the ADC core but not drv_adc), so it
+    # must not be used as the gate here.
+    if any(p.get("type") == "Internal_ADC"
+           for p in context.get("peripherals", [])):
         test_templates["test/test_adc.c.j2"] = os.path.join(test_dir, "test_adc.c")
 
     if context.get("has_uart"):

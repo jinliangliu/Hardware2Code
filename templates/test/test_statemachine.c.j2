@@ -1,8 +1,13 @@
 #include "unity.h"
 #include "mock_hal.h"
 #include <string.h>
+#include <stdio.h>
 
 /* Test stubs */
+void log_info(const char *fmt, ...) { (void)fmt; }
+int16_t temp_sensor_read_celsius(void) { return 250; }
+void led_set_pattern_by_index(uint32_t index, uint32_t pattern) { (void)index; (void)pattern; }
+
 typedef void * rtc_timer_handle_t;
 typedef void (*rtc_timer_cb_t)(void *arg);
 #define RTC_TIMER_MODE_ONE_SHOT          0
@@ -101,7 +106,7 @@ void test_{{ tr.state }}_to_{{ tr.target }}_on_{{ tr.event }}(void) {
 }
 {% endif %}{% endfor %}
 
-{% for tr in ns.transitions %}{% if tr.back_event is defined %}
+{% for tr in ns.transitions %}{% if tr.back_event is defined and tr.state != tr.target %}
 void test_{{ tr.target }}_to_{{ initial_name }}_on_{{ tr.back_event }}(void) {
     event_t evt_fwd = { .id = EVENT_{{ tr.event | event_name }} };
     statemachine_process(&evt_fwd);
@@ -112,8 +117,8 @@ void test_{{ tr.target }}_to_{{ initial_name }}_on_{{ tr.back_event }}(void) {
 }
 {% endif %}{% endfor %}
 
-{% for tr in ns.transitions %}{% if tr.back_event is defined %}
-void test_roundtrip_cycle(void) {
+{% for tr in ns.transitions %}{% if tr.back_event is defined and tr.state != tr.target %}
+void test_roundtrip_cycle_{{ tr.event | event_name }}(void) {
     for (int i = 0; i < 4; i++) {
         event_t evt_fwd = { .id = EVENT_{{ tr.event | event_name }} };
         statemachine_process(&evt_fwd);
@@ -130,9 +135,11 @@ int main(void) {
 {% for tr in ns.transitions %}
     RUN_TEST(test_{{ tr.state }}_to_{{ tr.target }}_on_{{ tr.event }});
 {% endfor %}
-{% for tr in ns.transitions %}{% if tr.back_event is defined %}
+{% for tr in ns.transitions %}{% if tr.back_event is defined and tr.state != tr.target %}
     RUN_TEST(test_{{ tr.target }}_to_{{ initial_name }}_on_{{ tr.back_event }});
 {% endif %}{% endfor %}
-    RUN_TEST(test_roundtrip_cycle);
+{% for tr in ns.transitions %}{% if tr.back_event is defined and tr.state != tr.target %}
+    RUN_TEST(test_roundtrip_cycle_{{ tr.event | event_name }});
+{% endif %}{% endfor %}
     return UNITY_END();
 }

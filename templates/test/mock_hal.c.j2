@@ -184,6 +184,9 @@ void HAL_RTC_GetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, uint32_t f
     (void)hrtc; (void)format;
     if (sTime) memset(sTime, 0, sizeof(*sTime));
 }
+void HAL_RTC_WaitForSynchro(RTC_HandleTypeDef *hrtc) {
+    (void)hrtc;
+}
 void HAL_RTC_SetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, uint32_t format) {
     (void)hrtc; (void)sTime; (void)format;
 }

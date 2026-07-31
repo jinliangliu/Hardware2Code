@@ -174,7 +174,10 @@ typedef struct {
 } GPIO_InitTypeDef;
 
 #define GPIO_MODE_OUTPUT_PP     1
+#define GPIO_MODE_INPUT         6
+#define GPIO_MODE_IT_RISING     7
 #define GPIO_MODE_IT_FALLING    2
+#define GPIO_MODE_IT_RISING_FALLING  8
 #define GPIO_MODE_AF_OD         3
 #define GPIO_MODE_AF_PP         4
 #define GPIO_MODE_ANALOG        5
@@ -278,6 +281,7 @@ typedef struct {
     uint32_t Seconds;
     uint32_t Minutes;
     uint32_t Hours;
+    uint32_t SubSeconds;
 } RTC_TimeTypeDef;
 
 typedef struct {
@@ -458,6 +462,7 @@ void HAL_RTCEx_WakeUpTimerIRQHandler(RTC_HandleTypeDef *hrtc);
 void HAL_RTCEx_DeactivateWakeUpTimer(RTC_HandleTypeDef *hrtc);
 void HAL_RTCEx_SetWakeUpTimer_IT(RTC_HandleTypeDef *hrtc, uint32_t wakeup_counter, uint32_t clock);
 void HAL_RTC_GetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, uint32_t format);
+void HAL_RTC_WaitForSynchro(RTC_HandleTypeDef *hrtc);
 void HAL_RTC_SetTime(RTC_HandleTypeDef *hrtc, RTC_TimeTypeDef *sTime, uint32_t format);
 void HAL_RTC_GetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDate, uint32_t format);
 void HAL_RTC_SetDate(RTC_HandleTypeDef *hrtc, RTC_DateTypeDef *sDate, uint32_t format);

@@ -19,6 +19,16 @@
 #include "drv_{{ peripheral.name }}.h"
 #include "event_mgr.h"
 
+#ifdef TEST
+/* Test stubs - internal helpers are target-build only. */
+static void rtc_arm_alarm_a(void) { (void)0; }
+static uint32_t rtc_calc_next_cyclic(uint32_t period_sec, uint8_t mode)
+{
+    (void)mode;
+    return period_sec;
+}
+#endif
+
 /* ---------- private globals ---------- */
 RTC_HandleTypeDef hrtc;
 static bool      rtc_ready            = false;
@@ -435,6 +445,7 @@ static void timer_insert_sorted(rtc_timer_t *t)
 
 /* ---------- public timer API ---------- */
 
+#ifndef TEST
 rtc_timer_handle_t RTC_TimerCreate(uint32_t period_sec, uint8_t mode,
                                     rtc_timer_cb_t callback, void *arg)
 {
@@ -470,6 +481,7 @@ rtc_timer_handle_t RTC_TimerCreate(uint32_t period_sec, uint8_t mode,
     timer_insert_sorted(t);
     return (rtc_timer_handle_t)t;
 }
+#endif
 
 void RTC_TimerStart(rtc_timer_handle_t handle)
 {
@@ -637,7 +649,4 @@ rtc_timer_handle_t RTC_TimerCreate(uint32_t period_sec, uint8_t mode,
     timer_insert_sorted(t);
     return (rtc_timer_handle_t)t;
 }
-void RTC_TimerStart(rtc_timer_handle_t h) { (void)h; }
-void RTC_TimerStop(rtc_timer_handle_t h)  { (void)h; }
-void RTC_TimerDelete(rtc_timer_handle_t h){ (void)h; }
 #endif

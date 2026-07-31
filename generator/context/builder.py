@@ -90,6 +90,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     uart_name = peri_result["uart_name"]
     rs485_name = peri_result["rs485_name"]
     cli_uart_name = peri_result["cli_uart_name"]
+    cli_name = peri_result["cli_name"]
 
     # ---------- USART2 baudrate (from UART peripheral config) ----------
     usart2_baudrate = 115200  # default
@@ -1026,6 +1027,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
         rs485_name=rs485_name,
         modbus_name=modbus_name,
         cli_uart_name=cli_uart_name,
+        cli_name=cli_name,
         led_active_low=led_active_low,
         led_task_name=led_task_name or "",
         rtc=rtc_ir,

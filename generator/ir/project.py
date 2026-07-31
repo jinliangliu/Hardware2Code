@@ -80,6 +80,7 @@ class ProjectIR(IRObject):
     rs485_name: str = ""
     modbus_name: str = ""
     cli_uart_name: str = ""
+    cli_name: str = ""
 
     # ---------- LED ----------
     led_active_low: bool = False

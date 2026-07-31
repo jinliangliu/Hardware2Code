@@ -22,7 +22,7 @@ def detect_peripherals(peripherals: list, load_model_func) -> dict:
     has_spi_flash = has_adc = has_uart = has_rs485 = False
     has_ir = has_cellular = has_cli = False
     has_temp_sensor = False
-    uart_name = rs485_name = cli_uart_name = ""
+    uart_name = rs485_name = cli_uart_name = cli_name = ""
 
     for p in peripherals:
         model = load_model_func(p['type'])
@@ -72,6 +72,7 @@ def detect_peripherals(peripherals: list, load_model_func) -> dict:
         if model.get('type') == 'Internal_CLI':
             has_cli = True
             has_uart = True
+            cli_name = p['name']
             uart_ref = p.get('uart', '')
             if uart_ref:
                 cli_uart_name = uart_ref
@@ -99,4 +100,5 @@ def detect_peripherals(peripherals: list, load_model_func) -> dict:
         "uart_name": uart_name,
         "rs485_name": rs485_name,
         "cli_uart_name": cli_uart_name,
+        "cli_name": cli_name,
     }

@@ -68,11 +68,14 @@ GCC = find_gcc()
 CFLAGS = ["-Wall", "-Wextra", "-DTEST"]
 LDFLAGS = []
 INCLUDES = ["-I.", "-I../src", "-I../src/drivers", "-Iunity", "-I../config",
-            "-I../../static/stm32g0/HAL/Inc",
-            "-I../../static/stm32g0/CMSIS/Device/ST/STM32G0xx/Include",
-            "-I../../static/stm32g0/CMSIS/Core/Include"]
+            "-I../../../static/stm32g0/HAL/Inc",
+            "-I../../../static/stm32g0/CMSIS/Device/ST/STM32G0xx/Include",
+            "-I../../../static/stm32g0/CMSIS/Core/Include",
+            "-I../../../static/hw2c_cli",
+            "-I../../../static/third_party/lwrb"]
 UNITY_SRC = "unity/unity.c"
 MOCK_SRC = "mock_hal.c"
+EXTRA_SRCS = []
 
 
 def find_tests():
@@ -87,10 +90,10 @@ def find_tests():
 def compile_test(name, coverage=False):
     src = name + ".c"
     exe = name + ".exe" if sys.platform.startswith("win") else name
-    cmd = [GCC] + CFLAGS + INCLUDES + LDFLAGS + [UNITY_SRC, MOCK_SRC, src, "-o", exe]
+    cmd = [GCC] + CFLAGS + INCLUDES + LDFLAGS + [UNITY_SRC, MOCK_SRC] + EXTRA_SRCS + [src, "-o", exe]
     if coverage:
         # 在编译和链接中启用 coverage
-        cmd = [GCC, "--coverage"] + CFLAGS + INCLUDES + LDFLAGS + [UNITY_SRC, MOCK_SRC, src, "-o", exe]
+        cmd = [GCC, "--coverage"] + CFLAGS + INCLUDES + LDFLAGS + [UNITY_SRC, MOCK_SRC] + EXTRA_SRCS + [src, "-o", exe]
     print(f"Compiling {name}...")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:

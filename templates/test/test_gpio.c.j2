@@ -27,7 +27,16 @@ void test_{{ pin.id }}_configuration(void) {
 {% if pin.function == 'GPIO_Output' %}
     TEST_ASSERT_EQUAL_UINT32(GPIO_MODE_OUTPUT_PP, mock_HAL_GPIO_Init_get_mode(idx));
 {% elif pin.function == 'GPIO_Input' %}
+    {%- set trig = pin.exti.trigger if pin.exti and pin.exti.enable else 'none' -%}
+    {%- if trig == 'both' -%}
+    TEST_ASSERT_EQUAL_UINT32(GPIO_MODE_IT_RISING_FALLING, mock_HAL_GPIO_Init_get_mode(idx));
+    {%- elif trig == 'rising' -%}
+    TEST_ASSERT_EQUAL_UINT32(GPIO_MODE_IT_RISING, mock_HAL_GPIO_Init_get_mode(idx));
+    {%- elif trig == 'falling' -%}
     TEST_ASSERT_EQUAL_UINT32(GPIO_MODE_IT_FALLING, mock_HAL_GPIO_Init_get_mode(idx));
+    {%- else -%}
+    TEST_ASSERT_EQUAL_UINT32(GPIO_MODE_INPUT, mock_HAL_GPIO_Init_get_mode(idx));
+    {%- endif -%}
     {% if pin.exti and pin.exti.enable %}
     /* 验证对应 NVIC 中断线已使能 */
     TEST_ASSERT_TRUE(mock_HAL_NVIC_EnableIRQ_called_with(
