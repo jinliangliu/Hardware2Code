@@ -274,7 +274,9 @@ BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三�
 | MQTT 3.1.1 | `drv_mqtt.c` | — | `test_mqtt.c` | — |
 | Modbus RTU | `drv_modbus.c` | — | `test_modbus.c` | — |
 
-> 当前示例已收敛为 `examples/base`（六层 YAML 最小系统）；其他外设示例已移除，驱动模板与单元测试仍保留。
+> 当前示例（六层 YAML 完整配置）：`examples/base`（最小系统）、`examples/modbus_demo`
+> （RS485 + Modbus RTU 从站）、`examples/spi_flash_demo`（SPI NOR Flash）。
+> 每个示例均可生成、编译并通过全部单元测试（含 SIL 组件测试）。
 | CLI 调试终端 | `drv_cli.c` | — | `test_cli.c` | 12+ 命令，STOP 模式唤醒 |
 | FOTA 差分升级 | `drv_fota.c` | — | `test_fota_*.c` | `fota_demo` |
 | Bootloader (A/B) | `boot_*.c` | — | `test_boot_*.c` | `bootloader_demo` |
