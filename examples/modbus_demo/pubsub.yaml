@@ -1,0 +1,5 @@
+topics:
+  - name: temperature
+    description: "Temperature reading (scaled to int32, unit=0.1C)"
+  - name: button_press
+    description: "Button press event (button_id as value)"

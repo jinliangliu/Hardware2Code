@@ -1,0 +1,105 @@
+# ============================================================
+# hw2c modbus_demo - RS485 + Modbus RTU slave example
+#
+#   MCU        STM32G0B1RET6 @ 16 MHz (HSI)
+#   RS485      USART1 (PA9/PA10) + DE (PA1), Modbus RTU slave
+#   Shell      USART2 (PA2/PA3) - CLI + log output @ 115200
+#   RTC        LSE 32.768 kHz
+#   LED/Button PC0 / PC13 (component framework)
+# ============================================================
+
+mcu:
+  part: STM32G0B1RET6
+  clock_source: HSI
+  clock_freq_hz: 16000000
+  core_clock_mhz: 16
+  hse_freq: 8000000
+
+pins:
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: both
+
+  # Debug shell UART
+  - id: PA2
+    function: USART2_TX
+    af: 1
+  - id: PA3
+    function: USART2_RX
+    af: 1
+
+  # RS485 bus (USART1)
+  - id: PA9
+    function: USART1_TX
+    label: "RS485_TX"
+    af: 1
+  - id: PA10
+    function: USART1_RX
+    label: "RS485_RX"
+    af: 1
+  - id: PA1
+    function: GPIO_Output
+    label: "RS485_DE"
+    active_level: high
+
+peripherals:
+  - name: usart2
+    type: UART_Serial
+    instance: USART2
+    interface: uart
+    extra:
+      baudrate: 115200
+
+  - name: shell
+    type: Internal_CLI
+    uart: usart2
+    extra:
+      prompt: "hw2c> "
+
+  - name: rs485
+    type: RS485
+    interface: uart
+    extra:
+      de_pin: "PA1"
+      uart: "usart1"
+
+  - name: modbus
+    type: Protocol_Modbus
+    interface: protocol
+    extra:
+      role: slave
+      bearer: rs485
+      slave_id: 1
+      registers:
+        - { addr: 0, name: "status", default: 0 }
+        - { addr: 1, name: "temperature_x10", default: 300 }
+
+  - name: rtc
+    type: Internal_RTC
+    bus: RTC
+    extra:
+      clock_source: LSE
+      wakeup_interval_ms: 1000
+      initial_time: "2026-08-01 00:00:00"
+      alarms:
+        - period_s: 30
+          event: SECONDS_30
+
+  - name: temp_sensor
+    type: Internal_TempSensor
+
+log:
+  enable: true
+  ring_buf_size: 1024
+
+sleep:
+  mode: RUN

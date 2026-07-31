@@ -380,45 +380,9 @@ static void cmd_rtc(int argc, char *argv[], cli_output_fn out)
 {% if has_modbus %}
 static void cmd_modbus(int argc, char *argv[], cli_output_fn out)
 {
-    if (argc < 2) {
-        out("Usage: modbus read <addr> <count> | "
-            "modbus write <addr> <value>\r\n");
-        return;
-    }
-    if (strcmp(argv[1], "read") == 0) {
-        int i;
-        int addr  = atoi(argv[2]);
-        int count = atoi(argv[3]);
-        if (argc < 4) { out("Usage: modbus read <addr> <count>\r\n"); return; }
-        if (count < 1 || count > 16) {
-            out("Count must be 1-16\r\n");
-            return;
-        }
-        {
-            uint16_t vals[16];
-            int result = modbus_read_holding_regs(addr, count, vals);
-            if (result < 0) {
-                out("Modbus read error: %d\r\n", result);
-                return;
-            }
-            for (i = 0; i < count; i++) {
-                out("  [%d] = %u\r\n", addr + i, vals[i]);
-            }
-        }
-    } else if (strcmp(argv[1], "write") == 0) {
-        int addr  = atoi(argv[2]);
-        int val   = atoi(argv[3]);
-        int result;
-        if (argc < 4) { out("Usage: modbus write <addr> <value>\r\n"); return; }
-        result = modbus_write_single_reg(addr, (uint16_t)val);
-        if (result < 0) {
-            out("Modbus write error: %d\r\n", result);
-            return;
-        }
-        out("Wrote %d to register %d\r\n", val, addr);
-    } else {
-        out("Unknown modbus subcommand: %s\r\n", argv[1]);
-    }
+    (void)argc;
+    (void)argv;
+    out("Modbus RTU slave active (protocol handler)\r\n");
 }
 {% endif %}
 

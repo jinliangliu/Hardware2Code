@@ -1,0 +1,16 @@
+params:
+  - name: modbus_slave_id
+    component: modbus
+    type: uint32
+    default: 1
+    min: 1
+    max: 247
+    description: "Modbus RTU slave address"
+
+  - name: log_level
+    component: system
+    type: uint32
+    default: 3
+    min: 0
+    max: 4
+    description: "Log level (0=OFF..4=DEBUG)"
