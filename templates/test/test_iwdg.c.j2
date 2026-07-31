@@ -2,7 +2,9 @@
 #include "mock_hal.h"
 #include <string.h>
 
-#include "../src/drivers/drv_iwdg.c"
+{# iwdg driver file is named after the peripheral instance #}
+{% set iwdg_peri = peripherals | selectattr('type', 'in', ['Internal_IWDG']) | first %}
+#include "../src/drivers/drv_{{ iwdg_peri.name }}.c"
 
 void setUp(void)
 {

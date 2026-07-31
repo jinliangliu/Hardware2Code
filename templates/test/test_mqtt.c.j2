@@ -44,7 +44,9 @@ static uint8_t mock_mqtt_tx_byte(uint16_t idx)
 /* ====================================================================== */
 /* Include driver source under test                                        */
 /* ====================================================================== */
-#include "../src/drivers/drv_mqtt.c"
+{# mqtt driver file is named after the peripheral instance #}
+{% set mqtt_peri = peripherals | selectattr('type', 'in', ['Protocol_MQTT']) | first %}
+#include "../src/drivers/drv_{{ mqtt_peri.name }}.c"
 
 /* ====================================================================== */
 /* Test cases                                                              */

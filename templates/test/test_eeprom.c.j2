@@ -2,7 +2,9 @@
 #include "mock_hal.h"
 #include <string.h>
 
-#include "../src/drivers/drv_eeprom.c"
+{# eeprom driver file is named after the peripheral instance #}
+{% set eeprom_peri = peripherals | selectattr('type', 'in', ['I2C_EEPROM']) | first %}
+#include "../src/drivers/drv_{{ eeprom_peri.name }}.c"
 
 static I2C_HandleTypeDef hi2c_inst;
 

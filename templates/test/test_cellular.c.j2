@@ -49,7 +49,9 @@ static void mock_cellular_set_rx_with_echo(const char *cmd, const char *resp)
 /* ====================================================================== */
 /* Include driver source under test                                        */
 /* ====================================================================== */
-#include "../src/drivers/drv_cellular.c"
+{# cellular driver file is named after the peripheral instance #}
+{% set cellular_peri = peripherals | selectattr('type', 'in', ['Cellular_4G']) | first %}
+#include "../src/drivers/drv_{{ cellular_peri.name }}.c"
 
 /* ====================================================================== */
 /* Test cases                                                              */

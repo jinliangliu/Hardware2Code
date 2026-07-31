@@ -2,7 +2,9 @@
 #include "mock_hal.h"
 #include <string.h>
 
-#include "../src/drivers/drv_adc.c"
+{# adc driver file is named after the peripheral instance #}
+{% set adc_peri = peripherals | selectattr('type', 'in', ['Internal_ADC']) | first %}
+#include "../src/drivers/drv_{{ adc_peri.name }}.c"
 
 void setUp(void) {}
 void tearDown(void) {}

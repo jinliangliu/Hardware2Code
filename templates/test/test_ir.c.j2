@@ -2,7 +2,9 @@
 #include "mock_hal.h"
 #include <string.h>
 
-#include "../src/drivers/drv_ir.c"
+{# ir driver file is named after the peripheral instance #}
+{% set ir_peri = peripherals | selectattr('type', 'in', ['Internal_IR']) | first %}
+#include "../src/drivers/drv_{{ ir_peri.name }}.c"
 
 /* ---------- Test helpers ---------- */
 

@@ -2,7 +2,9 @@
 #include "mock_hal.h"
 #include <string.h>
 
-#include "../src/drivers/drv_pwm.c"
+{# pwm driver file is named after the peripheral instance #}
+{% set pwm_peri = peripherals | selectattr('type', 'in', ['Internal_PWM']) | first %}
+#include "../src/drivers/drv_{{ pwm_peri.name }}.c"
 
 static bool pwm_init_called = false;
 void HAL_TIM_PWM_Init(TIM_HandleTypeDef *htim) { (void)htim; pwm_init_called = true; }
