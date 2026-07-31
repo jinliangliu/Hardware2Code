@@ -10,7 +10,7 @@
 | BUTTON | PC13 | 上拉输入，EXTI 双边沿中断 → 手势检测（短按/双击/长按） |
 | USART2 | PA2/PA3 | CLI Shell + 日志输出（CP210x USB-UART），115200 baud |
 | RTC | — | LSE 32.768 kHz，1 秒周期唤醒 + 30 秒/5 分钟定时事件 |
-| 温度传感器 | — | 片内 ADC1_CH16，ADC 自校准 + VREFINT 实时 VDDA 补偿，0.1°C 精度 |
+| 温度传感器 | — | 片内 ADC1_CH12，ADC 自校准 + VREFINT 实时 VDDA 补偿，0.1°C 分辨率 |
 
 MCU: STM32G0B1RET6 @ 16 MHz (HSI)，无 PLL。
 

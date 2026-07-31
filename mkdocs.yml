@@ -74,6 +74,9 @@ nav:
     - hardware.yaml: user-guide/hardware-yaml.md
     - task.yaml: user-guide/task-yaml.md
     - bind.yaml: user-guide/bind-yaml.md
+    - components.yaml: user-guide/components-yaml.md
+    - params.yaml: user-guide/params-yaml.md
+    - pubsub.yaml: user-guide/pubsub-yaml.md
     - CLI Commands: user-guide/cli-commands.md
     - Examples: user-guide/examples.md
   - Developer Guide:

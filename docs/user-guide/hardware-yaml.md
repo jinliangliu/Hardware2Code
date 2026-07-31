@@ -20,7 +20,9 @@ The wiring between hardware and software is in [`bind.yaml`](bind-yaml.md).
 | `mcu` | object | Yes | - | MCU configuration |
 | `mcu.part` | string | Yes | - | MCU part number (e.g. `STM32G0B1RET6`) |
 | `mcu.core` | string | No | `Cortex-M0+` | CPU core model (e.g. `Cortex-M0+`, `Cortex-M4`) |
-| `mcu.core_clock_mhz` | int | No | 64 | Core clock frequency in MHz |
+| `mcu.core_clock_mhz` | int | No | 16 | Core clock frequency in MHz (SYSCLK) |
+| `mcu.clock_source` | string | No | `HSI` | Clock source: `HSI` / `HSE` |
+| `mcu.clock_freq_hz` | int | No | `16000000` | Oscillator frequency in Hz |
 | `mcu.ram_kb` | int | No | 144 | On-chip SRAM in KB |
 | `mcu.flash_kb` | int | No | 512 | On-chip Flash in KB |
 | `mcu.dual_bank` | bool | No | true | Flash is dual-bank |
@@ -47,28 +49,6 @@ The wiring between hardware and software is in [`bind.yaml`](bind-yaml.md).
 | `peripherals[].extra` | object | Varies | `{}` | Type-specific extra parameters |
 | `sleep` | object | No | `{}` | Low-power configuration |
 | `sleep.mode` | string | No | `STOP0` | Sleep mode: `STOP0` / `STOP1` / `STOP2` / `STANDBY` / `SLEEP` |
-| `clock` | object | No | `{}` | Clock tree configuration |
-| `clock.hsi_hz` | int | No | `16000000` | HSI oscillator frequency |
-| `clock.lsi_hz` | int | No | `32000` | LSI oscillator frequency |
-| `clock.hse` | object | No | - | HSE configuration |
-| `clock.hse.present` | bool | No | `false` | HSE crystal present |
-| `clock.hse.frequency_hz` | int | No | `8000000` | HSE frequency in Hz |
-| `clock.lse` | object | No | - | LSE configuration |
-| `clock.lse.present` | bool | No | `false` | LSE crystal present |
-| `clock.lse.frequency_hz` | int | No | `32768` | LSE frequency in Hz |
-| `clock.pll` | object | No | - | PLL configuration |
-| `clock.pll.source` | string | No | `HSI` | PLL source: `HSI` / `HSE` |
-| `clock.pll.m` | int | No | `1` | PLL input divider |
-| `clock.pll.n` | int | No | `8` | PLL multiplier |
-| `clock.pll.r` | int | No | `2` | PLL output divider (SYSCLK) |
-| `clock.sysclk` | object | No | - | System clock configuration |
-| `clock.sysclk.source` | string | No | `PLL` | SYSCLK source: `HSI` / `HSE` / `PLL` |
-| `clock.sysclk.frequency_hz` | int | No | `64000000` | SYSCLK frequency in Hz |
-| `clock.apb` | object | No | - | APB bus prescaler |
-| `clock.apb.prescaler` | int | No | `1` | APB prescaler value |
-| `clock.freertos_tick` | object | No | - | FreeRTOS tick source |
-| `clock.freertos_tick.source` | string | No | `SysTick` | Tick source |
-| `clock.freertos_tick.frequency_hz` | int | No | `1000` | Tick frequency |
 | `bootloader` | object | No | `{}` | Bootloader configuration |
 | `bootloader.enabled` | bool | No | `false` | Enable dual-slot bootloader |
 | `bootloader.size_kb` | int | No | `8` | Bootloader Flash size in KB (4–32) |
@@ -92,11 +72,13 @@ The wiring between hardware and software is in [`bind.yaml`](bind-yaml.md).
 mcu:
   part: STM32G0B1RET6        # Required: MCU part number
   core: Cortex-M0+            # Optional: CPU core model (default: Cortex-M0+)
-  core_clock_mhz: 64          # Optional: Core clock frequency (default: 64)
+  clock_source: HSI           # Optional: HSI or HSE (default: HSI)
+  clock_freq_hz: 16000000     # Optional: oscillator frequency in Hz (default: 16000000)
+  core_clock_mhz: 16          # Optional: SYSCLK frequency in MHz (default: 16)
   ram_kb: 144                 # Optional: On-chip SRAM (default: 144)
   flash_kb: 512               # Optional: On-chip Flash (default: 512)
   dual_bank: true             # Optional: Flash dual-bank (default: true)
-  hse_freq: 8000000           # Optional: HSE crystal frequency (default: 8000000)
+  hse_freq: 8000000           # Optional: HSE crystal frequency (used when clock_source=HSE)
 ```
 
 **Valid MCU parts**: STM32G0B1RET6 (currently only STM32G0 series supported)
@@ -170,29 +152,17 @@ sleep:
 ### 1.4 Clock Tree Configuration
 
 ```yaml
-clock:
-  hsi_hz: 16000000            # HSI oscillator (default: 16000000)
-  lsi_hz: 32000               # LSI oscillator (default: 32000)
-  hse:
-    present: true             # HSE crystal detected from BOM
-    frequency_hz: 8000000     # HSE frequency in Hz
-  lse:
-    present: true             # LSE crystal detected from BOM
-    frequency_hz: 32768       # LSE frequency (default: 32768)
-  pll:
-    source: HSE               # PLL clock source (HSE / HSI)
-    m: 1                      # Input divider
-    n: 8                      # Multiplier
-    r: 2                      # Output divider (SYSCLK)
-  sysclk:
-    source: PLL               # System clock source (HSI / HSE / PLL)
-    frequency_hz: 64000000    # SYSCLK frequency
-  apb:
-    prescaler: 1              # APB prescaler (1, 2, 4, 8, 16)
-  freertos_tick:
-    source: SysTick           # FreeRTOS tick timer source
-    frequency_hz: 1000        # Tick rate (default: 1000)
+mcu:
+  part: STM32G0B1RET6
+  clock_source: HSI           # HSI / HSE
+  clock_freq_hz: 16000000     # oscillator frequency in Hz
+  core_clock_mhz: 16          # SYSCLK frequency in MHz
+  hse_freq: 8000000           # HSE crystal frequency (used when clock_source=HSE)
 ```
+
+> **Note**: 顶层 `clock:` 树（`hsi_hz` / `pll` / `sysclk` 等）已被移除，统一在
+> `mcu` 层配置。RTC 等外设的低速时钟（`LSE` / `LSI`）通过
+> `peripherals[].extra.clock_source` 指定。
 
 ### 1.5 Peripherals
 
@@ -326,7 +296,9 @@ Supported CRC methods:
 mcu:
   part: STM32G0B1RET6
   core: Cortex-M0+
-  core_clock_mhz: 64
+  clock_source: HSI
+  clock_freq_hz: 16000000
+  core_clock_mhz: 16
   ram_kb: 144
   flash_kb: 512
   dual_bank: true
@@ -346,29 +318,6 @@ pins:
 
 sleep:
   mode: STOP1
-
-clock:
-  hsi_hz: 16000000
-  lsi_hz: 32000
-  hse:
-    present: true
-    frequency_hz: 8000000
-  lse:
-    present: true
-    frequency_hz: 32768
-  pll:
-    source: HSE
-    m: 1
-    n: 8
-    r: 2
-  sysclk:
-    source: PLL
-    frequency_hz: 64000000
-  apb:
-    prescaler: 1
-  freertos_tick:
-    source: SysTick
-    frequency_hz: 1000
 
 peripherals:
   - name: "rtc"

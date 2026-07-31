@@ -7,8 +7,8 @@ capabilities:
   - temperature_read
 notes:
   on_chip: true
-  adc_channel: 16
+  adc_channel: 12
   cal1_addr: 0x1FFF75A8
   cal2_addr: 0x1FFF75CA
   cal1_temp: 30
-  cal2_temp: 110
+  cal2_temp: 130

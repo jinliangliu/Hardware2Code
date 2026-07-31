@@ -50,13 +50,18 @@ pip install -e ".[dev]"
 ## Verify Installation
 
 ```bash
-hw2c gen -i examples/blinky_g0/hardware.yaml -o output/blinky_g0 --task examples/blinky_g0/task.yaml --bind examples/blinky_g0/bind.yaml
+hw2c gen -i examples/base/hardware.yaml -o output/base --force \
+  --task examples/base/task.yaml \
+  --components examples/base/components.yaml \
+  --bind examples/base/bind.yaml \
+  --params examples/base/params.yaml \
+  --pubsub examples/base/pubsub.yaml
 ```
 
 If successful, you should see output confirming the project generation, followed by:
 
 ```bash
-cd output/blinky_g0
+cd output/base
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake
 cmake --build build
 ```

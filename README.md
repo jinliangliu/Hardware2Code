@@ -258,21 +258,23 @@ BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三�
 
 | 外设 | 驱动模板 | Builder | 单元测试 | 业务示例 |
 |------|----------|:--:|----------|----------|
-| GPIO + EXTI | `gpio.c` | ✓ | `test_gpio.c` | `blinky_g0` |
-| USART | `drv_uart.c`, `drv_log.c` | ✓ | `test_uart.c` | `cli_demo` |
-| I2C MPU6050 | `drv_i2c_mpu6050.c` | ✓ | `test_mpu6050.c` | `mpu6050` |
-| I2C EEPROM | `drv_eeprom.c` | ✓ | — | `i2c_spi_demo` |
-| SPI W25Q32 | `drv_spi_flash.c` | ✓ | `test_spi_flash.c` | `spi_flash` |
+| GPIO + EXTI | `gpio.c` | ✓ | `test_gpio.c` | `examples/base` |
+| USART | `drv_uart.c`, `drv_log.c` | ✓ | `test_uart.c` | `examples/base` |
+| I2C MPU6050 | `drv_i2c_mpu6050.c` | ✓ | `test_mpu6050.c` | — |
+| I2C EEPROM | `drv_eeprom.c` | ✓ | — | — |
+| SPI W25Q32 | `drv_spi_flash.c` | ✓ | `test_spi_flash.c` | — |
 | ADC | `drv_adc.c` | — | `test_adc.c` | — |
-| Internal TempSensor | `drv_temp_sensor.c` | — | — | VREFINT 补偿 + ADC 校准 |
-| PWM | `drv_pwm.c` | — | `test_pwm.c` | `pwm` |
-| RTC | `drv_rtc.c` | — | `test_rtc.c` | `rtc_advanced` |
-| IWDG | `drv_iwdg.c` | — | — | `bootloader_demo` |
-| RS485 | `drv_rs485.c` | ✓ | — | `modbus_demo` |
-| Cellular 4G | `drv_cellular.c` | ✓ | — | `cellular_mqtt` |
+| Internal TempSensor | `drv_temp_sensor.c` | — | — | CH12 + VREFINT 补偿 + ADC 校准 |
+| PWM | `drv_pwm.c` | — | `test_pwm.c` | — |
+| RTC | `drv_rtc.c` | — | `test_rtc.c` | `examples/base` |
+| IWDG | `drv_iwdg.c` | — | — | — |
+| RS485 | `drv_rs485.c` | ✓ | — | — |
+| Cellular 4G | `drv_cellular.c` | ✓ | — | — |
 | 红外 NEC/SIR | `drv_ir.c` | — | — | — |
 | MQTT 3.1.1 | `drv_mqtt.c` | — | `test_mqtt.c` | — |
 | Modbus RTU | `drv_modbus.c` | — | `test_modbus.c` | — |
+
+> 当前示例已收敛为 `examples/base`（六层 YAML 最小系统）；其他外设示例已移除，驱动模板与单元测试仍保留。
 | CLI 调试终端 | `drv_cli.c` | — | `test_cli.c` | 12+ 命令，STOP 模式唤醒 |
 | FOTA 差分升级 | `drv_fota.c` | — | `test_fota_*.c` | `fota_demo` |
 | Bootloader (A/B) | `boot_*.c` | — | `test_boot_*.c` | `bootloader_demo` |
@@ -397,7 +399,7 @@ hw2c
 - `event_t` 结构仅含 `id`，不支持事件参数传递
 
 ### 模拟外设
-- 内部温度传感器（ADC1 CH16）绝对精度约 ±5-10°C，需通过 `temp_offset` 手动校准；适合相对温度变化检测，不适合精密测温
+- 内部温度传感器（ADC1 CH12）配合 VREFINT 实时 VDDA 补偿（ADC 自校准 + 首次转换丢弃），0.1°C 分辨率；绝对精度依赖片上 TS_CAL1/TS_CAL2 校准，适合相对温度变化检测
 
 ### Web 前端
 - 解析进度无可视化反馈（目前为 WebSocket 单次推送最终结果）
