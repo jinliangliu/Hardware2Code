@@ -1,0 +1,8 @@
+params:
+  - name: log_level
+    component: system
+    type: uint32
+    default: 3
+    min: 0
+    max: 4
+    description: "Log level (0=OFF..4=DEBUG)"

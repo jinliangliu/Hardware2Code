@@ -1,0 +1,3 @@
+topics:
+  - name: temperature
+    description: "Temperature reading (scaled to int32, unit=0.1C)"

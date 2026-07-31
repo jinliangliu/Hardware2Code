@@ -1,0 +1,82 @@
+# ============================================================
+# hw2c spi_flash_demo - SPI NOR Flash (W25Q32) example
+#
+#   MCU        STM32G0B1RET6 @ 16 MHz (HSI)
+#   SPI1       PA5(SCK)/PA6(MISO)/PA7(MOSI), CS=PC4 (GPIO)
+#   Shell      USART2 (PA2/PA3) - CLI + log @ 115200
+#   LED        PC0
+# ============================================================
+
+mcu:
+  part: STM32G0B1RET6
+  clock_source: HSI
+  clock_freq_hz: 16000000
+  core_clock_mhz: 16
+  hse_freq: 8000000
+
+pins:
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: both
+
+  - id: PA5
+    function: SPI1_SCK
+    label: "SPI1_SCK"
+    af: 0
+  - id: PA6
+    function: SPI1_MISO
+    label: "SPI1_MISO"
+    af: 0
+  - id: PA7
+    function: SPI1_MOSI
+    label: "SPI1_MOSI"
+    af: 0
+  - id: PC4
+    function: GPIO_Output
+    label: "SPI1_NSS"
+    active_level: low
+
+  - id: PA2
+    function: USART2_TX
+    af: 1
+  - id: PA3
+    function: USART2_RX
+    af: 1
+
+peripherals:
+  - name: usart2
+    type: UART_Serial
+    instance: USART2
+    interface: uart
+    extra:
+      baudrate: 115200
+
+  - name: shell
+    type: Internal_CLI
+    uart: usart2
+    extra:
+      prompt: "hw2c> "
+
+  - name: flash
+    type: SPI_Flash_W25Q32
+    bus: SPI1
+    cs_pin: "PC4"
+
+  - name: temp_sensor
+    type: Internal_TempSensor
+
+log:
+  enable: true
+  ring_buf_size: 1024
+
+sleep:
+  mode: RUN

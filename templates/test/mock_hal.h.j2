@@ -308,7 +308,10 @@ typedef struct {
 /* ======================================================================
  * SPI stubs
  * ====================================================================== */
-typedef void SPI_HandleTypeDef;
+typedef void SPI_TypeDef;
+typedef struct {
+    SPI_TypeDef *Instance;
+} SPI_HandleTypeDef;
 
 /* ======================================================================
  * TIM stubs

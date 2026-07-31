@@ -54,3 +54,18 @@ sleep:
 | `param get/set` | 运行时参数读写 |
 
 > 更多外设示例正在重构适配六层 YAML 架构，后续逐步恢复。当前示例工程为 `examples/base`。
+
+## modbus_demo — RS485 + Modbus RTU 从站
+
+- **功能**：RS485 半双工（USART1 + DE 方向控制）+ Modbus RTU 从站协议（FC03/06/16、CRC16、异常码），
+  CLI 交互终端 + LED/按键组件 + RTC 定时事件。
+- **硬件连接**：RS485 → PA9(TX)/PA10(RX)/PA1(DE)；CLI → USART2 PA2/PA3 (115200)。
+- **测试**：10 个单元测试套件全过（含 `test_modbus` 12/12、`test_rs485` 5/5）。
+- **位置**：`examples/modbus_demo/`
+
+## spi_flash_demo — SPI NOR Flash
+
+- **功能**：SPI1（PA5/PA6/PA7 + PC4 CS）驱动 W25Q32 NOR Flash，
+  读 ID / 读写 / 扇区擦除，CLI + LED/按键组件。
+- **测试**：7 个单元测试套件全过（含 `test_spi_flash` 4/4）。
+- **位置**：`examples/spi_flash_demo/`

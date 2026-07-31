@@ -1,0 +1,19 @@
+version: 1
+hardware: hardware.yaml
+task: task.yaml
+
+peripheral_assign:
+  - peripheral: usart2
+    task: shell_task
+    role: debug_console
+  - peripheral: shell
+    task: shell_task
+    role: cli
+  - peripheral: flash
+    task: flash_test_task
+    role: storage
+
+interrupt:
+  - pin: PC13
+    component: btn
+    event: EXTI13
