@@ -88,8 +88,9 @@ void MX_GPIO_Init(void)
     /* Cellular control pin: initial HIGH = power disabled / reset inactive */
     HAL_GPIO_WritePin(GPIO{{ pin.id[1] }}, GPIO_PIN_{{ pin.id[2:] }}, GPIO_PIN_SET);
 {% endif %}
-    /* Enable NVIC if EXTI is configured */
     {% if pin.exti and pin.exti.enable %}
+    /* Set EXTI priority to FreeRTOS-safe level (>= configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY) */
+    HAL_NVIC_SetPriority({{ pin.id | exti_irq_name }}, 1, 0);
     HAL_NVIC_EnableIRQ({{ pin.id | exti_irq_name }});
     {% endif %}
 {% endfor %}

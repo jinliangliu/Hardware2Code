@@ -26,7 +26,7 @@ void test_RTC_TimerCreate_should_return_non_null(void) {
 }
 
 void test_RTC_TimerStart_should_not_crash(void) {
-    rtc_timer_handle_t t = RTC_TimerCreate(500, RTC_TIMER_MODE_PERIODIC, NULL, NULL);
+    rtc_timer_handle_t t = RTC_TimerCreate(500, RTC_TIMER_MODE_PERIODIC_SEC, NULL, NULL);
     RTC_TimerStart(t);
     RTC_TimerDelete(t);
 }

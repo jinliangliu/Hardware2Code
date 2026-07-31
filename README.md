@@ -63,9 +63,9 @@ flowchart LR
 
 ---
 
-## 三层 YAML 架构
+## 多层 YAML 架构
 
-项目采用 **硬件 / 软件 / 绑定** 三层解耦设计，各层职责独立、可并行编辑：
+项目采用 **六层解耦** 设计，从硬件事实到运行时参数逐层抽象，各层可独立编辑、并行协作：
 
 ```mermaid
 flowchart TB
@@ -78,27 +78,69 @@ flowchart TB
         H5["Sleep<br>STOP/STANDBY"]
     end
 
-    subgraph SW["task.yaml — 软件定义"]
+    subgraph SW["task.yaml — 任务与行为"]
         direction LR
-        S1["Project<br>名称/版本"] ---
-        S2["app_tasks<br>FreeRTOS 任务"] ---
-        S3["behavior<br>状态机/变量/类型"]
+        S1["app_tasks<br>FreeRTOS 任务"] ---
+        S2["behavior<br>层级状态机"] ---
+        S3["periodic_events<br>定时动作"]
+    end
+
+    subgraph COMP["components.yaml — 组件注册"]
+        direction LR
+        C1["shell / led / btn<br>可插拔组件实例"] ---
+        C2["period_ms<br>调度周期"] ---
+        C3["sleep_compat<br>低功耗兼容"]
     end
 
     subgraph BIND["bind.yaml — 硬件-软件绑定"]
         direction LR
-        D1["interrupt<br>EXTI→Task 绑定"] ---
-        D2["peripheral_assign<br>外设→Task 分配"] ---
-        D3["routing<br>Task→Task 通信路由"]
+        D1["interrupt<br>EXTI→Component 绑定"] ---
+        D2["event<br>ISR→事件队列路由"]
     end
 
-    HW -.->|"映射"| BIND
-    SW -.->|"分配"| BIND
+    subgraph PARAMS["params.yaml — 运行时参数"]
+        direction LR
+        P1["组件参数<br>default/min/max"] ---
+        P2["CLI 运行时调参<br>param get/set"]
+    end
+
+    subgraph PUBSUB["pubsub.yaml — 发布/订阅"]
+        direction LR
+        U1["topic 定义<br>组件间解耦通信"] ---
+        U2["温度/按键/LED<br>跨组件事件总线"]
+    end
+
+    HW -.-> BIND
+    SW -.-> BIND
+    COMP -.-> PARAMS
+    COMP -.-> PUBSUB
 ```
+
+### 组件框架 (Component Framework)
+
+生成固件内置**组件管理器**，将外设驱动封装为统一生命周期的可插拔组件：
+
+```
+┌──────────────────────────────────────────────────┐
+│                 component_registry                │
+│  init_all() → step_all() → 组件生命周期管理       │
+├──────────┬──────────┬──────────┬─────────────────┤
+│  shell   │   led    │   btn    │    ...          │
+│  CLI交互  │ 模式驱动 │ 手势检测 │  可扩展          │
+├──────────┴──────────┴──────────┴─────────────────┤
+│              component_bus (发布/订阅)            │
+│        Topic 路由 — 组件间解耦事件通信             │
+├──────────────────────────────────────────────────┤
+│             param_registry (参数注册表)            │
+│        运行时参数 — CLI get/set 动态调参           │
+└──────────────────────────────────────────────────┘
+```
+
+每个组件实现三个标准接口：`init()` / `step()` / `terminate()`，由框架按 `period_ms` 周期自动调度。新增组件只需编写模板并注册到 `components.yaml`，无需改动调度器代码。
 
 ### 上下文构建流程
 
-三份 YAML 通过 `mapper.py` 合并为统一的模板渲染上下文：
+六份 YAML 通过 `mapper.py` 合并为统一的模板渲染上下文：
 
 ```mermaid
 flowchart TB
@@ -145,13 +187,15 @@ flowchart TB
 | 类别 | 能力 |
 |------|------|
 | **硬件解析** | EasyEDA Pro `.enet` / KiCad XML / S-Expr 网表，CSV BOM，100+ 外设芯片启发式匹配 |
-| **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485、红外、EEPROM、温度传感器 — 18 种驱动模板 |
+| **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485、红外、EEPROM、温度传感器 — 20 种模板，含遥测监控与电源管理 |
+| **组件框架** | 统一生命周期组件管理器（init/step/terminate），发布/订阅事件总线，运行时参数注册表，CLI 动态调参 |
 | **业务 DSL** | 层级状态机（复合子状态 / 并行区域 / 历史状态）、defer/timeline 时间控制、when 条件动作、ref 引用复用 |
 | **任务系统** | FreeRTOS 任务定义 + 优先级/栈配置，可视化拖拽绑定中断源与外设 |
-| **低功耗** | 自动唤醒源分析，Tickless Idle 钩子，STOP/STANDBY/SLEEP 支持，USART 起始位唤醒 |
+| **低功耗** | 自动唤醒源分析，Tickless Idle 钩子，动态睡眠深度选择（组件级 sleep_compat），STOP/STANDBY/SLEEP 支持，USART 起始位唤醒 |
 | **Bootloader** | 双槽位 A/B，硬件 CRC32，TAMP 备份寄存器，启动失败自动回退 |
 | **FOTA** | BSDIFF 差分升级，减小 OTA 传输体积，完整性校验 + 回滚 |
-| **CLI 调试** | 交互式命令行，支持 help/version/uptime/free/tasks/sysinfo/reset/gpio/led/rtc 等 10+ 命令 |
+| **CLI 调试** | 交互式命令行，支持 help/version/uptime/free/tasks/sysinfo/reset/gpio/led/rtc/param 等 12+ 命令 |
+| **遥测监控** | 组件心跳计数、任务栈高水位监测、堆内存追踪、每组件错误计数、定期快照日志 |
 | **日志** | 环形缓冲区 + 中断驱动 USART TX，ISR 安全，零阻塞 |
 | **测试** | Unity 框架 + Mock HAL，PC 端脱离硬件运行，覆盖率报告 |
 | **通信** | Modbus RTU / MQTT 3.1.1 / RS485 半双工 / Cellular 4G Cat.1 |
@@ -167,8 +211,13 @@ flowchart TB
 git clone --recurse-submodules https://github.com/jinliangliu/hw2c.git
 cd hw2c && pip install -e .
 
-# 2. 直接生成基础示例（HSI 16MHz + USART2 CLI + RTC + 温度传感器）
-python -m generator.generate -i examples/base/hardware.yaml -o output/my_project
+# 2. 生成基础示例（HSI 16MHz + USART2 CLI + RTC + 温度传感器 + LED/按键组件 + 状态机）
+python -m generator.generate -i examples/base/hardware.yaml -o output/my_project \
+  --task examples/base/task.yaml \
+  --components examples/base/components.yaml \
+  --bind examples/base/bind.yaml \
+  --params examples/base/params.yaml \
+  --pubsub examples/base/pubsub.yaml
 
 # 3. 编译烧录
 cd output/my_project
@@ -215,7 +264,7 @@ BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三�
 | I2C EEPROM | `drv_eeprom.c` | ✓ | — | `i2c_spi_demo` |
 | SPI W25Q32 | `drv_spi_flash.c` | ✓ | `test_spi_flash.c` | `spi_flash` |
 | ADC | `drv_adc.c` | — | `test_adc.c` | — |
-| Internal TempSensor | `drv_temp_sensor.c` | — | — | VREFINT 补偿 + 手动偏移校准 |
+| Internal TempSensor | `drv_temp_sensor.c` | — | — | VREFINT 补偿 + ADC 校准 |
 | PWM | `drv_pwm.c` | — | `test_pwm.c` | `pwm` |
 | RTC | `drv_rtc.c` | — | `test_rtc.c` | `rtc_advanced` |
 | IWDG | `drv_iwdg.c` | — | — | `bootloader_demo` |
@@ -224,13 +273,23 @@ BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三�
 | 红外 NEC/SIR | `drv_ir.c` | — | — | — |
 | MQTT 3.1.1 | `drv_mqtt.c` | — | `test_mqtt.c` | — |
 | Modbus RTU | `drv_modbus.c` | — | `test_modbus.c` | — |
-| CLI 调试终端 | `drv_cli.c` | — | `test_cli.c` | 10+ 命令，STOP 模式唤醒 |
+| CLI 调试终端 | `drv_cli.c` | — | `test_cli.c` | 12+ 命令，STOP 模式唤醒 |
 | FOTA 差分升级 | `drv_fota.c` | — | `test_fota_*.c` | `fota_demo` |
 | Bootloader (A/B) | `boot_*.c` | — | `test_boot_*.c` | `bootloader_demo` |
 | Log (日志) | `drv_log.c` | — | — | 环形缓冲 + 中断 TXE，GPIO/AF 可配 |
 | Sleep (低功耗) | `sleep.c` | — | — | `low_power_demo`, USART 唤醒 |
+| PowerMgr (电源管理) | `power_mgr.c` | — | — | 动态睡眠深度选择，组件级 sleep_compat |
+| Telemetry (遥测) | `telemetry.c` | — | — | 心跳/栈水印/堆/错误计数快照 |
 
-> **未实现的外设**：FDCAN、USB Device、LPUART、LPTIM、DAC、COMP、CEC — MCU 硬件支持但驱动模板尚未实现。
+### 应用层组件
+
+| 组件 | 模板 | 单元测试 | 说明 |
+|------|------|:--:|------|
+| StateMachine | `statemachine.c.j2` | `test_statemachine.c` | 层级状态机引擎，支持并行区域/历史状态/守卫条件/after 超时 |
+| LED Pattern | `led_component.c.j2` | `test_led.c` | 多实例模式驱动（off/fast_blink/slow_blink/fault） |
+| Button Gesture | `btn_component.c.j2` | `test_btn.c` | 多实例手势检测（SHORT_PRESS/DOUBLE_PRESS/LONG_PRESS） |
+| Component Bus | `component_bus.c.j2` | — | 发布/订阅事件总线，组件间解耦通信 |
+| Param Registry | `param_registry.c.j2` | — | 运行时参数注册表，CLI get/set 动态调参 |
 
 ### 状态机 DSL
 
@@ -302,9 +361,10 @@ behavior:
 hw2c
 ├── parser/          # 网表/BOM 解析管线
 ├── generator/       # 代码生成引擎（mapper / context / schemas / builders）
-├── templates/       # Jinja2 模板（18 类驱动 / 测试 / 配置 / CMake / 链接脚本）
+├── templates/       # Jinja2 模板（驱动 / 组件 / 状态机 / 遥测 / 电源管理 / 测试 / 配置 / CMake / 链接脚本）
 ├── models/          # 18 个外设模型 YAML
-├── examples/        # 示例项目（base 最小系统 + 各外设 demo）
+├── examples/        # 示例项目（base 最小系统 + 各外设 demo，含六层 YAML 配置）
+│   └── base/        #   hardware / task / components / bind / params / pubsub
 ├── docs/            # MkDocs 文档（用户指南 / 开发者指南 / 路线图）
 ├── static/          # Git 子模块（HAL / CMSIS / FreeRTOS / Unity）+ third_party（LwRB）
 └── tests/           # 78 个生成器单元测试

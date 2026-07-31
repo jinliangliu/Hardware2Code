@@ -1,0 +1,191 @@
+/**
+ * @file  power_mgr.c
+ * @brief Power manager implementation — dynamic sleep depth selection
+ *
+ * Scans active components' sleep_compat limits and determines the
+ * deepest allowed sleep mode. Integrates with tickless idle to
+ * automatically select the optimal STOP depth.
+ *
+ * Auto-generated — do not edit manually.
+ */
+
+#include "power_mgr.h"
+#include <string.h>
+
+{% if has_components %}
+#include "component_registry.h"
+{% endif %}
+
+{% if has_log %}
+#ifndef TEST
+#include "drv_log.h"
+#endif
+{% endif %}
+
+/* ---- Private state ---- */
+static struct {
+    power_mode_t default_mode;     /**< Fallback when no components */
+    power_mode_t current_allowed;  /**< Cached allowed depth */
+    uint32_t     last_update;      /**< RTC uptime of last recalculation */
+} g_power_mgr = {
+    .default_mode = POWER_MODE_STOP1,
+    .current_allowed = POWER_MODE_STOP1,
+    .last_update = 0,
+};
+
+/* ---- Mode name lookup ---- */
+static const char *s_mode_names[] = {
+    [POWER_MODE_RUN]     = "RUN",
+    [POWER_MODE_SLEEP]   = "SLEEP",
+    [POWER_MODE_STOP0]   = "STOP0",
+    [POWER_MODE_STOP1]   = "STOP1",
+    [POWER_MODE_STOP2]   = "STOP2",
+    [POWER_MODE_STANDBY] = "STANDBY",
+};
+
+/**
+ * @brief  Parse sleep_compat string (e.g., "STOP2") to power_mode_t
+ * @param  compat  Compatibility string from component config
+ * @return power_mode_t enum value, POWER_MODE_RUN on parse failure
+ */
+static power_mode_t parse_sleep_compat(const char *compat)
+{
+    if (compat == NULL) return POWER_MODE_RUN;
+    for (int i = 0; i < POWER_MODE_MAX; i++) {
+        if (s_mode_names[i] != NULL) {
+            /* Case-insensitive compare */
+            const char *a = compat;
+            const char *b = s_mode_names[i];
+            while (*a && *b) {
+                char ca = *a;
+                char cb = *b;
+                if (ca >= 'a' && ca <= 'z') ca -= 32;
+                if (ca != cb) break;
+                a++; b++;
+            }
+            if (*a == '\0' && *b == '\0') {
+                return (power_mode_t)i;
+            }
+        }
+    }
+    return POWER_MODE_RUN;
+}
+
+const char *power_mode_name(power_mode_t mode)
+{
+    if (mode >= POWER_MODE_MAX) return "UNKNOWN";
+    return s_mode_names[mode];
+}
+
+void power_mgr_init(power_mode_t default_mode)
+{
+    g_power_mgr.default_mode = default_mode;
+    g_power_mgr.current_allowed = default_mode;
+    g_power_mgr.last_update = 0;
+{% if has_log %}
+    log_info("PowerMgr: init, default=%s", power_mode_name(default_mode));
+{% endif %}
+}
+
+power_mode_t power_mgr_allowed_depth(void)
+{
+{% if has_components %}
+    extern uint32_t rtc_uptime_sec;
+    uint32_t now = rtc_uptime_sec;
+
+    /* Cache: recalculate at most once per second */
+    if (now == g_power_mgr.last_update) {
+        return g_power_mgr.current_allowed;
+    }
+    g_power_mgr.last_update = now;
+
+    power_mode_t deepest = POWER_MODE_STANDBY;  /* start optimistic */
+    bool has_active = false;
+
+    for (uint32_t i = 0; i < component_count(); i++) {
+        component_t *c = component_get_by_index(i);
+        if (c == NULL) continue;
+        if (c->state != COMPONENT_RUNNING) continue;
+
+        has_active = true;
+
+        /* Component's sleep compatibility limit */
+        const char *sc = c->sleep_compat;
+        power_mode_t comp_limit;
+
+        if (sc == NULL || *sc == '\0') {
+            /* No sleep_compat declared: assume RUN only (conservative) */
+            comp_limit = POWER_MODE_RUN;
+        } else {
+            comp_limit = parse_sleep_compat(sc);
+        }
+
+        /* Deepest allowed = minimum (shallowest) of all active limits */
+        if (comp_limit < deepest) {
+            deepest = comp_limit;
+        }
+    }
+
+    if (!has_active) {
+        g_power_mgr.current_allowed = g_power_mgr.default_mode;
+    } else {
+        g_power_mgr.current_allowed = deepest;
+    }
+{% else %}
+    g_power_mgr.current_allowed = g_power_mgr.default_mode;
+{% endif %}
+
+    return g_power_mgr.current_allowed;
+}
+
+bool power_mgr_is_mode_allowed(power_mode_t target)
+{
+    power_mode_t allowed = power_mgr_allowed_depth();
+    return (target <= allowed);
+}
+
+uint32_t power_mgr_blocking_count(power_mode_t mode)
+{
+    uint32_t count = 0;
+{% if has_components %}
+    for (uint32_t i = 0; i < component_count(); i++) {
+        component_t *c = component_get_by_index(i);
+        if (c == NULL) continue;
+        if (c->state != COMPONENT_RUNNING) continue;
+
+        const char *sc = c->sleep_compat;
+        power_mode_t limit = (sc && *sc) ? parse_sleep_compat(sc) : POWER_MODE_RUN;
+
+        if (mode > limit) {
+            count++;
+        }
+    }
+{% endif %}
+    (void)mode;
+    return count;
+}
+
+void power_mgr_log_status(void)
+{
+{% if has_log %}
+    power_mode_t allowed = power_mgr_allowed_depth();
+    log_info("=== PowerMgr Status ===");
+    log_info("  Allowed depth: %s", power_mode_name(allowed));
+    log_info("  Default mode:  %s", power_mode_name(g_power_mgr.default_mode));
+
+{% if has_components %}
+    log_info("--- Component sleep compat ---");
+    for (uint32_t i = 0; i < component_count(); i++) {
+        component_t *c = component_get_by_index(i);
+        if (c == NULL) continue;
+        const char *sc = c->sleep_compat;
+        log_info("  %-16s  state=%d  compat=%s",
+                 c->name, (int)c->state,
+                 (sc && *sc) ? sc : "(none)");
+    }
+{% endif %}
+    log_info("=== End PowerMgr ===");
+{% else %}
+    (void)0;
+{% endif %}
+}

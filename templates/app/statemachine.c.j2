@@ -9,6 +9,9 @@
 {% if has_log %}
 #include "drv_log.h"
 {% endif %}
+{% if has_temp_sensor %}
+#include "drv_temp_sensor.h"
+{% endif %}
 {% if timer_events or defer_actions %}
 #include "drv_rtc.h"
 {% endif %}
@@ -16,7 +19,10 @@
 
 #include "statemachine.h"
 
-{% if has_led and not has_led_task %}
+{% if has_led_component %}
+#include "led_component.h"
+{% endif %}
+{% if has_led and not has_led_task and not has_led_component %}
 #ifndef TEST
 #include "stm32g0xx_hal.h"
 {% for pin in pins %}
@@ -153,11 +159,28 @@ static uint32_t current_state_{{ state.name }}_history = STATE_{{ state.name }}_
 /* ========== 动作实现宏 ========== */
 {% macro action_impl(action, region_name='') -%}
 {% if action == 'toggle_led' %}
-{% if has_led_task %}
+{% if has_led_component %}
+led_toggle(0);
+{% elif has_led_task %}
 extern void led_task_notify(void);
 led_task_notify();
 {% elif has_led %}
 HAL_GPIO_TogglePin(LED_GPIO_Port, LED_GPIO_Pin);
+{% endif %}
+{% elif action.startswith('led_pattern ') %}
+{% if has_led_component %}
+{% if 'off' in action %}led_set_pattern_by_index(0, 0);
+{% elif 'fast' in action %}led_set_pattern_by_index(0, 1);
+{% elif 'slow' in action %}led_set_pattern_by_index(0, 2);
+{% elif 'fault' in action %}led_set_pattern_by_index(0, 3);
+{% endif %}
+{% elif has_led_task %}
+extern void led_task_set_pattern(uint32_t pattern);
+{% if 'off' in action %}led_task_set_pattern(0);
+{% elif 'fast' in action %}led_task_set_pattern(1);
+{% elif 'slow' in action %}led_task_set_pattern(2);
+{% elif 'fault' in action %}led_task_set_pattern(3);
+{% endif %}
 {% endif %}
 {% elif action.startswith('log ') %}
 log_info({{ action[4:] }});
@@ -178,7 +201,7 @@ log_info({{ action[4:] }});
         RTC_TimerDelete({{ timer_name }}_handle);
         {{ timer_name }}_handle = NULL;
     }
-    rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+    rtc_timer_handle_t h = RTC_TimerCreate((period + 999) / 1000, RTC_TIMER_MODE_ONE_SHOT,
                                            {{ timer_name }}_cb, NULL);
     {{ timer_name }}_handle = h;
     RTC_TimerStart(h);
@@ -215,7 +238,9 @@ log_info({{ action[4:] }});
     {% set sub = parts[1].strip() %}
     if ({{ parts[0].replace('when ', '') }}) {
         {% if sub == 'toggle_led' %}
-        {% if has_led_task %}
+        {% if has_led_component %}
+        led_toggle(0);
+        {% elif has_led_task %}
         extern void led_task_notify(void);
         led_task_notify();
         {% elif has_led %}
@@ -284,6 +309,13 @@ log_info({{ action[4:] }});
     event_t evt_pub = { .id = EVENT_{{ parts[2] | event_name }}, .param = 0 };
     xQueueSend(event_queue, &evt_pub, 0);
 }
+{% elif action == 'shell_temp' %}
+{% if has_temp_sensor %}
+{
+    int16_t temp = temp_sensor_read_celsius();
+    log_info("Temperature: %d.%d C", (int)(temp / 10), (int)(temp % 10));
+}
+{% endif %}
 {% elif action == 'return' %}
 {
     event_t evt_pub = { .id = EVENT_RETURN, .param = 0 };
@@ -310,7 +342,7 @@ log_info({{ action[4:] }});
 static rtc_timer_handle_t {{ t.timer_name }}_handle = NULL;
 static void {{ t.timer_name }}_cb(void *arg) {
     event_t evt = { .id = EVENT_TIMER_EXPIRED_{{ t.timer_name }}, .param = 0 };
-    statemachine_process(&evt);
+    xQueueSend(event_queue, &evt, 0);
 }
 {% endfor %}
 
@@ -348,7 +380,7 @@ void statemachine_init(void) {
 {% if state.after %}
     {
         uint32_t period = {{ state.after }};
-        rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+        rtc_timer_handle_t h = RTC_TimerCreate((period + 999) / 1000, RTC_TIMER_MODE_ONE_SHOT,
                                                {{ region.name }}_{{ state.name }}_timeout_cb, NULL);
         {{ region.name }}_{{ state.name }}_timeout_handle = h;
         RTC_TimerStart(h);
@@ -380,7 +412,7 @@ void statemachine_init(void) {
 {% if state.after %}
     {
         uint32_t period = {{ state.after }};
-        rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+        rtc_timer_handle_t h = RTC_TimerCreate((period + 999) / 1000, RTC_TIMER_MODE_ONE_SHOT,
                                                {{ state.name }}_timeout_cb, NULL);
         {{ state.name }}_timeout_handle = h;
         RTC_TimerStart(h);
@@ -442,7 +474,7 @@ void statemachine_process(event_t *evt) {
 {% if tgt.after %}
                         {
                             uint32_t period = {{ tgt.after }};
-                            rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                            rtc_timer_handle_t h = RTC_TimerCreate((period + 999) / 1000, RTC_TIMER_MODE_ONE_SHOT,
                                                                    {{ region.name }}_{{ state.name }}_{{ tgt.name }}_timeout_cb, NULL);
                             {{ region.name }}_{{ state.name }}_{{ tgt.name }}_timeout_handle = h;
                             RTC_TimerStart(h);
@@ -525,7 +557,7 @@ void statemachine_process(event_t *evt) {
 {% if s.after %}
                 {
                     uint32_t period = {{ s.after }};
-                    rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                    rtc_timer_handle_t h = RTC_TimerCreate((period + 999) / 1000, RTC_TIMER_MODE_ONE_SHOT,
                                                            {{ region.name }}_{{ s.name }}_timeout_cb, NULL);
                     {{ region.name }}_{{ s.name }}_timeout_handle = h;
                     RTC_TimerStart(h);
@@ -552,7 +584,7 @@ void statemachine_process(event_t *evt) {
 {% if nested.after %}
                 {
                     uint32_t period = {{ nested.after }};
-                    rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                    rtc_timer_handle_t h = RTC_TimerCreate((period + 999) / 1000, RTC_TIMER_MODE_ONE_SHOT,
                                                            {{ region.name }}_{{ s.name }}_{{ nested.name }}_timeout_cb, NULL);
                     {{ region.name }}_{{ s.name }}_{{ nested.name }}_timeout_handle = h;
                     RTC_TimerStart(h);
@@ -649,7 +681,7 @@ void statemachine_process(event_t *evt) {
 {% if tgt.after %}
                     {
                         uint32_t period = {{ tgt.after }};
-                        rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                        rtc_timer_handle_t h = RTC_TimerCreate((period + 999) / 1000, RTC_TIMER_MODE_ONE_SHOT,
                                                                {{ state.name }}_{{ tgt.name }}_timeout_cb, NULL);
                         {{ state.name }}_{{ tgt.name }}_timeout_handle = h;
                         RTC_TimerStart(h);
@@ -732,7 +764,7 @@ void statemachine_process(event_t *evt) {
 {% if s.after %}
             {
                 uint32_t period = {{ s.after }};
-                rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                rtc_timer_handle_t h = RTC_TimerCreate((period + 999) / 1000, RTC_TIMER_MODE_ONE_SHOT,
                                                        {{ s.name }}_timeout_cb, NULL);
                 {{ s.name }}_timeout_handle = h;
                 RTC_TimerStart(h);
@@ -759,7 +791,7 @@ void statemachine_process(event_t *evt) {
 {% if nested.after %}
             {
                 uint32_t period = {{ nested.after }};
-                rtc_timer_handle_t h = RTC_TimerCreate(period, RTC_TIMER_MODE_ONE_SHOT,
+                rtc_timer_handle_t h = RTC_TimerCreate((period + 999) / 1000, RTC_TIMER_MODE_ONE_SHOT,
                                                        {{ s.name }}_{{ nested.name }}_timeout_cb, NULL);
                 {{ s.name }}_{{ nested.name }}_timeout_handle = h;
                 RTC_TimerStart(h);

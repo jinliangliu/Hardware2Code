@@ -374,12 +374,64 @@ QueueHandle_t xQueueCreate(uint32_t length, uint32_t itemSize) {
     (void)length; (void)itemSize;
     return (QueueHandle_t)1;
 }
-BaseType_t xQueueReceive(QueueHandle_t queue, void *buffer, TickType_t wait) {
-    (void)queue; (void)buffer; (void)wait;
+
+/* ---- Queue inject support (for testing queue consumers) ---- */
+#define MOCK_QUEUE_BUF_SIZE  32
+static uint8_t mock_queue_buf[MOCK_QUEUE_BUF_SIZE];
+static uint32_t mock_queue_len = 0;
+static uint32_t mock_queue_pos = 0;
+static QueueHandle_t mock_queue_target = NULL;
+
+/* ---- xQueueSend capture ---- */
+static QueueHandle_t last_send_queue = NULL;
+static uint8_t last_send_item[MOCK_QUEUE_BUF_SIZE];
+static uint32_t last_send_size = 0;
+
+void mock_queue_inject(QueueHandle_t queue, const void *data, uint32_t size)
+{
+    mock_queue_target = queue;
+    mock_queue_len = size < MOCK_QUEUE_BUF_SIZE ? size : MOCK_QUEUE_BUF_SIZE;
+    memcpy(mock_queue_buf, data, mock_queue_len);
+    mock_queue_pos = 0;
+}
+
+void mock_queue_reset(void)
+{
+    mock_queue_len = 0;
+    mock_queue_pos = 0;
+    mock_queue_target = NULL;
+    last_send_queue = NULL;
+    last_send_size = 0;
+}
+
+QueueHandle_t mock_xQueueSend_get_last_queue(void)
+{
+    return last_send_queue;
+}
+
+void mock_xQueueSend_get_last_item(void *buf, uint32_t size)
+{
+    memcpy(buf, last_send_item, size < last_send_size ? size : last_send_size);
+}
+
+BaseType_t xQueueReceive(QueueHandle_t queue, void *buffer, TickType_t wait)
+{
+    (void)wait;
+    if (queue == mock_queue_target && mock_queue_pos < mock_queue_len) {
+        uint32_t remaining = mock_queue_len - mock_queue_pos;
+        memcpy(buffer, &mock_queue_buf[mock_queue_pos], remaining);
+        mock_queue_pos += remaining;
+        return pdTRUE;
+    }
     return pdFALSE;
 }
 BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t wait) {
-    (void)queue; (void)item; (void)wait;
+    (void)wait;
+    last_send_queue = queue;
+    if (item) {
+        last_send_size = MOCK_QUEUE_BUF_SIZE;
+        memcpy(last_send_item, item, last_send_size);
+    }
     return pdPASS;
 }
 BaseType_t xQueueSendFromISR(QueueHandle_t queue, const void *item, BaseType_t *pxWoken) {

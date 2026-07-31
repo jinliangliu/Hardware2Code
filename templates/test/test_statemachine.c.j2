@@ -5,11 +5,14 @@
 /* Test stubs */
 typedef void * rtc_timer_handle_t;
 typedef void (*rtc_timer_cb_t)(void *arg);
-#define RTC_TIMER_MODE_ONE_SHOT     0
-#define RTC_TIMER_MODE_PERIODIC     1
+#define RTC_TIMER_MODE_ONE_SHOT          0
+#define RTC_TIMER_MODE_PERIODIC_SEC      1
+#define RTC_TIMER_MODE_PERIODIC_MINUTE   2
+#define RTC_TIMER_MODE_PERIODIC_HOUR     3
+#define RTC_TIMER_MODE_PERIODIC_DAY      4
 
-rtc_timer_handle_t RTC_TimerCreate(uint32_t period_ms, uint8_t mode, rtc_timer_cb_t callback, void *arg) {
-    (void)period_ms; (void)mode; (void)callback; (void)arg;
+rtc_timer_handle_t RTC_TimerCreate(uint32_t period_sec, uint8_t mode, rtc_timer_cb_t callback, void *arg) {
+    (void)period_sec; (void)mode; (void)callback; (void)arg;
     return (rtc_timer_handle_t)1;
 }
 void RTC_TimerStart(rtc_timer_handle_t handle) { (void)handle; }

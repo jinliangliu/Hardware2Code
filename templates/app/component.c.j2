@@ -1,0 +1,87 @@
+/**
+ * @file  {{ comp_name }}_component.c
+ * @brief Component: {{ comp_type }} — {{ description | default('user-implemented') }}
+ *
+ * Auto-generated scaffolding. Replace stub implementations with real logic.
+ *
+ * Driver binding: {{ driver }}
+ * Period:          {{ period_ms }} ms
+ */
+
+#include "component_registry.h"
+#include <stddef.h>
+
+#ifdef TEST
+#include "posix_mock.h"
+#else
+{% if driver_type == 'uart' %}
+#include "uart_api.h"
+{% elif driver_type == 'gpio' %}
+#include "gpio_api.h"
+{% elif driver_type == 'adc' %}
+#include "adc_api.h"
+{% endif %}
+#endif
+
+/* ---- Component-private context ---- */
+struct {{ comp_name }}_ctx {
+    /* Add your component state here */
+    uint32_t    counter;
+    int         initialized;
+};
+
+static struct {{ comp_name }}_ctx g_{{ comp_name }}_ctx;
+
+/* ---- {{ comp_name }}_init ---- */
+
+/**
+ * @brief  Initialize the {{ comp_name }} component
+ * @param  c    Component descriptor (registry injects this)
+ * @param  cfg  Per-component config (from components.yaml)
+ * @return 0 on success, non-zero on failure
+ *
+ * One-time setup: allocate context, open driver, configure hardware.
+ * Called by component_init_all() at boot.
+ */
+int {{ comp_name }}_init(component_t *c, void *cfg)
+{
+    (void)cfg;
+    g_{{ comp_name }}_ctx.initialized = 1;
+    g_{{ comp_name }}_ctx.counter = 0;
+    c->ctx = &g_{{ comp_name }}_ctx;
+    return 0;  /* success */
+}
+
+/* ---- {{ comp_name }}_step ---- */
+
+/**
+ * @brief  Periodic processing for the {{ comp_name }} component
+ * @param  c  Component descriptor (ctx field is the private context)
+ *
+ * Called by component_step_all() at the configured period_ms interval.
+ * This is the main work loop: read sensors, process data, publish events.
+ */
+void {{ comp_name }}_step(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = (struct {{ comp_name }}_ctx *)c->ctx;
+    if (ctx == NULL) return;
+    ctx->counter++;
+    /* TODO: your periodic logic here */
+}
+
+/* ---- {{ comp_name }}_terminate ---- */
+
+/**
+ * @brief  Cleanup and shutdown the {{ comp_name }} component
+ * @param  c  Component descriptor
+ *
+ * Called by component_terminate_all() on system shutdown.
+ * Release driver handles, save state, free resources.
+ */
+void {{ comp_name }}_terminate(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = (struct {{ comp_name }}_ctx *)c->ctx;
+    if (ctx == NULL) return;
+    ctx->initialized = 0;
+    /* TODO: cleanup code here */
+}

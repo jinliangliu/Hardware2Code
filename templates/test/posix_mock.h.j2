@@ -1,0 +1,72 @@
+/**
+ * @file  posix_mock.h
+ * @brief Mock implementations of POSIX driver interfaces for SIL testing
+ *
+ * Provides in-memory replacements for uart_api, gpio_api, adc_api.
+ * Test code can inspect mock state to verify driver interactions.
+ *
+ * Auto-generated — do not edit manually.
+ */
+
+#ifndef __POSIX_MOCK_H
+#define __POSIX_MOCK_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* ---- UART mock ---- */
+
+typedef struct uart_mock *uart_handle_t;
+typedef struct { uint32_t baud; uint8_t parity; } uart_cfg_t;
+
+#define MAX_UART_DEVS         4
+#define MAX_UART_RX_BUF       256
+#define MAX_UART_TX_BUF       256
+
+/* Inject data into mock UART RX buffer (simulates hardware reception) */
+void uart_mock_inject_rx(const char *name, const uint8_t *data, uint32_t len);
+
+/* Read data from mock UART TX buffer (verify what was transmitted) */
+uint32_t uart_mock_get_tx(const char *name, uint8_t *buf, uint32_t max_len);
+
+/* Clear all mock buffers */
+void uart_mock_reset_all(void);
+
+/* ---- GPIO mock ---- */
+
+typedef struct gpio_mock *gpio_handle_t;
+typedef struct { uint8_t mode; bool active_low; } gpio_cfg_t;
+
+#define MAX_GPIO_DEVS         16
+
+/* Set mock pin level (simulates external input) */
+void gpio_mock_set_level(const char *name, uint8_t level);
+
+/* Get last written level */
+uint8_t gpio_mock_get_level(const char *name);
+
+/* Clear all mock state */
+void gpio_mock_reset_all(void);
+
+/* ---- ADC mock ---- */
+
+typedef struct adc_mock *adc_handle_t;
+typedef struct { uint32_t channel; uint32_t vref_mv; } adc_cfg_t;
+
+#define MAX_ADC_DEVS          4
+
+/* Set mock ADC reading (mV) */
+void adc_mock_set_reading(const char *name, uint32_t millivolts);
+
+/* Clear all mock state */
+void adc_mock_reset_all(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __POSIX_MOCK_H */

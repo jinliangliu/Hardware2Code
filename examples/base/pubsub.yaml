@@ -1,0 +1,13 @@
+# Pub/Sub topic definitions for inter-component messaging
+# Topics are named data channels. Components publish to and subscribe from topics.
+# Topic names become TOPIC_<name> enum values in generated code.
+
+topics:
+  - name: led_state
+    description: "LED on/off state change (0=off, 1=on)"
+  - name: button_press
+    description: "Button press event (button_id as value)"
+  - name: temperature
+    description: "Temperature reading (scaled to int32, unit=0.1C)"
+  - name: alarm
+    description: "Alarm notification (alarm_id as value)"

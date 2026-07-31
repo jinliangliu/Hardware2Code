@@ -1,7 +1,7 @@
 {#
-    drv_rtc.c.j2 - RTC driver with software timer manager
-    硬件：纯寄存器初始化，避免 HAL_RTC_Init 潜在的 HardFault
-    软件：定时器链表 + RTC_ProcessTimers() 在事件循环中调用
+    drv_rtc.c.j2 - RTC driver with sorted alarm queue
+    硬件：HAL_RTC_Init + Alarm A / WakeUp 1s 心跳
+    软件：按 deadline_sec 排序的定时器链表，Alarm A 精确匹配队首到期时间
 #}
 
 #ifdef TEST
@@ -19,29 +19,26 @@
 #include "drv_{{ peripheral.name }}.h"
 #include "event_mgr.h"
 
-/* Private handle */
+/* ---------- private globals ---------- */
 RTC_HandleTypeDef hrtc;
+static bool      rtc_ready            = false;
+uint32_t  rtc_uptime_sec       = 0;      /* monotonic, increment in WakeUp 1s ISR */
+static uint32_t  rtc_init_sec_of_day  = 0;      /* RTC sec-of-day when uptime was 0 */
 
-/* Guard: RTC_GetTime safe to call only after RTC_Init completes */
-static bool rtc_ready = false;
-
-/* RTC tick 间隔 (毫秒) - 必须与 RTC_WakeUp_Config 配置的唤醒周期一致 */
-#define RTC_TICK_INTERVAL_MS    {{ rtc_wakeup_interval_ms }}
-
-/* 软件定时器链表 */
+/* ---------- sorted timer list (ASC by deadline_sec) ---------- */
 typedef struct rtc_timer {
-    uint32_t            period_ms;
-    uint32_t            remaining_ms;
-    uint8_t             mode;
+    uint32_t            deadline_sec;   /* absolute uptime second              */
+    uint32_t            period_sec;     /* meaning depends on mode (see .h)    */
+    uint8_t             mode;           /* ONE_SHOT / PERIODIC_*               */
     rtc_timer_cb_t      callback;
-    void                *arg;
-    struct rtc_timer    *next;
+    void               *arg;
+    struct rtc_timer   *next;           /* sorted ASC by deadline_sec          */
 } rtc_timer_t;
 
 static rtc_timer_t *timer_head = NULL;
 extern QueueHandle_t event_queue;
 
-/* 分钟/小时定时器回调 */
+/* ---------- built-in callback stubs ---------- */
 static void minute_timer_cb(void *arg) {
     event_t evt = { .id = EVENT_MINUTE_TICK, .param = 0 };
     xQueueSend(event_queue, &evt, 0);
@@ -58,37 +55,165 @@ static void alarm_{{ alarm.event | lower }}_cb(void *arg) {
 {% endfor %}
 
 #ifndef TEST
-/* ========== 硬件实现区域 ========== */
+/* ========================================================================
+ *  硬件实现区域
+ * ======================================================================== */
 
-/**
- * @brief  系统错误处理（灯闪烁 + 死循环）
- *         替代 STM32Cube main.c 中的 Error_Handler，避免跨文件 extern 依赖
- */
 static void Error_Handler(void)
 {
     __disable_irq();
     while (1) {}
 }
 
-/**
- * @brief  RTC 外设 MSP 初始化（由 HAL_RTC_Init 自动调用）
- *         参考 STM32Cube 官方模板，使用 HAL_RCCEx_PeriphCLKConfig 配置 RTC 时钟源
- * @param  hrtc: RTC 句柄指针
- * @note   时钟源选择由 hardware.yaml 中的 clock_source 决定（LSI / LSE）
+/*
+ * ARM Alarm A to match timer_head->deadline_sec (or disable if queue empty).
+ * Converts uptime deadline back to RTC calendar time for HAL programming.
  */
+static void rtc_arm_alarm_a(void)
+{
+    if (!timer_head || !rtc_ready) {
+        HAL_RTC_DeactivateAlarm(&hrtc, RTC_ALARM_A);
+        return;
+    }
+
+    uint32_t abs_sec = (rtc_init_sec_of_day + timer_head->deadline_sec) % 86400;
+    uint8_t  hh = (uint8_t)(abs_sec / 3600);
+    uint8_t  mm = (uint8_t)((abs_sec % 3600) / 60);
+    uint8_t  ss = (uint8_t)(abs_sec % 60);
+
+    RTC_AlarmTypeDef sAlarm = {0};
+    sAlarm.AlarmTime.Hours          = hh;
+    sAlarm.AlarmTime.Minutes        = mm;
+    sAlarm.AlarmTime.Seconds        = ss;
+    sAlarm.AlarmTime.SubSeconds     = 0;
+    sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+    sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+    sAlarm.AlarmMask                = RTC_ALARMMASK_DATEWEEKDAY;
+    sAlarm.AlarmSubSecondMask       = RTC_ALARMSUBSECONDMASK_ALL;
+    sAlarm.AlarmDateWeekDaySel      = RTC_ALARMDATEWEEKDAYSEL_DATE;
+    sAlarm.AlarmDateWeekDay         = 1;
+    sAlarm.Alarm                    = RTC_ALARM_A;
+
+    HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN);
+}
+
+/*
+ * Calculate next deadline for PERIODIC_MINUTE / HOUR / DAY.
+ * Aligns to the next calendar boundary matching the target pattern.
+ * Returns deadline in uptime seconds.
+ */
+static uint32_t rtc_calc_next_cyclic(uint32_t period_sec, uint8_t mode)
+{
+    uint32_t now_sod     = (rtc_init_sec_of_day + rtc_uptime_sec) % 86400;
+    uint32_t today_start = (rtc_init_sec_of_day + rtc_uptime_sec) - now_sod;
+    uint32_t target;
+
+    switch (mode) {
+    case RTC_TIMER_MODE_ONE_SHOT:
+    case RTC_TIMER_MODE_PERIODIC_SEC:
+        /* cyclic modes that don't align to calendar boundaries
+         * are handled by simply adding period_sec to deadline_sec */
+        return rtc_uptime_sec + period_sec;
+
+    case RTC_TIMER_MODE_PERIODIC_MINUTE: {
+        /* period_sec = target second (0-59) */
+        uint8_t  ts = (uint8_t)period_sec;
+        uint32_t minute_bound = now_sod - (now_sod % 60);
+        target = minute_bound + ts;
+        if (target <= now_sod) target += 60;
+        if (target >= 86400) target -= 86400;
+        break;
+    }
+    case RTC_TIMER_MODE_PERIODIC_HOUR: {
+        /* period_sec = target minute * 60 + target second */
+        uint8_t  tm = (uint8_t)(period_sec / 60);
+        uint8_t  ts = (uint8_t)(period_sec % 60);
+        uint32_t hour_bound = now_sod - (now_sod % 3600);
+        target = hour_bound + tm * 60 + ts;
+        if (target <= now_sod) target += 3600;
+        if (target >= 86400) target -= 86400;
+        break;
+    }
+    case RTC_TIMER_MODE_PERIODIC_DAY: {
+        /* period_sec = target_h*3600 + target_m*60 + target_s */
+        uint8_t  th = (uint8_t)(period_sec / 3600);
+        uint8_t  tm = (uint8_t)((period_sec % 3600) / 60);
+        uint8_t  ts = (uint8_t)(period_sec % 60);
+        target = th * 3600 + tm * 60 + ts;
+        if (target <= now_sod) target += 86400;
+        break;
+    }
+    default:
+        return 0;
+    }
+
+    /* target is an absolute sec-of-day; convert to uptime deadline */
+    return (uint32_t)((int32_t)(today_start + target) - (int32_t)rtc_init_sec_of_day);
+}
+
+/* ---------- ISR: fire all expired timers, re-arm Alarm A ---------- */
+static void rtc_fire_expired(void)
+{
+    while (timer_head && timer_head->deadline_sec <= rtc_uptime_sec) {
+        rtc_timer_t *t = timer_head;
+        timer_head = t->next;   /* unlink before callback (may re-insert) */
+
+        if (t->callback) t->callback(t->arg);
+
+        switch (t->mode) {
+        case RTC_TIMER_MODE_ONE_SHOT:
+            vPortFree(t);
+            break;
+        case RTC_TIMER_MODE_PERIODIC_SEC:
+            t->deadline_sec += t->period_sec;
+            t->next = NULL;
+            /* re-insert sorted */
+            goto reinsert;
+        case RTC_TIMER_MODE_PERIODIC_MINUTE:
+        case RTC_TIMER_MODE_PERIODIC_HOUR:
+        case RTC_TIMER_MODE_PERIODIC_DAY:
+            t->deadline_sec = rtc_calc_next_cyclic(t->period_sec, t->mode);
+            t->next = NULL;
+            /* re-insert sorted */
+            goto reinsert;
+        default:
+            vPortFree(t);
+            break;
+        }
+        continue;  /* t freed, skip re-insert */
+
+    reinsert:
+        {
+            /* insert t back into sorted list */
+            if (!timer_head || t->deadline_sec <= timer_head->deadline_sec) {
+                t->next = timer_head;
+                timer_head = t;
+            } else {
+                rtc_timer_t *p = timer_head;
+                while (p->next && p->next->deadline_sec < t->deadline_sec)
+                    p = p->next;
+                t->next = p->next;
+                p->next = t;
+            }
+        }
+    }
+    rtc_arm_alarm_a();
+}
+
+/* ========================================================================
+ *  MSP init + RTC_Init
+ * ======================================================================== */
+
 void HAL_RTC_MspInit(RTC_HandleTypeDef* hrtc)
 {
     if (hrtc->Instance == RTC) {
-        /* 使能 PWR 时钟并解锁备份域（RTC 寄存器处于备份域） */
         __HAL_RCC_PWR_CLK_ENABLE();
         HAL_PWR_EnableBkUpAccess();
 
-        /* 配置 RTC 时钟源 */
         RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
         PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;
 
         {% if peripheral._clock_source == 'LSE' %}
-        /* Enable LSI first as fallback, then attempt LSE. */
         __HAL_RCC_LSI_ENABLE();
         while (!__HAL_RCC_GET_FLAG(RCC_FLAG_LSIRDY)) {}
 
@@ -108,7 +233,6 @@ void HAL_RTC_MspInit(RTC_HandleTypeDef* hrtc)
             }
         }
         {% else %}
-        /* 使用内部低速振荡器 LSI (32kHz) */
         __HAL_RCC_LSI_ENABLE();
         while (!__HAL_RCC_GET_FLAG(RCC_FLAG_LSIRDY));
         PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
@@ -118,67 +242,49 @@ void HAL_RTC_MspInit(RTC_HandleTypeDef* hrtc)
             Error_Handler();
         }
 
-        /* 使能 RTC 外设时钟 */
         __HAL_RCC_RTC_ENABLE();
         __HAL_RCC_RTCAPB_CLK_ENABLE();
     }
 }
 
+/* WakeUp Timer: fixed 1-second period (ck_spre = 1 Hz) */
 static void RTC_WakeUp_Config(void)
 {
-    /* RTC_CLK = 32768 Hz, DIV16 = 2048 Hz, (204+1) = 10 Hz = 100ms */
-    uint32_t wake_up_counter = (32768 / 16 / 1000 * RTC_TICK_INTERVAL_MS) - 1;
-    HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, wake_up_counter, RTC_WAKEUPCLOCK_RTCCLK_DIV16);
+    /* CK_SPRE = 1 Hz → wakeup after 1 cycle = 1 second */
+    HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, 0, RTC_WAKEUPCLOCK_CK_SPRE_17BITS);
 }
 
-/**
- * @brief  RTC 初始化（参考 STM32Cube 官方 MX_RTC_Init 模板）
- *         使用 HAL_RTC_Init 替代直接寄存器操作，内部自动调用 HAL_RTC_MspInit
- */
 void RTC_Init(void)
 {
     hrtc.Instance = RTC;
-    hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
-    hrtc.Init.AsynchPrediv = {{ rtc_async_prediv }};
-    hrtc.Init.SynchPrediv = {{ rtc_sync_prediv }};
-    hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
-    hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
-    hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
-    hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
-    hrtc.Init.OutPutPullUp = RTC_OUTPUT_PULLUP_NONE;
+    hrtc.Init.HourFormat    = RTC_HOURFORMAT_24;
+    hrtc.Init.AsynchPrediv  = {{ rtc_async_prediv }};
+    hrtc.Init.SynchPrediv   = {{ rtc_sync_prediv }};
+    hrtc.Init.OutPut        = RTC_OUTPUT_DISABLE;
+    hrtc.Init.OutPutRemap   = RTC_OUTPUT_REMAP_NONE;
+    hrtc.Init.OutPutPolarity= RTC_OUTPUT_POLARITY_HIGH;
+    hrtc.Init.OutPutType    = RTC_OUTPUT_TYPE_OPENDRAIN;
+    hrtc.Init.OutPutPullUp  = RTC_OUTPUT_PULLUP_NONE;
 
     if (HAL_RTC_Init(&hrtc) != HAL_OK) {
         Error_Handler();
     }
 
-    /*
-     * Force prescaler write regardless of INITS flag.
-     * HAL_RTC_Init skips prescaler configuration when INITS=1
-     * (backup domain preserved from previous firmware), leaving
-     * the RTC running with possibly wrong timing.
-     */
+    /* force prescaler write (HAL skips when backup domain INITS=1) */
     __HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
     if (RTC_EnterInitMode(&hrtc) == HAL_OK) {
-        hrtc.Instance->PRER = (uint32_t){{ rtc_sync_prediv }};
+        hrtc.Instance->PRER  = (uint32_t){{ rtc_sync_prediv }};
         hrtc.Instance->PRER |= (uint32_t)({{ rtc_async_prediv }} << RTC_PRER_PREDIV_A_Pos);
         RTC_ExitInitMode(&hrtc);
     }
     __HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
 
-    /* Explicitly clear stale RTC wakeup/alarm flags from previous runs
-     * (RTC backup domain survives system reset). Must be done BEFORE
-     * enabling the NVIC to prevent spurious ISR firing that could crash
-     * FreeRTOS before the scheduler starts. */
+    /* clear stale flags from backup-domain-preserved state */
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
     __HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRAF);
 
 {% if rtc_init_time %}
-    /*
-     * Set initial RTC time from hardware.yaml config.
-     * Format: "YYYY-MM-DD HH:MM:SS" → parsed by generator context builder.
-     * Skip if initial time is zero (all fields = 0) — use backup domain
-     * preserved time after power-cycle.
-     */
+    /* set initial RTC calendar time */
     {
         RTC_TimeTypeDef sTime = {0};
         RTC_DateTypeDef sDate = {0};
@@ -190,69 +296,81 @@ void RTC_Init(void)
         sDate.Date    = {{ rtc_init_time.day }};
         HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
         HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+
+        rtc_init_sec_of_day = {{ rtc_init_time.hour }} * 3600
+                            + {{ rtc_init_time.min }} * 60
+                            + {{ rtc_init_time.sec }};
     }
 {% endif %}
 
-    /* 配置唤醒定时器 (100ms 周期) */
+    /* fixed 1-second wakeup heartbeat */
     RTC_WakeUp_Config();
 
-    /* 使能 RTC 中断（优先级 1：FreeRTOS ISR 安全范围内） */
     HAL_NVIC_SetPriority(RTC_TAMP_IRQn, 1, 0);
     HAL_NVIC_EnableIRQ(RTC_TAMP_IRQn);
 
-    /* 启动分钟/小时软件定时器 */
-    rtc_timer_handle_t t_min = RTC_TimerCreate(60000, RTC_TIMER_MODE_PERIODIC, minute_timer_cb, NULL);
-    rtc_timer_handle_t t_hour = RTC_TimerCreate(3600000, RTC_TIMER_MODE_PERIODIC, hour_timer_cb, NULL);
+    /* create built-in periodic timers */
+    rtc_timer_handle_t t_min  = RTC_TimerCreate(0, RTC_TIMER_MODE_PERIODIC_MINUTE, minute_timer_cb, NULL);
+    rtc_timer_handle_t t_hour = RTC_TimerCreate(0, RTC_TIMER_MODE_PERIODIC_HOUR,  hour_timer_cb, NULL);
     RTC_TimerStart(t_min);
     RTC_TimerStart(t_hour);
 {% for alarm in rtc_alarms %}
-    /* {{ alarm.event }} alarm: {{ alarm.period_ms }} ms period */
     {
-        rtc_timer_handle_t t_{{ alarm.event | lower }} = RTC_TimerCreate({{ alarm.period_ms }}, RTC_TIMER_MODE_PERIODIC, alarm_{{ alarm.event | lower }}_cb, NULL);
+        rtc_timer_handle_t t_{{ alarm.event | lower }} =
+            RTC_TimerCreate({{ alarm.period_ms }} / 1000, RTC_TIMER_MODE_PERIODIC_SEC,
+                            alarm_{{ alarm.event | lower }}_cb, NULL);
         RTC_TimerStart(t_{{ alarm.event | lower }});
     }
 {% endfor %}
+
     rtc_ready = true;
 }
 
-void RTC_Start(void)
-{
-    /* 唤醒中断已在 RTC_Init 中使能，此处保留空实现以兼容历史接口 */
-}
+void RTC_Start(void) {}
 
-/**
- * @brief  RTC 唤醒定时器中断回调（由 HAL_RTCEx_WakeUpTimerIRQHandler 自动调用）
- *         发送 RTC_TICK 事件到事件队列，触发软件定时器处理
- */
+/* ========================================================================
+ *  ISR callbacks
+ * ======================================================================== */
+
+/* 1-second heartbeat: increment uptime, fire expired, re-arm Alarm A */
 void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
 {
     (void)hrtc;
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    event_t evt = { .id = EVENT_RTC_TICK, .param = 0 };
-    xQueueSendFromISR(event_queue, &evt, &xHigherPriorityTaskWoken);
+
+    rtc_uptime_sec++;
+    rtc_fire_expired();
+
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+/* Alarm A fires at exact head->deadline */
+void HAL_RTCEx_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
+{
+    (void)hrtc;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    rtc_uptime_sec = (timer_head && timer_head->deadline_sec > rtc_uptime_sec)
+                     ? timer_head->deadline_sec
+                     : rtc_uptime_sec;
+    rtc_fire_expired();
+
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 void RTC_TAMP_IRQHandler(void)
 {
     HAL_RTCEx_WakeUpTimerIRQHandler(&hrtc);
+    HAL_RTC_AlarmIRQHandler(&hrtc);
 }
 
 void RTC_SetWakeUpCounter(uint32_t wake_up_counter)
 {
-    /* 先禁用唤醒定时器，更新计数值后重新使能 */
     CLEAR_BIT(RTC->CR, RTC_CR_WUTE);
     WRITE_REG(RTC->WUTR, wake_up_counter);
     SET_BIT(RTC->CR, RTC_CR_WUTE);
 }
 
-/**
- * @brief  Restore periodic RTC wakeup configuration after tickless idle.
- *         vPortSuppressTicksAndSleep() reconfigures the wakeup timer to
- *         CK_SPRE (1 Hz) for STOP mode; this function restores the original
- *         RTCCLK_DIV16 (2048 Hz) 100ms periodic tick so software timers
- *         resume firing after the system wakes up.
- */
 void RTC_RestoreTickConfig(void)
 {
     RTC_WakeUp_Config();
@@ -260,64 +378,158 @@ void RTC_RestoreTickConfig(void)
 
 #else
 /* ========== 测试环境空桩 ========== */
-void RTC_Init(void)
-{
+void RTC_Init(void) {
     hrtc.Instance = (RTC_TypeDef *)0;
     HAL_RTC_Init(&hrtc);
 }
 void RTC_Start(void) {}
 void RTC_TAMP_IRQHandler(void) {}
-void RTC_SetWakeUpCounter(uint32_t wake_up_counter) { (void)wake_up_counter; }
+void RTC_SetWakeUpCounter(uint32_t w) { (void)w; }
 void RTC_RestoreTickConfig(void) {}
-
 #endif
 
-/* ========== 软件定时器 API（测试和非测试共享）========== */
+/* ========================================================================
+ *  软件定时器 API（测试和非测试共享）
+ * ======================================================================== */
+
+/*
+ * Insert timer into sorted list by deadline_sec (ASC).
+ * Re-arms Alarm A afterward.
+ */
 #ifndef TEST
-rtc_timer_handle_t RTC_TimerCreate(uint32_t period_ms, uint8_t mode,
-                                    rtc_timer_cb_t callback, void *arg)
+static void timer_insert_sorted(rtc_timer_t *t)
 {
-    rtc_timer_t *t = pvPortMalloc(sizeof(rtc_timer_t));
-    if (!t) return NULL;
-    t->period_ms = period_ms;
-    t->remaining_ms = period_ms;
-    t->mode = mode;
-    t->callback = callback;
-    t->arg = arg;
+    taskENTER_CRITICAL();
     t->next = NULL;
 
-    taskENTER_CRITICAL();
-    if (!timer_head) {
+    if (!timer_head || t->deadline_sec <= timer_head->deadline_sec) {
+        t->next = timer_head;
         timer_head = t;
     } else {
         rtc_timer_t *p = timer_head;
-        while (p->next) p = p->next;
+        while (p->next && p->next->deadline_sec < t->deadline_sec)
+            p = p->next;
+        t->next = p->next;
         p->next = t;
     }
+
+    rtc_arm_alarm_a();
     taskEXIT_CRITICAL();
+}
+#else
+static void timer_insert_sorted(rtc_timer_t *t)
+{
+    t->next = NULL;
+    if (!timer_head || t->deadline_sec <= timer_head->deadline_sec) {
+        t->next = timer_head;
+        timer_head = t;
+    } else {
+        rtc_timer_t *p = timer_head;
+        while (p->next && p->next->deadline_sec < t->deadline_sec)
+            p = p->next;
+        t->next = p->next;
+        p->next = t;
+    }
+}
+#endif
+
+/* ---------- public timer API ---------- */
+
+rtc_timer_handle_t RTC_TimerCreate(uint32_t period_sec, uint8_t mode,
+                                    rtc_timer_cb_t callback, void *arg)
+{
+    rtc_timer_t *t =
+#ifndef TEST
+        pvPortMalloc(sizeof(rtc_timer_t));
+#else
+        NULL;  /* test uses pool below */
+#endif
+    if (!t) return NULL;
+
+    t->period_sec = period_sec;
+    t->mode       = mode;
+    t->callback   = callback;
+    t->arg        = arg;
+    t->next       = NULL;
+
+    /* compute initial deadline based on mode */
+    switch (mode) {
+    case RTC_TIMER_MODE_ONE_SHOT:
+    case RTC_TIMER_MODE_PERIODIC_SEC:
+        t->deadline_sec = rtc_uptime_sec + period_sec;
+        break;
+    case RTC_TIMER_MODE_PERIODIC_MINUTE:
+    case RTC_TIMER_MODE_PERIODIC_HOUR:
+    case RTC_TIMER_MODE_PERIODIC_DAY:
+        t->deadline_sec = rtc_calc_next_cyclic(period_sec, mode);
+        break;
+    default:
+        break;
+    }
+
+    timer_insert_sorted(t);
     return (rtc_timer_handle_t)t;
 }
 
 void RTC_TimerStart(rtc_timer_handle_t handle)
 {
     rtc_timer_t *t = (rtc_timer_t *)handle;
+    /* remove from list first, recalc deadline, re-insert sorted */
+#ifndef TEST
     taskENTER_CRITICAL();
-    t->remaining_ms = t->period_ms;
+#endif
+    if (timer_head == t) {
+        timer_head = t->next;
+    } else {
+        rtc_timer_t *p = timer_head;
+        while (p && p->next != t) p = p->next;
+        if (p) p->next = t->next;
+    }
+#ifndef TEST
     taskEXIT_CRITICAL();
+#endif
+
+    switch (t->mode) {
+    case RTC_TIMER_MODE_ONE_SHOT:
+    case RTC_TIMER_MODE_PERIODIC_SEC:
+        t->deadline_sec = rtc_uptime_sec + t->period_sec;
+        break;
+    default:
+        t->deadline_sec = rtc_calc_next_cyclic(t->period_sec, t->mode);
+        break;
+    }
+
+    timer_insert_sorted(t);
 }
 
 void RTC_TimerStop(rtc_timer_handle_t handle)
 {
-    rtc_timer_t *t = (rtc_timer_handle_t)handle;
+    rtc_timer_t *t = (rtc_timer_t *)handle;
+#ifndef TEST
     taskENTER_CRITICAL();
-    t->remaining_ms = 0;
+    t->deadline_sec = 0xFFFFFFFF;  /* push to end, effectively disabled */
+    /* re-sort: remove and reinsert at tail */
+    if (timer_head == t) {
+        timer_head = t->next;
+    } else {
+        rtc_timer_t *p = timer_head;
+        while (p && p->next != t) p = p->next;
+        if (p) p->next = t->next;
+    }
+    t->next = NULL;
+    rtc_arm_alarm_a();
     taskEXIT_CRITICAL();
+#else
+    t->deadline_sec = 0xFFFFFFFF;
+#endif
 }
 
 void RTC_TimerDelete(rtc_timer_handle_t handle)
 {
-    rtc_timer_t *t = (rtc_timer_handle_t)handle;
+    rtc_timer_t *t = (rtc_timer_t *)handle;
+#ifndef TEST
     taskENTER_CRITICAL();
+#endif
     if (timer_head == t) {
         timer_head = t->next;
     } else {
@@ -325,117 +537,38 @@ void RTC_TimerDelete(rtc_timer_handle_t handle)
         while (p && p->next != t) p = p->next;
         if (p) p->next = t->next;
     }
+#ifndef TEST
+    rtc_arm_alarm_a();
     taskEXIT_CRITICAL();
     vPortFree(t);
-}
 #else
-static rtc_timer_t timer_pool[8];
-static int timer_pool_idx = 0;
-
-rtc_timer_handle_t RTC_TimerCreate(uint32_t period_ms, uint8_t mode,
-                                    rtc_timer_cb_t callback, void *arg) {
-    if (timer_pool_idx >= 8) return NULL;
-    rtc_timer_t *t = &timer_pool[timer_pool_idx++];
-    t->period_ms = period_ms;
-    t->remaining_ms = period_ms;
-    t->mode = mode;
-    t->callback = callback;
-    t->arg = arg;
-    t->next = NULL;
-    
-    if (!timer_head) {
-        timer_head = t;
-    } else {
-        rtc_timer_t *p = timer_head;
-        while (p->next) p = p->next;
-        p->next = t;
-    }
-    return (rtc_timer_handle_t)t;
-}
-
-void RTC_TimerStart(rtc_timer_handle_t handle) {
-    rtc_timer_t *t = (rtc_timer_t *)handle;
-    t->remaining_ms = t->period_ms;
-}
-
-void RTC_TimerStop(rtc_timer_handle_t handle) {
-    rtc_timer_t *t = (rtc_timer_handle_t)handle;
-    t->remaining_ms = 0;
-}
-
-void RTC_TimerDelete(rtc_timer_handle_t handle) {
-    rtc_timer_t *t = (rtc_timer_handle_t)handle;
-    if (timer_head == t) {
-        timer_head = t->next;
-    } else {
-        rtc_timer_t *p = timer_head;
-        while (p && p->next != t) p = p->next;
-        if (p) p->next = t->next;
-    }
-}
+    (void)t;
 #endif
-
-void RTC_ProcessTimers(void)
-{
-    rtc_timer_t *t = timer_head;
-    while (t) {
-        /* Save next pointer BEFORE callback — callback may delete current timer.
-         * Also save mode — callback may RTC_TimerDelete(t), making t->mode
-         * a use-after-free if accessed after the callback returns. */
-        rtc_timer_t *next = t->next;
-        uint8_t saved_mode = t->mode;
-        if (t->remaining_ms > 0) {
-            if (t->remaining_ms <= RTC_TICK_INTERVAL_MS) {
-                t->remaining_ms = 0;
-                if (t->callback) t->callback(t->arg);
-                /* Do NOT dereference t after callback — it may have been freed.
-                 * Use saved_mode instead. */
-                if (saved_mode == RTC_TIMER_MODE_PERIODIC) {
-                    /* t is still valid: periodic timers are never deleted
-                     * by their own callback; they remain in the list. */
-                    t->remaining_ms = t->period_ms;
-                }
-            } else {
-                t->remaining_ms -= RTC_TICK_INTERVAL_MS;
-            }
-        }
-        t = next;
-    }
 }
 
-/* ---------- 时间读写（使用 HAL 安全函数） ---------- */
+/* backward compat: no-op, timers are ISR-driven now */
+void RTC_ProcessTimers(void) {}
+
+/* ========================================================================
+ *  RTC calendar time read/write
+ * ======================================================================== */
+
 void RTC_GetTime(rtc_time_t *time)
 {
-    RTC_TimeTypeDef sTime = {0};
-    RTC_DateTypeDef sDate = {0};
-
-    /*
-     * Guard: return zeros if RTC_Init has not completed yet.
-     * INITS/RSF from backup domain are unreliable before the clock
-     * source is configured (RTCSEL reset by system reset).
-     * HAL_RTC_WaitForSynchro would hang when RTC clock is absent.
-     */
     if (!rtc_ready) {
-        time->sec   = 0;
-        time->min   = 0;
-        time->hour  = 0;
-        time->day   = 0;
-        time->month = 0;
-        time->year  = 0;
+        time->sec   = 0; time->min  = 0; time->hour = 0;
+        time->day   = 0; time->month= 0; time->year = 0;
         time->ssr   = 0;
         return;
     }
 
-    /*
-     * Wait for RSF (Register Synchronization Flag) before reading.
-     * STM32G0 HAL_RTC_GetTime does NOT wait for RSF internally,
-     * so stale shadow register values may be returned if RSF is
-     * not explicitly polled here.
-     */
-    HAL_RTC_WaitForSynchro(&hrtc);
+    RTC_TimeTypeDef sTime = {0};
+    RTC_DateTypeDef sDate = {0};
 
+    HAL_RTC_WaitForSynchro(&hrtc);
     HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
     HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+
     time->sec   = sTime.Seconds;
     time->min   = sTime.Minutes;
     time->hour  = sTime.Hours;
@@ -457,6 +590,26 @@ void RTC_SetTime(rtc_time_t *time)
     sDate.Year    = time->year;
     HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
     HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+
+    /* keep uptime consistent with new calendar time */
+    rtc_init_sec_of_day = time->hour * 3600 + time->min * 60 + time->sec;
+    rtc_uptime_sec = 0;
+
+    /* reschedule all timers against new epoch */
+    rtc_timer_t *t = timer_head;
+    while (t) {
+        switch (t->mode) {
+        case RTC_TIMER_MODE_ONE_SHOT:
+        case RTC_TIMER_MODE_PERIODIC_SEC:
+            t->deadline_sec = t->period_sec;  /* now + period */
+            break;
+        default:
+            t->deadline_sec = rtc_calc_next_cyclic(t->period_sec, t->mode);
+            break;
+        }
+        t = t->next;
+    }
+    rtc_arm_alarm_a();
 }
 
 void RTC_AdjustDrift(int16_t ppm)
@@ -466,3 +619,25 @@ void RTC_AdjustDrift(int16_t ppm)
                             RTC_SMOOTHCALIB_PLUSPULSES_RESET,
                             (uint32_t)ppm);
 }
+
+#ifdef TEST
+/* test pool for unit tests */
+static rtc_timer_t timer_pool[8];
+static int timer_pool_idx = 0;
+
+rtc_timer_handle_t RTC_TimerCreate(uint32_t period_sec, uint8_t mode,
+                                    rtc_timer_cb_t callback, void *arg) {
+    if (timer_pool_idx >= 8) return NULL;
+    rtc_timer_t *t = &timer_pool[timer_pool_idx++];
+    t->period_sec = period_sec;
+    t->mode       = mode;
+    t->callback   = callback;
+    t->arg        = arg;
+    t->deadline_sec = period_sec; /* simplified for tests */
+    timer_insert_sorted(t);
+    return (rtc_timer_handle_t)t;
+}
+void RTC_TimerStart(rtc_timer_handle_t h) { (void)h; }
+void RTC_TimerStop(rtc_timer_handle_t h)  { (void)h; }
+void RTC_TimerDelete(rtc_timer_handle_t h){ (void)h; }
+#endif

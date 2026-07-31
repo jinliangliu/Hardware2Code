@@ -40,11 +40,12 @@ class ExtiTrigger(str, Enum):
 
 
 class SleepMode(str, Enum):
+    RUN = "RUN"
+    SLEEP = "SLEEP"
     STOP0 = "STOP0"
     STOP1 = "STOP1"
     STOP2 = "STOP2"
     STANDBY = "STANDBY"
-    SLEEP = "SLEEP"
 
 
 # =========================================================================

@@ -26,6 +26,8 @@ void {{ handler }}(void)
     {% for pin in pin_list %}
     HAL_GPIO_EXTI_IRQHandler( GPIO_PIN_{{ pin.id[2:] }} );
     {% if pin.label == 'BUTTON' %}
+    /* DEBUG: toggle LED to confirm ISR entry */
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_0);
     if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
     {
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -36,8 +38,13 @@ void {{ handler }}(void)
         } else {
             evt.id = EVENT_BUTTON_RELEASE;
         }
-        evt.param = 0;
+        evt.param = GPIO_PIN_{{ pin.id | pin_number }};
+{% if has_btn_task or has_btn_component %}
+        extern QueueHandle_t btn_queue;
+        xQueueSendFromISR(btn_queue, &evt, &xHigherPriorityTaskWoken);
+{% else %}
         xQueueSendFromISR(event_queue, &evt, &xHigherPriorityTaskWoken);
+{% endif %}
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
     {% endif %}

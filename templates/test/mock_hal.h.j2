@@ -574,7 +574,14 @@ bool mock_HAL_IWDG_Refresh_called(void);
 void mock_HAL_IWDG_reset(void);
 
 /* Task info mock helpers */
-void mock_task_set_tick_count(TickType_t ticks);
+extern void mock_task_set_tick_count(TickType_t ticks);
+
+/* Queue inject mock — allows tests to inject events that xQueueReceive returns */
+void mock_queue_inject(QueueHandle_t queue, const void *data, uint32_t size);
+void mock_queue_reset(void);
+/* Capture the last item sent via xQueueSend (for verification) */
+QueueHandle_t mock_xQueueSend_get_last_queue(void);
+void mock_xQueueSend_get_last_item(void *buf, uint32_t size);
 
 /* SystemReset mock helpers */
 bool mock_NVIC_SystemReset_called(void);

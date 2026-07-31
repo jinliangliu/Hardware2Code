@@ -127,6 +127,31 @@ set(APP_SOURCES
     ${LWRB_DIR}/lwrb.c
     ${HW2C_CLI_DIR}/hw2c_cli.c
 {% endif %}
+{% if has_uart %}
+    src/drivers/uart_api.c
+{% endif %}
+{% if has_adc %}
+    src/drivers/adc_api.c
+{% endif %}
+    src/drivers/gpio_api.c
+{% if has_components %}
+    src/component_registry.c
+{% for comp in components %}
+    src/{{ comp.name }}_component.c
+{% endfor %}
+{% endif %}
+{% if has_topics %}
+    src/component_bus.c
+{% endif %}
+{% if has_params %}
+    src/param_registry.c
+{% endif %}
+{% if has_telemetry %}
+    src/telemetry.c
+{% endif %}
+{% if has_power_mgr %}
+    src/power_mgr.c
+{% endif %}
 )
 
 # Per-driver includes (each driver may need its own headers)

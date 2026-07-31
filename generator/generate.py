@@ -236,6 +236,152 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             out_path = os.path.join(output_dir, "src", "drivers", f"drv_{drv['name']}.c")
             _write_file(out_path, rendered, dry_run, show_diff)
 
+    # ---------- POSIX-style driver API (when corresponding peripheral exists) ----------
+    if context.get("has_uart"):
+        posix_uart_templates = {
+            "drivers/posix/uart_api.h.j2": os.path.join(output_dir, "src", "drivers", "uart_api.h"),
+            "drivers/posix/uart_api.c.j2": os.path.join(output_dir, "src", "drivers", "uart_api.c"),
+        }
+        for tmpl_name, out_path in posix_uart_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
+    if context.get("has_adc"):
+        posix_adc_templates = {
+            "drivers/posix/adc_api.h.j2": os.path.join(output_dir, "src", "drivers", "adc_api.h"),
+            "drivers/posix/adc_api.c.j2": os.path.join(output_dir, "src", "drivers", "adc_api.c"),
+        }
+        for tmpl_name, out_path in posix_adc_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
+    # GPIO POSIX API always generated (all boards have GPIO)
+    posix_gpio_templates = {
+        "drivers/posix/gpio_api.h.j2": os.path.join(output_dir, "src", "drivers", "gpio_api.h"),
+        "drivers/posix/gpio_api.c.j2": os.path.join(output_dir, "src", "drivers", "gpio_api.c"),
+    }
+    for tmpl_name, out_path in posix_gpio_templates.items():
+        template = env.get_template(tmpl_name)
+        rendered = template.render(context)
+        _write_file(out_path, rendered, dry_run, show_diff)
+
+    # ---------- Component Registry ----------
+    if context.get("has_components"):
+        registry_templates = {
+            "src/component_registry.h.j2": os.path.join(output_dir, "src", "component_registry.h"),
+            "src/component_registry.c.j2": os.path.join(output_dir, "src", "component_registry.c"),
+        }
+        for tmpl_name, out_path in registry_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
+        # ---------- Pub/Sub message bus ----------
+        if context.get("has_topics"):
+            bus_templates = {
+                "src/component_bus.h.j2": os.path.join(output_dir, "src", "component_bus.h"),
+                "src/component_bus.c.j2": os.path.join(output_dir, "src", "component_bus.c"),
+            }
+            for tmpl_name, out_path in bus_templates.items():
+                template = env.get_template(tmpl_name)
+                rendered = template.render(context)
+                _write_file(out_path, rendered, dry_run, show_diff)
+
+        # ---------- Param Registry ----------
+        if context.get("has_params"):
+            param_templates = {
+                "src/param_registry.h.j2": os.path.join(output_dir, "src", "param_registry.h"),
+                "src/param_registry.c.j2": os.path.join(output_dir, "src", "param_registry.c"),
+            }
+            for tmpl_name, out_path in param_templates.items():
+                template = env.get_template(tmpl_name)
+                rendered = template.render(context)
+                _write_file(out_path, rendered, dry_run, show_diff)
+
+        # ---------- Component scaffold .c files ----------
+        periph_type_map = {}
+        for p in context.get("peripherals", []):
+            periph_type_map[p.get("name", "").lower()] = p.get("type", "")
+
+        for comp in context.get("components", []):
+            driver_name = comp.get("driver", "").lower()
+            ptype = periph_type_map.get(driver_name, "")
+            if "UART" in ptype or "uart" in driver_name:
+                driver_type = "uart"
+            elif "GPIO" in ptype:
+                driver_type = "gpio"
+            elif "ADC" in ptype:
+                driver_type = "adc"
+            else:
+                driver_type = "unknown"
+
+            comp_ctx = dict(context)
+            comp_ctx["comp_name"] = comp["name"]
+            comp_ctx["comp_type"] = comp.get("type", "unknown")
+            comp_ctx["driver"] = comp.get("driver", "")
+            comp_ctx["driver_type"] = driver_type
+            comp_ctx["period_ms"] = comp.get("period_ms", 100)
+            comp_ctx["description"] = comp.get("config", {}).get("description", "")
+
+            # Use specialized template for led/btn components
+            comp_type = comp.get("type", "")
+            if comp_type == "led":
+                comp_template = env.get_template("app/led_component.c.j2")
+                comp_name_out = "led_component"
+            elif comp_type == "btn":
+                comp_template = env.get_template("app/btn_component.c.j2")
+                comp_name_out = "btn_component"
+            else:
+                comp_template = env.get_template("app/component.c.j2")
+                comp_name_out = comp["name"] + "_component"
+            comp_rendered = comp_template.render(comp_ctx)
+            comp_out = os.path.join(output_dir, "src", f"{comp_name_out}.c")
+            _write_file(comp_out, comp_rendered, dry_run, show_diff)
+
+    # ---------- Telemetry ----------
+    if context.get("has_telemetry"):
+        telemetry_templates = {
+            "src/telemetry.h.j2": os.path.join(output_dir, "src", "telemetry.h"),
+            "src/telemetry.c.j2": os.path.join(output_dir, "src", "telemetry.c"),
+        }
+        for tmpl_name, out_path in telemetry_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
+    # ---------- Power Manager ----------
+    if context.get("has_power_mgr"):
+        power_mgr_templates = {
+            "src/power_mgr.h.j2": os.path.join(output_dir, "src", "power_mgr.h"),
+            "src/power_mgr.c.j2": os.path.join(output_dir, "src", "power_mgr.c"),
+        }
+        for tmpl_name, out_path in power_mgr_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
+    # ---------- LED Component ----------
+    if context.get("has_led_component"):
+        led_comp_templates = {
+            "src/led_component.h.j2": os.path.join(output_dir, "src", "led_component.h"),
+        }
+        for tmpl_name, out_path in led_comp_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
+    # ---------- Button Component ----------
+    if context.get("has_btn_component"):
+        btn_comp_templates = {
+            "src/btn_component.h.j2": os.path.join(output_dir, "src", "btn_component.h"),
+        }
+        for tmpl_name, out_path in btn_comp_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
     # ---------- 业务状态机 ----------
     if context.get("has_behavior"):
         state_machine_templates = {
@@ -335,10 +481,50 @@ def render_templates(env: Environment, context: dict, output_dir: str,
         else:
             test_templates["test/test_statemachine.c.j2"] = os.path.join(test_dir, "test_statemachine.c")
 
+    if context.get("has_led_component"):
+        test_templates["test/test_led.c.j2"] = os.path.join(test_dir, "test_led.c")
+
+    if context.get("has_btn_component"):
+        test_templates["test/test_btn.c.j2"] = os.path.join(test_dir, "test_btn.c")
+
     for tmpl_name, out_path in test_templates.items():
         template = env.get_template(tmpl_name)
         rendered = template.render(context)
         _write_file(out_path, rendered, dry_run, show_diff)
+
+    # ---------- SIL test framework (host/x86 build) ----------
+    if context.get("has_components") or context.get("has_topics") or context.get("has_params"):
+        sil_dir = os.path.join(test_dir, "sil")
+        if not dry_run:
+            os.makedirs(sil_dir, exist_ok=True)
+
+        # Generate posix_mock (mock POSIX driver interfaces)
+        posix_mock_templates = {
+            "test/posix_mock.h.j2": os.path.join(sil_dir, "posix_mock.h"),
+            "test/posix_mock.c.j2": os.path.join(sil_dir, "posix_mock.c"),
+        }
+        for tmpl_name, out_path in posix_mock_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
+        # Generate SIL component test
+        sil_test_out = os.path.join(sil_dir, "test_component_sil.c")
+        template = env.get_template("test/test_component_sil.c.j2")
+        rendered = template.render(context)
+        _write_file(sil_test_out, rendered, dry_run, show_diff)
+
+        # Copy Unity to SIL dir
+        if os.path.exists(unity_src):
+            if not dry_run:
+                shutil.copytree(unity_src, os.path.join(sil_dir, "unity"), dirs_exist_ok=True)
+            logger.info("Copied Unity framework to test/sil/unity/")
+
+        # Generate SIL CMakeLists
+        sil_cmake_out = os.path.join(sil_dir, "CMakeLists.txt")
+        template = env.get_template("test/CMakeLists_sil.txt.j2")
+        rendered = template.render(context)
+        _write_file(sil_cmake_out, rendered, dry_run, show_diff)
 
     # 复制 run_tests.py
     run_tests_script = RUN_TESTS_PATH
@@ -561,6 +747,9 @@ def generate_project(
     pin_db: Optional[str] = None,
     task_yaml_path: Optional[str] = None,
     bind_yaml_path: Optional[str] = None,
+    components_yaml_path: Optional[str] = None,
+    pubsub_yaml_path: Optional[str] = None,
+    params_yaml_path: Optional[str] = None,
     validate_fn: Callable[[dict], list] = validate_hardware,
     build_context_fn: Callable[[dict, str, bool], dict] = build_context,
     load_yaml_fn: Callable[[str], dict] = load_yaml,
@@ -622,6 +811,30 @@ def generate_project(
                 logger.info("[OK] Bind YAML loaded: %s", bind_yaml_path)
             except (FileNotFoundError, ValueError) as e:
                 logger.warning("Bind YAML not found or parse error: %s", e)
+
+        components_raw = None
+        if components_yaml_path:
+            try:
+                components_raw = load_yaml_fn(components_yaml_path)
+                logger.info("[OK] Components YAML loaded: %s", components_yaml_path)
+            except (FileNotFoundError, ValueError) as e:
+                logger.warning("Components YAML not found or parse error: %s", e)
+
+        pubsub_raw = None
+        if pubsub_yaml_path:
+            try:
+                pubsub_raw = load_yaml_fn(pubsub_yaml_path)
+                logger.info("[OK] Pub/Sub YAML loaded: %s", pubsub_yaml_path)
+            except (FileNotFoundError, ValueError) as e:
+                logger.warning("Pub/Sub YAML not found or parse error: %s", e)
+
+        params_raw = None
+        if params_yaml_path:
+            try:
+                params_raw = load_yaml_fn(params_yaml_path)
+                logger.info("[OK] Params YAML loaded: %s", params_yaml_path)
+            except (FileNotFoundError, ValueError) as e:
+                logger.warning("Params YAML not found or parse error: %s", e)
 
         # Merge via mapper (handles backward compat)
         from generator.mapper import merge as merge_yamls
@@ -715,6 +928,42 @@ def generate_project(
         # Context building
         project_name = os.path.basename(actual_output) or "hw2code"
         context = build_context_fn(hw, project_name, hil_mode)
+
+        # Inject component data into context for registry generation
+        if components_raw:
+            context["components"] = components_raw.get("components", [])
+        else:
+            context["components"] = []
+        context["has_components"] = bool(context.get("components"))
+        context["has_led_component"] = any(
+            c.get("type") == "led" for c in context.get("components", [])
+        )
+        context["has_btn_component"] = any(
+            c.get("type") == "btn" for c in context.get("components", [])
+        )
+
+        # Pre-compute LED/BTN pin lists for component templates
+        all_pins = context.get("pins", [])
+        context["led_pins"] = [p for p in all_pins
+                               if p.get("label", "").startswith("LED")]
+        context["btn_pins"] = [p for p in all_pins
+                               if "BUTTON" in p.get("label", "")
+                               or "BTN" in p.get("label", "")]
+
+        # Inject pubsub data into context for bus generation
+        if pubsub_raw:
+            context["topics"] = pubsub_raw.get("topics", [])
+        else:
+            context["topics"] = []
+        context["has_topics"] = bool(context.get("topics"))
+
+        # Inject params data into context for param registry generation
+        if params_raw:
+            context["params"] = params_raw.get("params", [])
+        else:
+            context["params"] = []
+        context["has_params"] = bool(context.get("params"))
+
         logger.info("[OK] Context built successfully")
 
         # Template environment - use backend's template dirs for multi-level override
@@ -852,13 +1101,19 @@ def generate(hardware_yaml: str, output_dir: str, hil_mode: bool = False,
              dry_run: bool = False, show_diff: bool = False, force: bool = False,
              target: str = "stm32", validate_pins: bool = True,
              allocate_pins: bool = True, pin_db: Optional[str] = None,
-             task_yaml: Optional[str] = None, bind_yaml: Optional[str] = None):
+             task_yaml: Optional[str] = None, bind_yaml: Optional[str] = None,
+             components_yaml_path: Optional[str] = None,
+             pubsub_yaml_path: Optional[str] = None,
+             params_yaml_path: Optional[str] = None):
     """Backward-compatible wrapper around generate_project with default deps."""
     return generate_project(hardware_yaml, output_dir, hil_mode, dry_run,
                             show_diff, force, target=target,
                             validate_pins=validate_pins,
                             allocate_pins=allocate_pins, pin_db=pin_db,
-                            task_yaml_path=task_yaml, bind_yaml_path=bind_yaml)
+                            task_yaml_path=task_yaml, bind_yaml_path=bind_yaml,
+                            components_yaml_path=components_yaml_path,
+                            pubsub_yaml_path=pubsub_yaml_path,
+                            params_yaml_path=params_yaml_path)
 
 
 def main():
@@ -886,6 +1141,12 @@ def main():
                         help="Path to task YAML file (task.yaml)")
     parser.add_argument("--bind", type=str, default=None,
                         help="Path to bind YAML file (bind.yaml)")
+    parser.add_argument("--components", type=str, default=None,
+                        help="Path to components YAML file (components.yaml)")
+    parser.add_argument("--pubsub", type=str, default=None,
+                        help="Path to pub/sub YAML file (pubsub.yaml)")
+    parser.add_argument("--params", type=str, default=None,
+                        help="Path to params YAML file (params.yaml)")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Enable debug-level logging")
     args = parser.parse_args()
@@ -896,7 +1157,10 @@ def main():
              dry_run=args.dry_run, show_diff=args.diff, force=args.force,
              target=args.target, validate_pins=not args.no_validate_pins,
              allocate_pins=not args.no_allocate_pins, pin_db=args.pin_db,
-             task_yaml=args.task, bind_yaml=args.bind)
+             task_yaml=args.task, bind_yaml=args.bind,
+             components_yaml_path=args.components,
+             pubsub_yaml_path=args.pubsub,
+             params_yaml_path=args.params)
 
 
 if __name__ == "__main__":

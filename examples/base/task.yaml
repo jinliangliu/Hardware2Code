@@ -1,13 +1,13 @@
 # ============================================================
 # hw2c minimal system unit — software tasks layer
 #
-# Two mandatory system tasks form the skeleton of every
-# hw2c-generated firmware:
-#
+# System tasks (FreeRTOS):
 #   shell_task           CLI interaction + log output via USART2
 #   events_process_task  Centralized event dispatch via queue
 #
-# Additional application tasks extend this baseline.
+# Components (hw2c component framework):
+#   led                  LED multi-instance pattern driver
+#   btn                  Button multi-instance gesture detector
 # ============================================================
 
 project:
@@ -27,39 +27,45 @@ app_tasks:
     priority: 1
     stack_size: 1024
 
-# Button behavior — handled by event_task state machine
+# Button gesture → LED pattern mapping
+# The btn component detects SHORT_PRESS / DOUBLE_PRESS / LONG_PRESS
+# and publishes them to event_queue. The state machine
+# maps each gesture to a distinct LED pattern.
 behavior:
-  initial_state: RELEASED
+  initial_state: IDLE
   states:
-    - name: RELEASED
+    - name: IDLE
       transitions:
-        - event: BUTTON_PRESS
-          target: PRESSED
+        - event: BUTTON_SHORT_PRESS
+          target: IDLE
           actions:
-            - start_timer long_press 3000
-            - toggle_led
-            - 'log "button: PRESS"'
-    - name: PRESSED
-      transitions:
-        - event: BUTTON_RELEASE
-          target: RELEASED
+            - led_pattern fast_blink
+            - 'log "button: SHORT_PRESS"'
+            - shell_temp
+        - event: BUTTON_DOUBLE_PRESS
+          target: IDLE
           actions:
-            - stop_timer long_press
-            - toggle_led
-            - 'log "button: RELEASE"'
-        - event: TIMER_EXPIRED_long_press
-          target: LONG_PRESS
+            - led_pattern slow_blink
+            - 'log "button: DOUBLE_PRESS"'
+            - shell_temp
+        - event: BUTTON_LONG_PRESS
+          target: IDLE
           actions:
+            - led_pattern fault
             - 'log "button: LONG_PRESS"'
-            - "timeline: 0=>toggle_led, 200=>toggle_led, 400=>toggle_led, 600=>toggle_led, 800=>toggle_led, 1000=>toggle_led"
-    - name: LONG_PRESS
-      transitions:
-        - event: BUTTON_RELEASE
-          target: RELEASED
-          actions: ['log "button: LONG_PRESS released"']
+            - shell_temp
 
-# 5-minute system heartbeat — independent periodic event
+# Periodic RTC alarm events
 periodic_events:
+  # 30-second telemetry report: heartbeat, stack watermarks, heap, component health
+  - event: SECONDS_30
+    actions:
+      - 'log "system: 30-sec alive"'
+      - telemetry_snapshot
+      - power_status
+
+  # 5-minute system heartbeat
   - event: MINUTE_5
     actions:
       - 'log "system: 5-min alive"'
+      - telemetry_snapshot

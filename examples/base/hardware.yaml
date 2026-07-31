@@ -66,18 +66,18 @@ peripherals:
       wakeup_interval_ms: 1000      # 1 second wakeup tick
       initial_time: "2026-07-29 22:07:00"
       alarms:
-        - period_s: 300             # 5 minute alarm
+        - period_s: 30             # 30-second alarm for telemetry reporting
+          event: SECONDS_30
+        - period_s: 300            # 5 minute alarm for system heartbeat
           event: MINUTE_5
 
   # On-chip temperature sensor (ADC1 CH16) — calibrated 0.1°C reading
   - name: temp_sensor
     type: Internal_TempSensor
-    extra:
-      temp_offset: 25.0          # manual calibration offset in °C
-
+    
 log:
   enable: true
   ring_buf_size: 1024
 
 sleep:
-  mode: STOP1
+  mode: RUN

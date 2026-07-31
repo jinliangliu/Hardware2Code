@@ -3,8 +3,11 @@
  *
  * When has_tickless is True: full tickless idle with RTC wakeup + STOP mode.
  * When has_tickless is False: debug stub that never enters sleep.
+ *
+ * Power manager integration: when has_power_mgr is True, the sleep depth
+ * is dynamically selected based on active component sleep_compat limits.
  */
-{% if has_tickless %}
+{% if has_tickless and sleep.mode != 'RUN' %}
 {%   include 'rtos/tickless_idle.c.j2' %}
 {% else %}
 #include "stm32g0xx_hal.h"

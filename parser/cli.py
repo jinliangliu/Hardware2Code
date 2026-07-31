@@ -102,6 +102,12 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         sys.argv.extend(["--task", args.task])
     if args.bind:
         sys.argv.extend(["--bind", args.bind])
+    if args.components:
+        sys.argv.extend(["--components", args.components])
+    if args.pubsub:
+        sys.argv.extend(["--pubsub", args.pubsub])
+    if args.params:
+        sys.argv.extend(["--params", args.params])
 
     gen_main()
     return 0
@@ -191,6 +197,18 @@ def main() -> None:
     p_gen.add_argument(
         "--bind", default=None,
         help="Path to bind YAML file (bind.yaml)",
+    )
+    p_gen.add_argument(
+        "--components", default=None,
+        help="Path to components YAML file (components.yaml)",
+    )
+    p_gen.add_argument(
+        "--pubsub", default=None,
+        help="Path to pub/sub YAML file (pubsub.yaml)",
+    )
+    p_gen.add_argument(
+        "--params", default=None,
+        help="Path to params YAML file (params.yaml)",
     )
 
     args = parser.parse_args()

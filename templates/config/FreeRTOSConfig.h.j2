@@ -42,9 +42,11 @@
 #define configUSE_DAEMON_TASK_STARTUP_HOOK      0
 
 /* Run time and task stats */
-#define configGENERATE_RUN_TIME_STATS           0
+#define configGENERATE_RUN_TIME_STATS           1
 #define configUSE_TRACE_FACILITY                1
 #define configUSE_STATS_FORMATTING_FUNCTIONS    1
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() (0)  /* use SW timer if needed */
+#define portGET_RUN_TIME_COUNTER_VALUE()         (xTaskGetTickCount())
 
 /* Co-routines */
 #define configUSE_CO_ROUTINES                   0
@@ -53,13 +55,13 @@
 /* MPU support (required by Cortex-M0+ port) */
 #define configENABLE_MPU                        0
 
-/* Low power - Tickless idle with RTC wake-up */
-{% if has_tickless %}
+/* Low power - Tickless idle with RTC wake-up (disabled for RUN mode) */
+{% if has_tickless and sleep.mode != 'RUN' %}
 #define configUSE_TICKLESS_IDLE                 1
 {% else %}
 #define configUSE_TICKLESS_IDLE                 0
 {% endif %}
-{% if has_tickless %}
+{% if has_tickless and sleep.mode != 'RUN' %}
 #define portSUPPRESS_TICKS_AND_SLEEP( xExpectedIdleTime )  vPortSuppressTicksAndSleep( xExpectedIdleTime )
 void vPortSuppressTicksAndSleep( uint32_t xExpectedIdleTime );
 {% endif %}
@@ -85,13 +87,13 @@ void vPortSuppressTicksAndSleep( uint32_t xExpectedIdleTime );
 #define INCLUDE_vTaskDelay                  1
 #define INCLUDE_xTaskGetSchedulerState      1
 #define INCLUDE_xTaskGetCurrentTaskHandle   1
-#define INCLUDE_uxTaskGetStackHighWaterMark 0
+#define INCLUDE_uxTaskGetStackHighWaterMark 1
 #define INCLUDE_xTaskGetIdleTaskHandle      0
 #define INCLUDE_eTaskGetState               0
 #define INCLUDE_xEventGroupSetBitFromISR    1
 #define INCLUDE_xTimerPendFunctionCall      0
 #define INCLUDE_xTaskAbortDelay             0
-#define INCLUDE_xTaskGetHandle              0
+#define INCLUDE_xTaskGetHandle                 1
 #define INCLUDE_xTaskResumeFromISR          1
 
 /* Normal assert */

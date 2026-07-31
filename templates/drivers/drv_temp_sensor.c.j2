@@ -1,8 +1,7 @@
 {#
     drv_temp_sensor.c.j2 - STM32G0 on-chip temperature sensor driver
 
-    ADC1_CH16 reads the internal bandgap temperature sensor. The STM32G0B1
-    datasheet (DS13560) specifies factory calibration at 30°C and 110°C
+    ADC1_CH16 reads the internal bandgap temperature sensor. The STM32G0 datasheet (DS13560) specifies factory calibration at 30°C and 130°C
     stored in system memory at TS_CAL1 (0x1FFF75A8) and TS_CAL2 (0x1FFF75CA).
 
     VREFINT compensation corrects for VDDA deviation from the factory
@@ -41,7 +40,7 @@
 #define TS_CAL2_ADDR      ((uint16_t *)0x1FFF75CAU)
 #endif
 #define TS_CAL1_TEMP   30   /* °C at TS_CAL1 */
-#define TS_CAL2_TEMP   110  /* °C at TS_CAL2 */
+#define TS_CAL2_TEMP   130  /* °C at TS_CAL2 */
 
 /* Private handle — shared with drv_adc if both are present */
 #ifndef TEST
@@ -77,15 +76,27 @@ void temp_sensor_init(void)
         while (1) {}
     }
 
+    /*
+     * Run ADC self-calibration (RM0444 §16.3.9).
+     * ADC must be disabled during calibration — HAL_ADC_Init enables
+     * the internal regulator but leaves ADEN=0, satisfying the prerequisite.
+     * Calibration compensates offset/gain errors; skipping it causes
+     * several LSBs of error that become significant for the temperature
+     * sensor's narrow 2-3 mV/°C slope.
+     */
+    if (HAL_ADCEx_Calibration_Start(&htsens_adc) != HAL_OK) {
+        while (1) {}
+    }
+
     /* Enable temperature sensor and internal voltage reference */
     SET_BIT(ADC1_COMMON->CCR, ADC_CCR_TSEN);
     SET_BIT(ADC1_COMMON->CCR, ADC_CCR_VREFEN);
 
     /*
      * Wait for temperature sensor startup (DS13560: tSTART max 10 µs).
-     * At 64 MHz HCLK, 640 cycles ≈ 10 µs.
+     * At 16 MHz SYSCLK, 160 cycles ≈ 10 µs.
      */
-    for (wait_loops = 0; wait_loops < 640U; wait_loops++) {
+    for (wait_loops = 0; wait_loops < 160U; wait_loops++) {
         __NOP();
     }
 
@@ -135,15 +146,24 @@ int16_t temp_sensor_read_celsius(void)
     }
 
     /*
-     * Step 2: Read temperature sensor (ADC channel 16).
+     * Step 2: Read temperature sensor on ADC_IN16 via direct register
+     *         access (CHSELR bitmap mode).
+     *
+     * NOTE: STM32G0x1 devices route the internal temperature sensor to
+     * ADC_IN16 (CHSELR bit 16).  The shared STM32G0xx HAL defines
+     * ADC_CHANNEL_TEMPSENSOR as LL_ADC_CHANNEL_12 (G0x0 mapping),
+     * which is incorrect for G0x1.
+     *
+     * HAL_ADC_Stop() clears ADC_CFGR1.CHSELRMOD to 0 (bitmap mode),
+     * so a subsequent HAL_ADC_ConfigChannel() cannot use the
+     * channel-number-based sequencer.  Instead we directly set
+     * CHSELR to enable the temperature sensor bit, then trigger a
+     * single conversion.
      */
-    {
-        ADC_ChannelConfTypeDef sConfig = {0};
-        sConfig.Channel      = ADC_CHANNEL_TEMPSENSOR;
-        sConfig.Rank         = ADC_REGULAR_RANK_1;
-        sConfig.SamplingTime = ADC_SAMPLETIME_160CYCLES_5;
-        HAL_ADC_ConfigChannel(&htsens_adc, &sConfig);
-    }
+    LL_ADC_SetChannelSamplingTime(htsens_adc.Instance,
+                                  LL_ADC_CHANNEL_16,
+                                  LL_ADC_SAMPLINGTIME_160CYCLES_5);
+    htsens_adc.Instance->CHSELR = ADC_CHSELR_CHSEL16;
     HAL_ADC_Start(&htsens_adc);
     if (HAL_ADC_PollForConversion(&htsens_adc, 10) != HAL_OK) {
         HAL_ADC_Stop(&htsens_adc);
@@ -171,7 +191,7 @@ int16_t temp_sensor_read_celsius(void)
      *     + (TS_CAL2_TEMP - TS_CAL1_TEMP) * 10
      *     * (TS_DATA_cal - TS_CAL1) / (TS_CAL2 - TS_CAL1)
      *
-     *   = 300 + 800 * (TS_DATA_cal - TS_CAL1) / (TS_CAL2 - TS_CAL1)
+     *   = 300 + 1000 * (TS_DATA_cal - TS_CAL1) / (TS_CAL2 - TS_CAL1)
      */
     denominator = (int32_t)ts_cal2 - (int32_t)ts_cal1;
     if (denominator == 0) {

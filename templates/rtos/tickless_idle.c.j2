@@ -20,6 +20,10 @@
 #include "task.h"
 #include "drv_log.h"
 
+{% if has_power_mgr %}
+#include "power_mgr.h"
+{% endif %}
+
 /* RTC handle - must be initialized by main before scheduler starts */
 extern RTC_HandleTypeDef hrtc;
 
@@ -110,6 +114,17 @@ void vPortSuppressTicksAndSleep(TickType_t xExpectedIdleTime)
         __WFI();
         return;
     }
+
+{% if has_power_mgr %}
+    /*
+     * Power manager: check if STOP mode is allowed by active components.
+     * If not, fall back to WFI (CPU SLEEP, peripherals running).
+     */
+    if (!power_mgr_is_mode_allowed(POWER_MODE_STOP0)) {
+        __WFI();
+        return;
+    }
+{% endif %}
 
     /* -------- Calculate sleep duration in RTC counter ticks -------- */
     /*

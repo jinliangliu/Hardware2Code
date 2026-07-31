@@ -85,6 +85,8 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     has_cellular = peri_result["has_cellular"]
     has_cli = peri_result["has_cli"]
     has_temp_sensor = peri_result["has_temp_sensor"]
+    has_telemetry = True   # always available, auto-generated
+    has_power_mgr = True   # always available, auto-generated
     uart_name = peri_result["uart_name"]
     rs485_name = peri_result["rs485_name"]
     cli_uart_name = peri_result["cli_uart_name"]
@@ -165,6 +167,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
 
     has_led = any(pin.get('label') == 'LED' for pin in pins)
     has_led_task = any(t.get('name') == 'led_task' for t in app_tasks)
+    has_btn_task = any(t.get('name') == 'btn_task' for t in app_tasks)
 
     led_active_low = False
     for pin in pins:
@@ -722,6 +725,11 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
             for region in behavior['regions']:
                 collect_transition_events(region['states'])
 
+    # Button gesture events — always generated when btn_task is present
+    if has_btn_task:
+        for evt in ('BUTTON_SHORT_PRESS', 'BUTTON_DOUBLE_PRESS', 'BUTTON_LONG_PRESS'):
+            transition_events.add(evt)
+
     # ---------- Auto-inject RTC driver when business flow needs timers ----------
     # Demos with timer_events or defer_actions need the software timer
     # infrastructure from drv_rtc, even if no explicit Internal_RTC peripheral
@@ -899,85 +907,152 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     # ---------- 静态库绝对路径 ----------
     static_dir_absolute = os.path.abspath(STATIC_STM32_DIR).replace("\\", "/")
 
-    # ---------- 构建最终上下文字典 ----------
-    context = {
-        "project_name": project_name,
-        "mcu": mcu,
-        "pins": pins,
-        "sleep": sleep,
-        "app_tasks": app_tasks,
-        "hal_sources": hal_sources,
-        "peripherals": peripherals,
-        "drivers": drivers,
-        "has_i2c": has_i2c,
-        "has_rtc": has_rtc,
-        "rtc_async_prediv": 127 if has_rtc else None,
-        "rtc_sync_prediv": 255 if has_rtc else None,
-        "rtc_clock_source": rtc_clock_source,
-        "rtc_wakeup_interval_ms": rtc_wakeup_interval_ms,
-        "rtc_alarms": rtc_alarms,
-        "rtc_init_time": rtc_init_time,
-        "has_pwm": has_pwm,
-        "pwm_tim_prescaler": pwm_tim_prescaler,
-        "pwm_tim_period": pwm_tim_period,
-        "has_spi": has_spi,
-        "has_spi_flash": has_spi_flash,
-        "has_mpu6050": has_mpu6050,
-        "has_adc": has_adc,
-        "has_uart": has_uart,
-        "has_rs485": has_rs485,
-        "has_ir": has_ir,
-        "has_cellular": has_cellular,
-        "has_modbus": has_modbus,
-        "has_mqtt": has_mqtt,
-        "has_cli": has_cli,
-        "uart_name": uart_name,
-        "rs485_name": rs485_name,
-        "modbus_name": modbus_name,
-        "cli_uart_name": cli_uart_name,
-        "has_led": has_led,
-        "has_led_task": has_led_task,
-        "led_active_low": led_active_low,
-        "led_task_name": led_task_name,
-        "total_heap_size": total_heap_size,
-        "test_mode": False,
-        "has_log": has_log,
-        "log_uart": log_uart,
-        "log_ring_buf_size": log_ring_buf_size,
-        "usart2_baudrate": usart2_baudrate,
-        "usart2_clock_freq_hz": usart2_clock_freq_hz,
-        "has_tickless": has_tickless,
-        "has_behavior": has_behavior,
-        "behavior": behavior,
-        "periodic_events": periodic_events,
-        "has_substate": has_substate,
-        "has_bootloader": has_bootloader,
-        "has_fota": has_fota,
-        "has_iwdg": has_bootloader,
-        "has_temp_sensor": has_temp_sensor,
-        "temp_offset_deci": temp_offset_deci,
-        "flash_kb": mcu_flash_kb,
-        "boot_config": boot_config,
-        "boot_max_retries": boot_config.get('max_retries', 3),
-        "boot_size_bytes": boot_size_bytes,
-        "boot_led_port": boot_led.get('boot_led_port', 'GPIOC'),
-        "boot_led_pin_num": boot_led.get('boot_led_pin_num', 0),
-        "boot_led_rcc_enable": boot_led.get('boot_led_rcc_enable', 'RCC_IOPENR_GPIOCEN'),
-        "iwdg_reload_value": boot_config.get('iwdg_reload_value', 625) if has_bootloader else None,
-        "exti_handler_groups": exti_handler_groups,
-        "hil": hil_config,
-        "hil_tests": hil_tests,
-        "hil_mode": hil_mode,
-        "heap_size": hw.get("heap_size", "0x200"),
-        "stack_size": hw.get("stack_size", "0x400"),
-        "static_dir_absolute": static_dir_absolute,
-        "has_event_mgr": True,
-        "defer_actions": defer_actions,
-        "defer_timer_names": defer_timer_names,
-        "user_timer_actions": user_timer_actions,
-        "timer_events": sorted(timer_events),
-        "published_events": sorted(published_events),
-        "transition_events": sorted(transition_events),
-    }
+    # ---------- 构建 IR (Intermediate Representation) ----------
+    from ..ir import ProjectIR, McuIR, LogIR, RtcIR, RtcAlarmIR, RtcInitTimeIR
+    from ..ir import BootIR, ExtiIR, HilIR
 
-    return context
+    mcu_ir = McuIR(
+        part=mcu.get("part", ""),
+        core=mcu.get("core", "Cortex-M0+"),
+        core_clock_mhz=mcu.get("core_clock_mhz", 16),
+        clock_source=mcu.get("clock_source", "HSI"),
+        clock_freq_hz=mcu.get("clock_freq_hz", 16000000),
+        hse_freq=mcu.get("hse_freq", 8000000),
+        hclk_freq_hz=mcu.get("hclk_freq_hz", mcu.get("clock_freq_hz", 16000000)),
+        flash_kb=mcu.get("flash_kb", 512),
+    )
+
+    log_ir = LogIR(
+        enabled=has_log,
+        ring_buf_size=log_ring_buf_size,
+        uart_instance=log_uart.get("instance", ""),
+        uart_irqn=log_uart.get("irqn", ""),
+        uart_rcc_clk=log_uart.get("rcc_usart_clk", ""),
+        uart_ccipr_sel_msk=log_uart.get("ccipr_sel_msk", ""),
+        uart_ccipr_hsi_src=log_uart.get("ccipr_hsi_src", ""),
+        tx_port=log_uart.get("tx_port", ""),
+        tx_pin=log_uart.get("tx_pin", ""),
+        tx_af=log_uart.get("tx_af", ""),
+        rx_port=log_uart.get("rx_port", ""),
+        rx_pin=log_uart.get("rx_pin", ""),
+        rx_af=log_uart.get("rx_af", ""),
+        rcc_gpio_clk=log_uart.get("rcc_gpio_clk", ""),
+    )
+
+    alarm_objs = [
+        RtcAlarmIR(period_ms=a["period_ms"], event=a["event"])
+        for a in rtc_alarms
+    ]
+    init_t = rtc_init_time
+    rtc_ir = RtcIR(
+        has_rtc=has_rtc,
+        clock_source=rtc_clock_source,
+        async_prediv=127,
+        sync_prediv=255,
+        wakeup_interval_ms=rtc_wakeup_interval_ms,
+        alarms=alarm_objs,
+        init_time=RtcInitTimeIR(
+            year=init_t["year"], month=init_t["month"], day=init_t["day"],
+            hour=init_t["hour"], min=init_t["min"], sec=init_t["sec"],
+        ),
+    )
+
+    boot_ir = BootIR(
+        enabled=has_bootloader,
+        size_kb=boot_config.get("size_kb", 8),
+        size_bytes=boot_size_bytes,
+        app_a_offset=boot_config.get("app_a_offset", 0x2000),
+        app_b_offset=boot_config.get("app_b_offset", 0x4000),
+        crc_method=boot_config.get("crc_method", "CRC32"),
+        boot_flag_src=boot_config.get("boot_flag_src", "RAM"),
+        max_retries=boot_config.get("max_retries", 3),
+        wdg_timeout_ms=boot_config.get("wdg_timeout_ms", 5000),
+        iwdg_reload_value=boot_config.get("iwdg_reload_value", 625),
+        led_port=boot_led.get("boot_led_port", "GPIOC"),
+        led_pin_num=boot_led.get("boot_led_pin_num", 0),
+        led_rcc_enable=boot_led.get("boot_led_rcc_enable", "RCC_IOPENR_GPIOCEN"),
+        raw=boot_config,
+    )
+
+    exti_ir = ExtiIR(groups=exti_handler_groups)
+
+    hil_ir = HilIR(
+        baudrate=hil_config.get("baudrate", 115200),
+        uart=hil_config.get("uart", "UART2"),
+        tx_pin=hil_config.get("tx_pin", "PA2"),
+        rx_pin=hil_config.get("rx_pin", "PA3"),
+        tests=hil_tests,
+    )
+
+    project_ir = ProjectIR(
+        mcu=mcu_ir,
+        log=log_ir,
+        project_name=project_name,
+        pins=pins,
+        sleep=sleep,
+        app_tasks=app_tasks,
+        hal_sources=hal_sources,
+        peripherals=peripherals,
+        drivers=drivers,
+        has_i2c=has_i2c,
+        has_rtc=has_rtc,
+        has_mpu6050=has_mpu6050,
+        has_pwm=has_pwm,
+        has_spi=has_spi,
+        has_spi_flash=has_spi_flash,
+        has_adc=has_adc,
+        has_uart=has_uart,
+        has_rs485=has_rs485,
+        has_ir=has_ir,
+        has_cellular=has_cellular,
+        has_cli=has_cli,
+        has_temp_sensor=has_temp_sensor,
+        has_telemetry=has_telemetry,
+        has_power_mgr=has_power_mgr,
+        has_modbus=has_modbus,
+        has_mqtt=has_mqtt,
+        has_led=has_led,
+        has_led_task=has_led_task,
+        has_btn_task=has_btn_task,
+        has_behavior=has_behavior,
+        has_substate=has_substate,
+        has_bootloader=has_bootloader,
+        has_fota=has_fota,
+        has_iwdg=has_bootloader,
+        has_event_mgr=True,
+        has_tickless=has_tickless,
+        has_log=has_log,
+        uart_name=uart_name,
+        rs485_name=rs485_name,
+        modbus_name=modbus_name,
+        cli_uart_name=cli_uart_name,
+        led_active_low=led_active_low,
+        led_task_name=led_task_name or "",
+        rtc=rtc_ir,
+        pwm_tim_prescaler=pwm_tim_prescaler,
+        pwm_tim_period=pwm_tim_period,
+        temp_offset_deci=temp_offset_deci,
+        usart2_baudrate=usart2_baudrate,
+        usart2_clock_freq_hz=usart2_clock_freq_hz,
+        behavior=behavior,
+        periodic_events=periodic_events,
+        defer_actions=defer_actions,
+        defer_timer_names=defer_timer_names,
+        user_timer_actions=user_timer_actions,
+        timer_events=sorted(timer_events),
+        published_events=sorted(published_events),
+        transition_events=sorted(transition_events),
+        boot=boot_ir,
+        exti=exti_ir,
+        hil=hil_ir,
+        hil_mode=hil_mode,
+        hil_tests=hil_tests,
+        heap_size=hw.get("heap_size", "0x200"),
+        stack_size=hw.get("stack_size", "0x400"),
+        total_heap_size=total_heap_size,
+        flash_kb=mcu_flash_kb,
+        test_mode=False,
+        static_dir_absolute=static_dir_absolute,
+    )
+
+    return project_ir.to_dict()

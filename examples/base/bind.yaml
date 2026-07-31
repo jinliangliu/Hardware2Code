@@ -1,7 +1,7 @@
 # ============================================================
 # hw2c minimal system unit — binding layer
 #
-# Links hardware peripherals to software tasks.
+# Links hardware peripherals to software tasks/components.
 # ============================================================
 
 version: 1
@@ -27,5 +27,5 @@ peripheral_assign:
 
 interrupt:
   - pin: PC13
-    task: events_process_task
+    component: btn
     event: EXTI13

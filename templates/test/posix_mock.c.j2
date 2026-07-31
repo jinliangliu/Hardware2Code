@@ -1,0 +1,244 @@
+/**
+ * @file  posix_mock.c
+ * @brief Mock implementations of POSIX driver interfaces for SIL testing
+ *
+ * Auto-generated — do not edit manually.
+ */
+
+#include "posix_mock.h"
+#include <string.h>
+
+/* ---- UART mock ---- */
+
+struct uart_mock {
+    char     name[16];
+    uint8_t  rx_buf[MAX_UART_RX_BUF];
+    uint32_t rx_len;
+    uint32_t rx_pos;
+    uint8_t  tx_buf[MAX_UART_TX_BUF];
+    uint32_t tx_len;
+    bool     is_open;
+};
+
+static struct uart_mock g_uart_mocks[MAX_UART_DEVS];
+
+uart_handle_t uart_open(const char *name, const uart_cfg_t *cfg)
+{
+    (void)cfg;
+    if (name == NULL) return NULL;
+    for (int i = 0; i < MAX_UART_DEVS; i++) {
+        if (!g_uart_mocks[i].is_open) {
+            strncpy(g_uart_mocks[i].name, name, sizeof(g_uart_mocks[i].name) - 1);
+            g_uart_mocks[i].rx_len = 0;
+            g_uart_mocks[i].rx_pos = 0;
+            g_uart_mocks[i].tx_len = 0;
+            g_uart_mocks[i].is_open = true;
+            return (uart_handle_t)&g_uart_mocks[i];
+        }
+    }
+    return NULL;
+}
+
+int32_t uart_read(uart_handle_t h, uint8_t *buf, uint32_t len, uint32_t timeout_ms)
+{
+    (void)timeout_ms;
+    if (h == NULL || buf == NULL || len == 0) return -1;
+    struct uart_mock *m = (struct uart_mock *)h;
+    if (m->rx_pos >= m->rx_len) return 0;  /* no data */
+    uint32_t avail = m->rx_len - m->rx_pos;
+    uint32_t n = (avail < len) ? avail : len;
+    memcpy(buf, m->rx_buf + m->rx_pos, n);
+    m->rx_pos += n;
+    return (int32_t)n;
+}
+
+int32_t uart_write(uart_handle_t h, const uint8_t *buf, uint32_t len)
+{
+    if (h == NULL || buf == NULL || len == 0) return -1;
+    struct uart_mock *m = (struct uart_mock *)h;
+    uint32_t space = MAX_UART_TX_BUF - m->tx_len;
+    uint32_t n = (len < space) ? len : space;
+    memcpy(m->tx_buf + m->tx_len, buf, n);
+    m->tx_len += n;
+    return (int32_t)n;
+}
+
+int32_t uart_ioctl(uart_handle_t h, uint32_t cmd, void *arg)
+{
+    (void)h; (void)cmd; (void)arg;
+    return 0;
+}
+
+void uart_close(uart_handle_t h)
+{
+    if (h == NULL) return;
+    struct uart_mock *m = (struct uart_mock *)h;
+    m->is_open = false;
+}
+
+void uart_mock_inject_rx(const char *name, const uint8_t *data, uint32_t len)
+{
+    for (int i = 0; i < MAX_UART_DEVS; i++) {
+        if (g_uart_mocks[i].is_open && strcmp(g_uart_mocks[i].name, name) == 0) {
+            uint32_t space = MAX_UART_RX_BUF - g_uart_mocks[i].rx_len;
+            uint32_t n = (len < space) ? len : space;
+            memcpy(g_uart_mocks[i].rx_buf + g_uart_mocks[i].rx_len, data, n);
+            g_uart_mocks[i].rx_len += n;
+            return;
+        }
+    }
+}
+
+uint32_t uart_mock_get_tx(const char *name, uint8_t *buf, uint32_t max_len)
+{
+    for (int i = 0; i < MAX_UART_DEVS; i++) {
+        if (g_uart_mocks[i].is_open && strcmp(g_uart_mocks[i].name, name) == 0) {
+            uint32_t n = (g_uart_mocks[i].tx_len < max_len) ? g_uart_mocks[i].tx_len : max_len;
+            memcpy(buf, g_uart_mocks[i].tx_buf, n);
+            return n;
+        }
+    }
+    return 0;
+}
+
+void uart_mock_reset_all(void)
+{
+    memset(g_uart_mocks, 0, sizeof(g_uart_mocks));
+}
+
+
+/* ---- GPIO mock ---- */
+
+struct gpio_mock {
+    char    name[16];
+    uint8_t level;
+    bool    is_open;
+};
+
+static struct gpio_mock g_gpio_mocks[MAX_GPIO_DEVS];
+
+gpio_handle_t gpio_open(const char *name, const gpio_cfg_t *cfg)
+{
+    (void)cfg;
+    if (name == NULL) return NULL;
+    for (int i = 0; i < MAX_GPIO_DEVS; i++) {
+        if (!g_gpio_mocks[i].is_open) {
+            strncpy(g_gpio_mocks[i].name, name, sizeof(g_gpio_mocks[i].name) - 1);
+            g_gpio_mocks[i].level = 0;
+            g_gpio_mocks[i].is_open = true;
+            return (gpio_handle_t)&g_gpio_mocks[i];
+        }
+    }
+    return NULL;
+}
+
+int32_t gpio_read(gpio_handle_t h, uint8_t *level)
+{
+    if (h == NULL || level == NULL) return -1;
+    *level = ((struct gpio_mock *)h)->level;
+    return 0;
+}
+
+int32_t gpio_write(gpio_handle_t h, uint8_t level)
+{
+    if (h == NULL) return -1;
+    ((struct gpio_mock *)h)->level = (level != 0) ? 1 : 0;
+    return 0;
+}
+
+int32_t gpio_ioctl(gpio_handle_t h, uint32_t cmd, void *arg)
+{
+    (void)h; (void)cmd; (void)arg;
+    return 0;
+}
+
+void gpio_close(gpio_handle_t h)
+{
+    if (h == NULL) return;
+    ((struct gpio_mock *)h)->is_open = false;
+}
+
+void gpio_mock_set_level(const char *name, uint8_t level)
+{
+    for (int i = 0; i < MAX_GPIO_DEVS; i++) {
+        if (g_gpio_mocks[i].is_open && strcmp(g_gpio_mocks[i].name, name) == 0) {
+            g_gpio_mocks[i].level = (level != 0) ? 1 : 0;
+            return;
+        }
+    }
+}
+
+uint8_t gpio_mock_get_level(const char *name)
+{
+    for (int i = 0; i < MAX_GPIO_DEVS; i++) {
+        if (g_gpio_mocks[i].is_open && strcmp(g_gpio_mocks[i].name, name) == 0) {
+            return g_gpio_mocks[i].level;
+        }
+    }
+    return 0;
+}
+
+void gpio_mock_reset_all(void)
+{
+    memset(g_gpio_mocks, 0, sizeof(g_gpio_mocks));
+}
+
+
+/* ---- ADC mock ---- */
+
+struct adc_mock {
+    char     name[16];
+    uint32_t millivolts;
+    bool     is_open;
+};
+
+static struct adc_mock g_adc_mocks[MAX_ADC_DEVS];
+
+adc_handle_t adc_open(const char *name, const adc_cfg_t *cfg)
+{
+    (void)cfg;
+    if (name == NULL) return NULL;
+    for (int i = 0; i < MAX_ADC_DEVS; i++) {
+        if (!g_adc_mocks[i].is_open) {
+            strncpy(g_adc_mocks[i].name, name, sizeof(g_adc_mocks[i].name) - 1);
+            g_adc_mocks[i].millivolts = 0;
+            g_adc_mocks[i].is_open = true;
+            return (adc_handle_t)&g_adc_mocks[i];
+        }
+    }
+    return NULL;
+}
+
+int32_t adc_read(adc_handle_t h, uint32_t *millivolts)
+{
+    if (h == NULL || millivolts == NULL) return -1;
+    *millivolts = ((struct adc_mock *)h)->millivolts;
+    return 0;
+}
+
+int32_t adc_ioctl(adc_handle_t h, uint32_t cmd, void *arg)
+{
+    (void)h; (void)cmd; (void)arg;
+    return 0;
+}
+
+void adc_close(adc_handle_t h)
+{
+    if (h == NULL) return;
+    ((struct adc_mock *)h)->is_open = false;
+}
+
+void adc_mock_set_reading(const char *name, uint32_t millivolts)
+{
+    for (int i = 0; i < MAX_ADC_DEVS; i++) {
+        if (g_adc_mocks[i].is_open && strcmp(g_adc_mocks[i].name, name) == 0) {
+            g_adc_mocks[i].millivolts = millivolts;
+            return;
+        }
+    }
+}
+
+void adc_mock_reset_all(void)
+{
+    memset(g_adc_mocks, 0, sizeof(g_adc_mocks));
+}
