@@ -10,22 +10,20 @@
 
 #include "unity.h"
 #include "posix_mock.h"
-#include "../src/component_bus.h"
-#include "../src/component_registry.h"
-#include "../src/param_registry.h"
+#include "mock_hal.h"
+#include "component_bus.h"
+#include "component_registry.h"
+#include "param_registry.h"
 
 /* ---- Mock STM32-specific symbols needed by component_registry ---- */
 uint32_t rtc_uptime_sec = 0;
 
-/* Forward prototypes for FreeRTOS stubs (not actually called in tests) */
-typedef void* TaskHandle_t;
-typedef void* TimerHandle_t;
-
-#define pdMS_TO_TICKS(ms) ((ms) / portTICK_PERIOD_MS)
+/* FreeRTOS stubs not provided by mock_hal.h */
 #define portTICK_PERIOD_MS    1
-#define portMAX_DELAY         0xFFFFFFFFUL
 
-static inline void vTaskDelay(unsigned long ticks) { (void)ticks; }
+/* Queue handles referenced by component sources (not exercised in SIL) */
+void *btn_queue = NULL;
+void *event_queue = NULL;
 
 static int xTaskCreate_stub(void (*task)(void*), const char *name,
                             unsigned short stack, void *params,
@@ -41,13 +39,13 @@ static int xTaskCreate_stub(void (*task)(void*), const char *name,
 static void bus_handler_stub(topic_id_t topic, uint32_t value, void *ctx);
 
 /* ---- Include source files directly (SIL pattern) ---- */
-#include "../src/component_bus.c"
-#include "../src/component_registry.c"
-#include "../src/param_registry.c"
+#include "component_bus.c"
+#include "component_registry.c"
+#include "param_registry.c"
 
 /* ---- Include component sources ---- */
 {% for c in components %}
-#include "../src/{{ c.name }}_component.c"
+#include "{{ c.name }}_component.c"
 {% endfor %}
 
 /* ---- Test setup/teardown ---- */

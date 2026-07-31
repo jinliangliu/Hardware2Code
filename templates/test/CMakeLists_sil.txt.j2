@@ -14,14 +14,17 @@ add_compile_definitions(TEST)
 # Include paths
 include_directories(
     .                       # posix_mock.h
+    ${CMAKE_SOURCE_DIR}/..  # test/ (mock_hal.h)
     ${CMAKE_SOURCE_DIR}/../../src     # src/ (for component headers)
     ${CMAKE_SOURCE_DIR}/../../src/drivers  # src/drivers/ (for gpio_api.h etc.)
     unity
 )
 
-# Mock POSIX drivers (in-memory replacements for uart/gpio/adc)
+# Mock POSIX drivers (in-memory replacements for uart/gpio/adc) plus the
+# shared HAL mock (HAL_GPIO/FreeRTOS stubs used by component sources).
 add_library(posix_mock STATIC
     posix_mock.c
+    ${CMAKE_SOURCE_DIR}/../mock_hal.c
 )
 
 # Main SIL test — includes all component .c files directly
