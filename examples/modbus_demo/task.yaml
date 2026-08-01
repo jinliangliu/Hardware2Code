@@ -10,11 +10,6 @@ event_task:
   stack_size: 512
   queue_depth: 16
 
-app_tasks:
-  - name: shell_task
-    priority: 1
-    stack_size: 1024
-
 behavior:
   initial_state: IDLE
   states:

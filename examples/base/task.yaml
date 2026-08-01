@@ -2,8 +2,8 @@
 # hw2c minimal system unit — software tasks layer
 #
 # System tasks (FreeRTOS):
-#   shell_task           CLI interaction + log output via USART2
 #   events_process_task  Centralized event dispatch via queue
+#   cli_task             CLI interaction + log output via USART2 (auto)
 #
 # Components (hw2c component framework):
 #   led                  LED multi-instance pattern driver
@@ -21,11 +21,6 @@ event_task:
   priority: 3
   stack_size: 512
   queue_depth: 16
-
-app_tasks:
-  - name: shell_task
-    priority: 1
-    stack_size: 1024
 
 # Button gesture → LED pattern mapping
 # The btn component detects SHORT_PRESS / DOUBLE_PRESS / LONG_PRESS
