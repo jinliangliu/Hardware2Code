@@ -5,8 +5,30 @@
 - **RS485**：USART1（PA9/PA10）+ DE 方向控制（PA1），半双工收发
 - **Modbus RTU 从站**：功能码 03/06/16，CRC16-Modbus，异常码响应，广播地址抑制
 - **CLI**：USART2（PA2/PA3）115200，`modbus` 命令显示从站状态
-- **组件框架**：shell / led / btn（短按/双击/长按 → LED 模式）
+- **组件框架**：shell / led / btn / **modbus_slave**（短按/双击/长按 → LED 模式）
 - **RTC**：LSE 1 秒心跳 + 30 秒定时事件
+
+## Modbus 组件化架构
+
+Modbus RTU 从站以 **框架组件** 形式接入（`components.yaml` 注册 `modbus_slave`），
+由 `component_registry` 统一调度，软硬件分层清晰：
+
+```
+component_step_task (10ms)
+  └─ modbus_slave.step()  →  modbus_process()   （协议轮询）
+  └─ modbus_slave.init()  →  uart_open("usart1")      （POSIX UART API）
+                          →  gpio_open("RS485_DE")    （POSIX GPIO API）
+                          →  rs485_init()             （半双工方向控制）
+                          →  modbus_init(1, tx/rx/read/write 回调)
+
+数据映射：
+  pub/sub topic "temperature"  ──订阅──►  保持寄存器 addr=1 (temperature_x10)
+  主站 FC03 读寄存器            ◄──read_cb──  g_modbus_regs[]
+  主站 FC06/FC16 写寄存器       ──write_cb──►  g_modbus_regs[]
+```
+
+RS485 驱动（`drv_rs485`）通过 `uart_api` / `gpio_api` 访问硬件，不再直接操作 HAL
+寄存器；modbus 协议驱动（`drv_modbus`）通过函数指针回调与传输层解耦。
 
 ## 硬件
 
@@ -55,3 +77,5 @@ registers:
 ```
 
 外部主站可通过 RS485 总线读取（FC03）或写入（FC06/FC16）。
+当 `pubsub.yaml` 定义 `temperature` 主题时，组件自动订阅并把读数镜像到
+名称含 `temperature` 的寄存器（本例为 addr=1）。
