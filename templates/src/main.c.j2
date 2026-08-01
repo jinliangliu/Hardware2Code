@@ -17,7 +17,7 @@
 #include "queue.h"
 
 /* Include driver headers for each peripheral */
-{% for drv in drivers %}
+{% for drv in drivers if drv.header_template %}
 #include "drv_{{ drv.name }}.h"
 {% endfor %}
 

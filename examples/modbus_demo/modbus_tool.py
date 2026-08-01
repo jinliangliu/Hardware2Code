@@ -119,6 +119,10 @@ def read_response(ser, timeout, req_func):
 def expect_ok(ser, slave, func, timeout):
     """FC06/FC16 responses echo the request: slave + func + same payload."""
     body = read_response(ser, timeout, func)
+    if body[1] & 0x80:
+        code = body[2]
+        names = {1: "illegal function", 2: "illegal data address", 3: "illegal data value"}
+        raise RuntimeError("Modbus exception 0x%02X: %s" % (code, names.get(code, "unknown")))
     if len(body) != 6:
         raise RuntimeError("unexpected response length %d" % len(body))
     if body[0] != slave:

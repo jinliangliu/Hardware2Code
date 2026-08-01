@@ -18,7 +18,7 @@
 /* Frame timeout in milliseconds (3.5 characters at 9600 baud) */
 #define MODBUS_FRAME_TIMEOUT_MS        4
 
-void modbus_init(uint8_t slave_id, void *tx_func, void *rx_func,
+void modbus_init(uint8_t slave_id, uint16_t reg_count, void *tx_func, void *rx_func,
                  void *read_cb, void *write_cb);
 void modbus_process(void);
 

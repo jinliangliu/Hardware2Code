@@ -117,7 +117,7 @@ set(APP_SOURCES
 {% if has_bootloader %}
     src/boot_app.c
 {% endif %}
-{% for drv in drivers %}
+{% for drv in drivers if drv.template or drv.header_template %}
     src/drivers/drv_{{ drv.name }}.c
 {% endfor %}
 {% if has_log %}

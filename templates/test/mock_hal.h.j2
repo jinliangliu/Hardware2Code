@@ -547,7 +547,17 @@ typedef struct {
     uint32_t OverSampling;
 } UART_InitTypeDef;
 
-typedef void UART_HandleTypeDef;
+typedef struct {
+    void              *Instance;
+    UART_InitTypeDef   Init;
+    uint16_t           RxXferCount;
+} UART_HandleTypeDef;
+
+#define HAL_MAX_DELAY        0xFFFFFFFFUL
+#define HAL_OK               0x00
+#define HAL_ERROR            0x01
+#define HAL_BUSY             0x02
+#define HAL_TIMEOUT          0x03
 
 #define UART_WORDLENGTH_8B       0
 #define UART_STOPBITS_1          0
@@ -556,9 +566,10 @@ typedef void UART_HandleTypeDef;
 #define UART_HWCONTROL_NONE      0
 #define UART_OVERSAMPLING_16     0
 
-void HAL_UART_Init(UART_HandleTypeDef *huart);
-void HAL_UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout);
-void HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+HAL_StatusTypeDef HAL_UART_Init(UART_HandleTypeDef *huart);
+HAL_StatusTypeDef HAL_UART_DeInit(UART_HandleTypeDef *huart);
+HAL_StatusTypeDef HAL_UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+HAL_StatusTypeDef HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout);
 void HAL_UART_Receive_IT(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size);
 bool mock_HAL_UART_Init_called(void);
 bool mock_HAL_UART_Transmit_called(void);

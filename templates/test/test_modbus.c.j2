@@ -81,7 +81,7 @@ static void mock_modbus_init_with_rx(const uint8_t *data, uint16_t len)
         memcpy(mock_rx_buf, data, len);
         mock_rx_len = len;
     }
-    modbus_init(1, mock_modbus_tx, mock_modbus_rx,
+    modbus_init(1, 256, mock_modbus_tx, mock_modbus_rx,
                 mock_reg_read, mock_reg_write);
 }
 
@@ -101,7 +101,7 @@ static uint16_t mock_frame_add_crc(uint8_t *frame, uint16_t len)
 void setUp(void)
 {
     mock_modbus_reset();
-    modbus_init(1, mock_modbus_tx, mock_modbus_rx,
+    modbus_init(1, 256, mock_modbus_tx, mock_modbus_rx,
                 mock_reg_read, mock_reg_write);
 }
 
@@ -414,7 +414,78 @@ void test_modbus_read_holding_regs_count_zero(void)
     TEST_ASSERT_EQUAL_UINT8(MODBUS_EX_ILLEGAL_DATA, mock_tx_buf[2]);
 }
 
+
+/* ---- Register address-range boundary tests (exception 0x02) ---- */
+void test_modbus_read_out_of_range_returns_illegal_address(void)
+{
+    uint8_t frame[8];
+    frame[0] = 0x01;
+    frame[1] = 0x03;
+    frame[2] = 0x01;  /* start addr = 0x0100 = 256 (>= reg count) */
+    frame[3] = 0x00;
+    frame[4] = 0x00;
+    frame[5] = 0x01;
+    mock_frame_add_crc(frame, 6);
+    mock_modbus_init_with_rx(frame, 8);
+    modbus_handle_frame(mock_rx_buf, mock_rx_len);
+    TEST_ASSERT_EQUAL_UINT8(0x01, mock_tx_buf[0]);
+    TEST_ASSERT_EQUAL_UINT8(0x83, mock_tx_buf[1]);
+    TEST_ASSERT_EQUAL_UINT8(MODBUS_EX_ILLEGAL_ADDRESS, mock_tx_buf[2]);
+}
+
+void test_modbus_read_range_overflow_returns_illegal_address(void)
+{
+    uint8_t frame[8];
+    frame[0] = 0x01;
+    frame[1] = 0x03;
+    frame[2] = 0x00;
+    frame[3] = 0xFE;  /* start addr = 254, count = 3 -> overflow 256 */
+    frame[4] = 0x00;
+    frame[5] = 0x03;
+    mock_frame_add_crc(frame, 6);
+    mock_modbus_init_with_rx(frame, 8);
+    modbus_handle_frame(mock_rx_buf, mock_rx_len);
+    TEST_ASSERT_EQUAL_UINT8(0x83, mock_tx_buf[1]);
+    TEST_ASSERT_EQUAL_UINT8(MODBUS_EX_ILLEGAL_ADDRESS, mock_tx_buf[2]);
+}
+
+void test_modbus_write_single_out_of_range_returns_illegal_address(void)
+{
+    uint8_t frame[8];
+    frame[0] = 0x01;
+    frame[1] = 0x06;
+    frame[2] = 0x01;
+    frame[3] = 0x00;  /* addr = 256 >= 256 */
+    frame[4] = 0x00;
+    frame[5] = 0x2A;
+    mock_frame_add_crc(frame, 6);
+    mock_modbus_init_with_rx(frame, 8);
+    modbus_handle_frame(mock_rx_buf, mock_rx_len);
+    TEST_ASSERT_EQUAL_UINT8(0x86, mock_tx_buf[1]);
+    TEST_ASSERT_EQUAL_UINT8(MODBUS_EX_ILLEGAL_ADDRESS, mock_tx_buf[2]);
+}
+
+void test_modbus_write_multiple_out_of_range_returns_illegal_address(void)
+{
+    uint8_t frame[13];
+    frame[0] = 0x01;
+    frame[1] = 0x10;
+    frame[2] = 0x00;
+    frame[3] = 0xFF;  /* start addr = 255 */
+    frame[4] = 0x00;
+    frame[5] = 0x02;  /* count = 2 -> overflow */
+    frame[6] = 0x04;  /* byte count */
+    frame[7] = 0x00; frame[8] = 0x11;
+    frame[9] = 0x00; frame[10] = 0x22;
+    mock_frame_add_crc(frame, 11);
+    mock_modbus_init_with_rx(frame, 13);
+    modbus_handle_frame(mock_rx_buf, mock_rx_len);
+    TEST_ASSERT_EQUAL_UINT8(0x90, mock_tx_buf[1]);
+    TEST_ASSERT_EQUAL_UINT8(MODBUS_EX_ILLEGAL_ADDRESS, mock_tx_buf[2]);
+}
+
 int main(void)
+
 {
     UNITY_BEGIN();
 
@@ -430,6 +501,10 @@ int main(void)
     RUN_TEST(test_modbus_crc_bad_frame_silently_dropped);
     RUN_TEST(test_modbus_wrong_address_ignored);
     RUN_TEST(test_modbus_read_holding_regs_count_zero);
+    RUN_TEST(test_modbus_read_out_of_range_returns_illegal_address);
+    RUN_TEST(test_modbus_read_range_overflow_returns_illegal_address);
+    RUN_TEST(test_modbus_write_single_out_of_range_returns_illegal_address);
+    RUN_TEST(test_modbus_write_multiple_out_of_range_returns_illegal_address);
 
     return UNITY_END();
 }

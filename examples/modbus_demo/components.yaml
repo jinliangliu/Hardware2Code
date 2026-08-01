@@ -27,13 +27,12 @@ components:
       debounce_ms: 50
 
   # Modbus RTU slave - wraps drv_modbus + drv_rs485
-  # transport=uart: direct USB-TTL on USART1 (no RS485 DE control)
-  # step() polls incoming frames; registers mirror the temperature topic.
+  # Modbus RTU slave over USART1 (uart_api transport; RS485 DE handled
+  # by uart_api when rs485_de_pin is configured on the UART peripheral).
   - name: modbus_slave
     type: modbus
     driver: usart1
     period_ms: 10
     config:
-      description: "Modbus RTU slave over USB-TTL (USART1)"
-      transport: uart
+      description: "Modbus RTU slave over USART1"
       uart: usart1

@@ -66,6 +66,9 @@ peripherals:
     interface: uart
     extra:
       baudrate: 9600
+      # RS485 half-duplex DE control (uart_api asserts/releases this pin
+      # around writes).  Harmless with direct USB-TTL wiring.
+      rs485_de_pin: "PA1"
 
   - name: shell
     type: Internal_CLI

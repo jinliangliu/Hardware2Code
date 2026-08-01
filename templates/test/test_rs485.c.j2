@@ -1,70 +1,100 @@
+{#
+    test_rs485.c.j2 - RS485 half-duplex DE control tests for uart_api
+ *
+ * RS485 is a UART feature: when the UART peripheral declares
+ * extra.rs485_de_pin, uart_api binds the DE GPIO, starts in receive mode
+ * (DE low) and asserts DE around writes.
+#}
+{% set rs485_peris = peripherals | selectattr('type', 'eq', 'RS485') | list %}
+{% set rs485_peri = rs485_peris[0] if rs485_peris else none %}
+{% set rs485_uart = rs485_peri.get('extra', {}).get('uart', 'usart1') if rs485_peri else 'usart1' %}
 #include "unity.h"
 #include "mock_hal.h"
 #include <string.h>
+#include "uart_api.h"
+#include "gpio_api.h"
 
-/* The driver's TEST build uses mock transport flags instead of calling
- * uart_api/gpio_api directly (those are declared but not linked here). */
-static uint32_t g_uart_write_calls = 0;
-static uint32_t g_uart_read_calls  = 0;
+/* The generated device table references huart_<name> from main.c. */
+{% for p in peripherals if p.type == 'UART_Serial' %}
+UART_HandleTypeDef huart_{{ p.name }};
+{% endfor %}
 
-void mock_uart_write_called_flag(void) { g_uart_write_calls++; }
-void mock_uart_read_called_flag(void)  { g_uart_read_calls++; }
+/* ---- Mock gpio_api for DE control ---- */
+static uint32_t g_gpio_open_calls = 0;
+static uint32_t g_de_state = 0xFF;   /* 0 = RX, 1 = TX */
 
-#include "../src/drivers/drv_{{ rs485_name }}.c"
+gpio_handle_t gpio_open(const char *name, const gpio_cfg_t *cfg)
+{
+    (void)name;
+    (void)cfg;
+    g_gpio_open_calls++;
+    return (gpio_handle_t)0x1234;
+}
 
-extern void mock_HAL_GPIO_WritePin_reset(void);
-extern uint32_t mock_HAL_GPIO_WritePin_get_last_state(void);
+int32_t gpio_write(gpio_handle_t h, int32_t value)
+{
+    (void)h;
+    g_de_state = value ? 1 : 0;
+    return 0;
+}
+
+int32_t gpio_read(gpio_handle_t h) { (void)h; return 0; }
+void gpio_close(gpio_handle_t h) { (void)h; }
+
+/* ---- UART layer under test (generated) ---- */
+#include "../src/drivers/uart_api.c"
+
+extern void mock_HAL_UART_Transmit_reset(void);
+extern bool mock_HAL_UART_Transmit_called(void);
 
 void setUp(void)
 {
-    mock_HAL_GPIO_WritePin_reset();
-    g_uart_write_calls = 0;
-    g_uart_read_calls  = 0;
+    g_gpio_open_calls = 0;
+    g_de_state = 0xFF;
+    mock_HAL_UART_Transmit_reset();
 }
 
 void tearDown(void) {}
 
-void test_rs485_init_sets_rx_mode(void)
+void test_rs485_open_binds_de_and_starts_in_rx(void)
 {
-    rs485_init(NULL, NULL);
-    TEST_ASSERT_EQUAL(GPIO_PIN_RESET, mock_HAL_GPIO_WritePin_get_last_state());
+    uart_handle_t h = uart_open("{{ rs485_uart }}", NULL);
+    TEST_ASSERT_NOT_NULL(h);
+    TEST_ASSERT_EQUAL_UINT32(1, g_gpio_open_calls);
+    TEST_ASSERT_EQUAL_UINT32(0, g_de_state);   /* DE low = receive mode */
+    uart_close(h);
 }
 
-void test_rs485_set_tx_pulls_de_high(void)
+void test_rs485_write_uses_uart_and_releases_de(void)
 {
-    rs485_set_tx();
-    TEST_ASSERT_EQUAL(GPIO_PIN_SET, mock_HAL_GPIO_WritePin_get_last_state());
+    uart_handle_t h = uart_open("{{ rs485_uart }}", NULL);
+    TEST_ASSERT_NOT_NULL(h);
+    uint8_t data[] = {0x01, 0x03};
+    int32_t n = uart_write(h, data, sizeof(data));
+    TEST_ASSERT_EQUAL_INT32(2, n);
+    TEST_ASSERT_TRUE(mock_HAL_UART_Transmit_called());
+    TEST_ASSERT_EQUAL_UINT32(0, g_de_state);   /* released after TX */
+    uart_close(h);
 }
 
-void test_rs485_set_rx_pulls_de_low(void)
+void test_rs485_ioctl_set_dir_controls_de(void)
 {
-    rs485_set_rx();
-    TEST_ASSERT_EQUAL(GPIO_PIN_RESET, mock_HAL_GPIO_WritePin_get_last_state());
-}
-
-void test_rs485_send_flips_de_and_uses_uart_write(void)
-{
-    uint8_t data[] = {0x01, 0x02};
-    rs485_send(data, 2);
-    TEST_ASSERT_EQUAL_UINT32(1, g_uart_write_calls);
-    /* DE returns to receive (low) after transmission */
-    TEST_ASSERT_EQUAL(GPIO_PIN_RESET, mock_HAL_GPIO_WritePin_get_last_state());
-}
-
-void test_rs485_recv_uses_uart_read(void)
-{
-    uint8_t data[8];
-    rs485_recv(data, 8, 100);
-    TEST_ASSERT_EQUAL_UINT32(1, g_uart_read_calls);
+    uart_handle_t h = uart_open("{{ rs485_uart }}", NULL);
+    TEST_ASSERT_NOT_NULL(h);
+    int dir = 1;   /* TX */
+    TEST_ASSERT_EQUAL_INT32(0, uart_ioctl(h, UART_IOCTL_SET_DIR, &dir));
+    TEST_ASSERT_EQUAL_UINT32(1, g_de_state);
+    dir = 0;       /* RX */
+    TEST_ASSERT_EQUAL_INT32(0, uart_ioctl(h, UART_IOCTL_SET_DIR, &dir));
+    TEST_ASSERT_EQUAL_UINT32(0, g_de_state);
+    uart_close(h);
 }
 
 int main(void)
 {
     UNITY_BEGIN();
-    RUN_TEST(test_rs485_init_sets_rx_mode);
-    RUN_TEST(test_rs485_set_tx_pulls_de_high);
-    RUN_TEST(test_rs485_set_rx_pulls_de_low);
-    RUN_TEST(test_rs485_send_flips_de_and_uses_uart_write);
-    RUN_TEST(test_rs485_recv_uses_uart_read);
+    RUN_TEST(test_rs485_open_binds_de_and_starts_in_rx);
+    RUN_TEST(test_rs485_write_uses_uart_and_releases_de);
+    RUN_TEST(test_rs485_ioctl_set_dir_controls_de);
     return UNITY_END();
 }

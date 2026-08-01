@@ -25,6 +25,7 @@ typedef struct {
     uint8_t  stop_bits;       /* 1 or 2 */
     uint8_t  parity;          /* 0=none, 1=odd, 2=even */
     uint8_t  flow_ctrl;       /* 0=none, 1=rts, 2=cts, 3=rts+cts */
+    const char *de_pin_name;  /* RS485 DE GPIO label (NULL = full duplex) */
 } uart_cfg_t;
 
 /* ---- IOCTL commands ---- */
@@ -33,6 +34,8 @@ typedef struct {
 #define UART_IOCTL_FLUSH_RX    0x03
 #define UART_IOCTL_FLUSH_TX    0x04
 #define UART_IOCTL_SET_TIMEOUT 0x05
+#define UART_IOCTL_SET_DIR     0x10   /* RS485: arg -> int (0=RX, 1=TX) */
+#define UART_IOCTL_GET_DIR     0x11   /* RS485: arg -> int* (0=RX, 1=TX) */
 
 /* ---- API ---- */
 

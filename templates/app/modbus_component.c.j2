@@ -2,14 +2,12 @@
     modbus_component.c.j2 - Modbus RTU slave component
 
     Wraps the Modbus protocol driver (drv_modbus) as a framework component.
-    Transport is decoupled from RS485/DE:
-      transport = "uart"   -> direct USB-TTL / plain UART (uart_api)
-      transport = "rs485"  -> half-duplex RS485 via drv_rs485 + DE pin
+    The UART transport always goes through uart_api.  RS485 half-duplex is
+    a UART feature: when the UART peripheral declares extra.rs485_de_pin,
+    uart_api asserts/releases the DE pin around writes automatically.
 
-    The transport is selected in components.yaml:
-        config:
-          transport: uart        # or rs485
-          uart: usart1           # UART peripheral name
+    Component config:
+        uart: usart1           # UART peripheral name
 
     Holding registers are backed by an internal table.  When pubsub.yaml
     defines a "temperature" topic, the component subscribes and mirrors the
@@ -23,8 +21,6 @@
 {% set slave_id = mb_extra.get('slave_id', 1) if mb else 1 %}
 {% set rs = rs485_list[0] if rs485_list else none %}
 {% set rs_extra = rs.get('extra', {}) if rs else {} %}
-{% set rs_name = rs.name if rs else 'rs485' %}
-{% set transport = comp_config.get('transport', 'uart') %}
 {% set mb_uart = comp_config.get('uart', '') if comp_config.get('uart') else (rs_extra.get('uart', '') if rs else '') %}
 {% set reg_count = (regs | map(attribute='addr') | max | int) + 1 if regs else 0 %}
 {% set temp_reg = regs | selectattr('name', 'in', ['temperature', 'temperature_x10', 'temp']) | first %}
@@ -40,9 +36,6 @@
 #ifndef TEST
 #include "stm32g0xx_hal.h"
 #endif
-{% if transport == 'rs485' %}
-#include "drv_{{ rs_name }}.h"
-{% endif %}
 
 /* ---- Component-private context ---- */
 struct {{ comp_name }}_ctx {
@@ -56,21 +49,7 @@ static struct {{ comp_name }}_ctx g_{{ comp_name }}_ctx;
 static uint16_t g_modbus_regs[{{ reg_count }}];
 #endif
 
-{% if transport == 'rs485' %}
-/* ---- RS485 transport (drv_rs485 handles DE direction) ---- */
-static uint8_t modbus_comp_tx(uint8_t *data, uint16_t len)
-{
-    {{ rs_name }}_send(data, len);
-    return 1;
-}
-
-static uint8_t modbus_comp_rx(uint8_t *buf, uint16_t len, uint32_t timeout)
-{
-    /* Return 1 only when the transport actually delivered bytes. */
-    return ({{ rs_name }}_recv(buf, len, timeout) > 0) ? 1 : 0;
-}
-{% else %}
-/* ---- Plain UART transport (USB-TTL direct, no DE control) ----
+/* ---- UART transport (USB-TTL direct, or RS485 via uart_api DE) ----
  * RX uses the USART1 RXNE interrupt to fill a ring buffer so bytes are
  * never lost to task preemption (STM32G0 USART has no hardware FIFO). */
 static uart_handle_t g_uart_handle;
@@ -123,7 +102,6 @@ static uint8_t modbus_comp_rx(uint8_t *buf, uint16_t len, uint32_t timeout)
     }
     return (got > 0) ? 1 : 0;
 }
-{% endif %}
 
 /* ---- Register callbacks ---- */
 static void modbus_comp_read_reg(uint16_t addr, uint16_t *val)
@@ -167,15 +145,6 @@ int {{ comp_name }}_init(component_t *c, void *cfg)
 {
     (void)cfg;
 #ifndef TEST
-{% if transport == 'rs485' %}
-    static gpio_handle_t  s_de;
-    g_uart_handle = uart_open("{{ mb_uart }}", NULL);
-    s_de = gpio_open("{{ de_label | lower }}", NULL);
-    if (g_uart_handle == NULL || s_de == NULL) {
-        return -1;
-    }
-    {{ rs_name }}_init(g_uart_handle, s_de);
-{% else %}
     g_uart_handle = uart_open("{{ mb_uart }}", NULL);
     if (g_uart_handle == NULL) {
         return -1;
@@ -183,7 +152,6 @@ int {{ comp_name }}_init(component_t *c, void *cfg)
     /* Enable USART1 RXNE interrupt for ring-buffer reception. */
     USART1->CR1 |= USART_CR1_RXNEIE_RXFNEIE;
     NVIC_EnableIRQ(USART1_IRQn);
-{% endif %}
 
 #if {{ reg_count }} > 0
     /* Initialise register table from hardware.yaml registers. */
@@ -193,7 +161,7 @@ int {{ comp_name }}_init(component_t *c, void *cfg)
 {% endfor %}
 #endif
 
-    modbus_init({{ slave_id }},
+    modbus_init({{ slave_id }}, {{ reg_count }},
                 (void *)modbus_comp_tx, (void *)modbus_comp_rx,
                 (void *)modbus_comp_read_reg, (void *)modbus_comp_write_reg);
 

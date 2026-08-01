@@ -43,7 +43,7 @@ Auto-generated — do not edit manually.
 #endif
 {% endif %}
 
-{% for drv in drivers %}
+{% for drv in drivers if drv.header_template %}
 #include "drv_{{ drv.name }}.h"
 {% endfor %}
 

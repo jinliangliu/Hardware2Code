@@ -277,21 +277,28 @@ static bool uart_receive_called = false;
 static uint8_t uart_tx_buf[MOCK_UART_TX_BUF_SIZE];
 static uint16_t uart_tx_len = 0;
 
-void HAL_UART_Init(UART_HandleTypeDef *huart) {
+HAL_StatusTypeDef HAL_UART_Init(UART_HandleTypeDef *huart) {
     (void)huart;
     uart_init_called = true;
+    return HAL_OK;
 }
-void HAL_UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout) {
+HAL_StatusTypeDef HAL_UART_DeInit(UART_HandleTypeDef *huart) {
+    (void)huart;
+    return HAL_OK;
+}
+HAL_StatusTypeDef HAL_UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout) {
     (void)huart; (void)Timeout;
     uart_transmit_called = true;
     if (uart_tx_len + Size <= sizeof(uart_tx_buf)) {
         memcpy(&uart_tx_buf[uart_tx_len], pData, Size);
         uart_tx_len += Size;
     }
+    return HAL_OK;
 }
-void HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout) {
+HAL_StatusTypeDef HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size, uint32_t Timeout) {
     (void)huart; (void)pData; (void)Size; (void)Timeout;
     uart_receive_called = true;
+    return HAL_OK;
 }
 void HAL_UART_Receive_IT(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size) {
     (void)huart; (void)pData; (void)Size;

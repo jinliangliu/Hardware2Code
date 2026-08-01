@@ -1,8 +1,8 @@
 model: "RS485"
 type: "RS485"
 interface: "uart"
-driver_template: "drivers/drv_rs485.c.j2"
-header_template: "drivers/drv_rs485.h.j2"
+driver_template: ""
+header_template: ""
 capabilities:
   - half_duplex
   - direction_control
@@ -12,8 +12,14 @@ default_params:
 extra_schema:
   de_pin:
     type: pin
-    required: true
+    required: false
+    default: ""
   uart:
     type: str
     required: false
     default: ""
+notes:
+  transport_note: >
+    RS485 is a UART feature, not a standalone driver.  Configure
+    UART_Serial extra.rs485_de_pin to get DE direction control in
+    uart_api (TX asserts DE, RX releases it).
