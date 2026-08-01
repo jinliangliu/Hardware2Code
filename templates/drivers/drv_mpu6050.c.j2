@@ -1,0 +1,137 @@
+{#
+    drv_mpu6050.c.j2 - MPU6050 IMU driver source template
+
+    All register access goes through i2c_api (POSIX-style bus handle),
+    so the driver is independent of the physical I2C peripheral and can
+    coexist with other devices on the same bus.
+
+    Requires context: peripheral (name, address, extra, bus), model.
+#}
+{% set mpu = peripheral.get('extra', {}) %}
+{% set accel_fs = mpu.get('accel_fs', 2) %}
+{% set gyro_fs = mpu.get('gyro_fs', 250) %}
+{% set sample_rate_div = mpu.get('sample_rate_div', 0) %}
+{% set accel_cfg = {'2': 0x00, '4': 0x08, '8': 0x10, '16': 0x18}[accel_fs | string] %}
+{% set gyro_cfg  = {'250': 0x00, '500': 0x08, '1000': 0x10, '2000': 0x18}[gyro_fs | string] %}
+{% set accel_scale = {'2': 16384.0, '4': 8192.0, '8': 4096.0, '16': 2048.0}[accel_fs | string] %}
+{% set gyro_scale  = {'250': 131.0, '500': 65.5, '1000': 32.8, '2000': 16.4}[gyro_fs | string] %}
+{% set whoami = mpu.get('whoami', model.get('whoami', 0x68)) %}
+
+#include "drv_{{ peripheral.name }}.h"
+#include <stddef.h>
+
+/*
+ * Wake-up + config sequence:
+ *   1. verify WHO_AM_I (catches wrong address / missing pull-ups)
+ *   2. clear SLEEP in PWR_MGMT_1
+ *   3. set DLPF (CONFIG), sample-rate divider, accel/gyro full scale
+ */
+int {{ peripheral.name }}_init(i2c_handle_t bus, uint8_t dev_addr)
+{
+    uint8_t who = 0x00;
+    uint8_t val;
+
+    if (bus == NULL) {
+        return -1;
+    }
+
+    if ({{ peripheral.name }}_who_am_i(bus, dev_addr, &who) != 0) {
+        return -2;                       /* bus/address error */
+    }
+    if (who != {{ '0x%02X' | format(whoami) }}) {
+        return -3;                       /* wrong device on this address */
+    }
+
+    /* Wake up (clear SLEEP bit). */
+    val = 0x00;
+    if (i2c_write_reg(bus, dev_addr, MPU6050_PWR_MGMT_1, &val, 1, 0) != 0) {
+        return -4;
+    }
+
+    /* DLPF: 44 Hz low-pass (0x03) — good default for attitude fusion. */
+    val = 0x03;
+    if (i2c_write_reg(bus, dev_addr, MPU6050_CONFIG, &val, 1, 0) != 0) {
+        return -4;
+    }
+
+    /* Sample-rate divider: Fs = 1 kHz / (1 + SMPLRT_DIV). */
+    val = {{ sample_rate_div }};
+    if (i2c_write_reg(bus, dev_addr, MPU6050_SMPLRT_DIV, &val, 1, 0) != 0) {
+        return -4;
+    }
+
+    return {{ peripheral.name }}_set_full_scale(bus, dev_addr,
+                                               {{ accel_fs }}, {{ gyro_fs }});
+}
+
+int {{ peripheral.name }}_who_am_i(i2c_handle_t bus, uint8_t dev_addr, uint8_t *out)
+{
+    if (bus == NULL || out == NULL) {
+        return -1;
+    }
+    return (i2c_read_reg(bus, dev_addr, MPU6050_WHO_AM_I, out, 1, 0) == 0) ? 0 : -2;
+}
+
+int {{ peripheral.name }}_set_full_scale(i2c_handle_t bus, uint8_t dev_addr,
+                                        uint8_t accel_fs_g, uint16_t gyro_fs_dps)
+{
+    uint8_t val;
+
+    if (bus == NULL) {
+        return -1;
+    }
+
+    switch (accel_fs_g) {
+        case 2:  val = 0x00; break;
+        case 4:  val = 0x08; break;
+        case 8:  val = 0x10; break;
+        case 16: val = 0x18; break;
+        default: val = 0x00; break;
+    }
+    if (i2c_write_reg(bus, dev_addr, MPU6050_ACCEL_CONFIG, &val, 1, 0) != 0) {
+        return -4;
+    }
+
+    switch (gyro_fs_dps) {
+        case 250:  val = 0x00; break;
+        case 500:  val = 0x08; break;
+        case 1000: val = 0x10; break;
+        case 2000: val = 0x18; break;
+        default:   val = 0x00; break;
+    }
+    if (i2c_write_reg(bus, dev_addr, MPU6050_GYRO_CONFIG, &val, 1, 0) != 0) {
+        return -4;
+    }
+    return 0;
+}
+
+int {{ peripheral.name }}_read(i2c_handle_t bus, uint8_t dev_addr,
+                              {{ peripheral.name }}_data_t *out)
+{
+    uint8_t buf[14];
+
+    if (bus == NULL || out == NULL) {
+        return -1;
+    }
+    if (i2c_read_reg(bus, dev_addr, MPU6050_ACCEL_XOUT_H, buf, sizeof(buf), 0) != 0) {
+        return -2;
+    }
+
+    out->raw_ax = (int16_t)((uint16_t)((buf[0] << 8) | buf[1]));
+    out->raw_ay = (int16_t)((uint16_t)((buf[2] << 8) | buf[3]));
+    out->raw_az = (int16_t)((uint16_t)((buf[4] << 8) | buf[5]));
+    out->raw_temp = (int16_t)((uint16_t)((buf[6] << 8) | buf[7]));
+    out->raw_gx = (int16_t)((uint16_t)((buf[8] << 8) | buf[9]));
+    out->raw_gy = (int16_t)((uint16_t)((buf[10] << 8) | buf[11]));
+    out->raw_gz = (int16_t)((uint16_t)((buf[12] << 8) | buf[13]));
+
+    out->accel_g[0] = (float)out->raw_ax / {{ '%.1f' | format(accel_scale) }}f;
+    out->accel_g[1] = (float)out->raw_ay / {{ '%.1f' | format(accel_scale) }}f;
+    out->accel_g[2] = (float)out->raw_az / {{ '%.1f' | format(accel_scale) }}f;
+    out->gyro_dps[0] = (float)out->raw_gx / {{ '%.1f' | format(gyro_scale) }}f;
+    out->gyro_dps[1] = (float)out->raw_gy / {{ '%.1f' | format(gyro_scale) }}f;
+    out->gyro_dps[2] = (float)out->raw_gz / {{ '%.1f' | format(gyro_scale) }}f;
+    out->temp_c = (float)out->raw_temp / 340.0f + 36.53f;
+
+    return 0;
+}

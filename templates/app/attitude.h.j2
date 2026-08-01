@@ -1,0 +1,53 @@
+/**
+ * @file  attitude.h
+ * @brief Attitude estimation (roll/pitch/yaw) from IMU data (generated)
+ *
+ * Complementary filter: gyroscope integration is high-passed for dynamic
+ * response, accelerometer-derived roll/pitch is low-passed to remove
+ * drift.  Yaw has no absolute reference without a magnetometer, so it
+ * is pure gyro integration and drifts over time (documented limitation).
+ *
+ * Pure C + libm — runs on host for unit tests and on target (soft-float
+ * on Cortex-M0+; 100 Hz update is well within budget).
+ */
+
+#ifndef __ATTITUDE_H
+#define __ATTITUDE_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct {
+    float    roll_deg;        /* around X axis */
+    float    pitch_deg;       /* around Y axis */
+    float    yaw_deg;         /* around Z axis (drifts) */
+    float    alpha;           /* gyro weight, 0.95..0.99 typical */
+    uint32_t last_tick_ms;
+    uint8_t  initialized;
+} attitude_t;
+
+/* Initializes the estimator (alpha = 0.98 unless overwritten). */
+void attitude_init(attitude_t *a, float roll_deg, float pitch_deg, float yaw_deg);
+
+/* Feeds one IMU sample.  now_ms is the monotonic timestamp; pass the
+ * same time base as the caller's step period.  Accel/gyro units: g and
+ * deg/s.  dt is derived from now_ms deltas (clamped to [1ms, 1s]). */
+void attitude_update(attitude_t *a, uint32_t now_ms,
+                     float gx_dps, float gy_dps, float gz_dps,
+                     float ax_g, float ay_g, float az_g);
+
+/* Copies the current estimate. */
+void attitude_get(const attitude_t *a, float *roll_deg, float *pitch_deg, float *yaw_deg);
+
+void attitude_reset(attitude_t *a);
+
+void attitude_set_alpha(attitude_t *a, float alpha);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __ATTITUDE_H */

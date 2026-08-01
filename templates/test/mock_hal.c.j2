@@ -531,19 +531,145 @@ void HAL_Delay(uint32_t ms) { (void)ms; }
 void HAL_InitTick(uint32_t TickPriority) { (void)TickPriority; }
 void HAL_TIM_Base_Start_IT(TIM_HandleTypeDef *htim) { (void)htim; }
 
-/* ========== I2C Mem Read/Write stubs (for EEPROM) ========== */
+/* ========== I2C mock: multi-device register model ==========
+ * Emulates several I2C slaves (identified by 7-bit address) on one bus.
+ * Test code uses mock_i2c_add_device() to attach a device and
+ * mock_i2c_set/get_reg() to inspect or drive its register image.
+ * ============================================================== */
+#define MOCK_I2C_MAX_DEVICES 8
+#define MOCK_I2C_MEM_SIZE    128
+
+typedef struct {
+    uint8_t addr;       /* 7-bit slave address */
+    uint8_t present;
+    uint8_t mem[MOCK_I2C_MEM_SIZE];
+} mock_i2c_dev_t;
+
+static mock_i2c_dev_t g_i2c_devs[MOCK_I2C_MAX_DEVICES];
+static uint32_t g_i2c_read_calls  = 0;
+static uint32_t g_i2c_write_calls = 0;
+static uint8_t  g_i2c_last_dev    = 0xFF;
+
+void mock_i2c_reset(void)
+{
+    memset(g_i2c_devs, 0, sizeof(g_i2c_devs));
+    g_i2c_read_calls  = 0;
+    g_i2c_write_calls = 0;
+    g_i2c_last_dev    = 0xFF;
+}
+
+static mock_i2c_dev_t *mock_i2c_find(uint8_t addr)
+{
+    for (int i = 0; i < MOCK_I2C_MAX_DEVICES; i++) {
+        if (g_i2c_devs[i].present && g_i2c_devs[i].addr == addr) {
+            return &g_i2c_devs[i];
+        }
+    }
+    return NULL;
+}
+
+void mock_i2c_add_device(uint8_t addr, const uint8_t *init, uint32_t len)
+{
+    int slot = -1;
+    for (int i = 0; i < MOCK_I2C_MAX_DEVICES; i++) {
+        if (!g_i2c_devs[i].present) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        return;
+    }
+    g_i2c_devs[slot].addr    = addr;
+    g_i2c_devs[slot].present = 1;
+    memset(g_i2c_devs[slot].mem, 0, sizeof(g_i2c_devs[slot].mem));
+    if (init != NULL) {
+        if (len > MOCK_I2C_MEM_SIZE) {
+            len = MOCK_I2C_MEM_SIZE;
+        }
+        memcpy(g_i2c_devs[slot].mem, init, len);
+    }
+}
+
+void mock_i2c_set_reg(uint8_t addr, uint8_t reg, uint8_t val)
+{
+    mock_i2c_dev_t *d = mock_i2c_find(addr);
+    if (d != NULL && reg < MOCK_I2C_MEM_SIZE) {
+        d->mem[reg] = val;
+    }
+}
+
+uint8_t mock_i2c_get_reg(uint8_t addr, uint8_t reg)
+{
+    mock_i2c_dev_t *d = mock_i2c_find(addr);
+    if (d == NULL || reg >= MOCK_I2C_MEM_SIZE) {
+        return 0;
+    }
+    return d->mem[reg];
+}
+
+uint32_t mock_i2c_read_count(void)  { return g_i2c_read_calls; }
+uint32_t mock_i2c_write_count(void) { return g_i2c_write_calls; }
+uint8_t  mock_i2c_last_dev_addr(void) { return g_i2c_last_dev; }
+
 HAL_StatusTypeDef HAL_I2C_Mem_Read(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
                                    uint16_t MemAddress, uint16_t MemAddSize,
                                    uint8_t *pData, uint16_t Size, uint32_t Timeout) {
-    (void)hi2c; (void)DevAddress; (void)MemAddress; (void)MemAddSize; (void)Timeout;
-    if (pData) memset(pData, 0xFF, Size);
+    mock_i2c_dev_t *d;
+    uint8_t addr = (uint8_t)(DevAddress >> 1);
+    (void)hi2c; (void)MemAddSize; (void)Timeout;
+    g_i2c_last_dev = addr;
+    g_i2c_read_calls++;
+    d = mock_i2c_find(addr);
+    if (d == NULL || (uint32_t)MemAddress + Size > MOCK_I2C_MEM_SIZE) {
+        return HAL_ERROR;
+    }
+    if (pData != NULL) {
+        memcpy(pData, &d->mem[MemAddress], Size);
+    }
     return HAL_OK;
 }
 
 HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
                                     uint16_t MemAddress, uint16_t MemAddSize,
                                     uint8_t *pData, uint16_t Size, uint32_t Timeout) {
-    (void)hi2c; (void)DevAddress; (void)MemAddress; (void)MemAddSize;
-    (void)pData; (void)Size; (void)Timeout;
+    mock_i2c_dev_t *d;
+    uint8_t addr = (uint8_t)(DevAddress >> 1);
+    (void)hi2c; (void)MemAddSize; (void)Timeout;
+    g_i2c_last_dev = addr;
+    g_i2c_write_calls++;
+    d = mock_i2c_find(addr);
+    if (d == NULL || pData == NULL ||
+        (uint32_t)MemAddress + Size > MOCK_I2C_MEM_SIZE) {
+        return HAL_ERROR;
+    }
+    memcpy(&d->mem[MemAddress], pData, Size);
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_I2C_IsDeviceReady(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
+                                        uint32_t Trials, uint32_t Timeout) {
+    uint8_t addr = (uint8_t)(DevAddress >> 1);
+    (void)hi2c; (void)Trials; (void)Timeout;
+    g_i2c_last_dev = addr;
+    return (mock_i2c_find(addr) != NULL) ? HAL_OK : HAL_ERROR;
+}
+
+HAL_StatusTypeDef HAL_I2C_Master_Transmit(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
+                                          uint8_t *pData, uint16_t Size, uint32_t Timeout) {
+    (void)hi2c; (void)pData; (void)Size; (void)Timeout;
+    g_i2c_last_dev = (uint8_t)(DevAddress >> 1);
+    g_i2c_write_calls++;
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_I2C_Master_Receive(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
+                                         uint8_t *pData, uint16_t Size, uint32_t Timeout) {
+    (void)hi2c; (void)Timeout;
+    g_i2c_last_dev = (uint8_t)(DevAddress >> 1);
+    g_i2c_read_calls++;
+    if (pData != NULL) {
+        memset(pData, 0xFF, Size);
+    }
     return HAL_OK;
 }

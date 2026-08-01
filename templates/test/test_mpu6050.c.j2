@@ -1,15 +1,125 @@
+/* test_mpu6050.c.j2 - MPU6050 driver unit tests on the I2C mock */
 #include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
 
-void setUp(void) {}
-void tearDown(void) {}
+{% set mpu = peripherals | selectattr('type', 'eq', 'I2C_Sensor_MPU6050') | first %}
+{% set addr = mpu.get('address', 0x68) %}
 
-void test_mpu6050_init(void) {
-    // 未来测试传感器初始化
-    TEST_PASS();
+/* i2c_api references hi2c1 via extern (declared in main.c) */
+I2C_HandleTypeDef hi2c1;
+#include "../src/drivers/i2c_api.c"
+#include "../src/drivers/drv_{{ mpu.name }}.c"
+
+/* MPU6050 register image: WHO_AM_I at 0x75, burst data at 0x3B..0x48 */
+static uint8_t g_img[0x76];
+
+static void build_default_image(void)
+{
+    memset(g_img, 0, sizeof(g_img));
+    g_img[0x75] = {{ '0x%02X' | format(addr) }};        /* WHO_AM_I */
+    /* ax = +1g  (16384), az = +1g (16384) */
+    g_img[0x3B] = 0x40; g_img[0x3C] = 0x00;
+    g_img[0x3D] = 0x00; g_img[0x3E] = 0x00;
+    g_img[0x3F] = 0x40; g_img[0x40] = 0x00;
+    /* temp raw = 3400 -> 46.53 C */
+    g_img[0x41] = 0x0D; g_img[0x42] = 0x48;
+    /* gx = 13100 -> 100 deg/s */
+    g_img[0x43] = 0x33; g_img[0x44] = 0x2C;
+    g_img[0x45] = 0x00; g_img[0x46] = 0x00;
+    g_img[0x47] = 0x00; g_img[0x48] = 0x00;
 }
 
-int main(void) {
+void setUp(void)
+{
+    mock_i2c_reset();
+    build_default_image();
+}
+
+void tearDown(void) {}
+
+void test_init_success_with_valid_whoami(void)
+{
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
+    mock_i2c_add_device({{ addr }}, g_img, sizeof(g_img));
+
+    TEST_ASSERT_EQUAL_INT(0, {{ mpu.name }}_init(bus, {{ addr }}));
+    /* config registers written by init */
+    TEST_ASSERT_EQUAL_UINT8(0x00, mock_i2c_get_reg({{ addr }}, 0x6B)); /* PWR_MGMT_1 */
+    TEST_ASSERT_EQUAL_UINT8(0x03, mock_i2c_get_reg({{ addr }}, 0x1A)); /* CONFIG */
+    TEST_ASSERT_EQUAL_UINT8(0x00, mock_i2c_get_reg({{ addr }}, 0x1C)); /* ACCEL 2g */
+    TEST_ASSERT_EQUAL_UINT8(0x00, mock_i2c_get_reg({{ addr }}, 0x1B)); /* GYRO 250 */
+}
+
+void test_init_fails_on_wrong_whoami(void)
+{
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
+    g_img[0x75] = 0x00;
+    mock_i2c_add_device({{ addr }}, g_img, sizeof(g_img));
+    TEST_ASSERT_TRUE({{ mpu.name }}_init(bus, {{ addr }}) < 0);
+}
+
+void test_init_fails_when_device_absent(void)
+{
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
+    TEST_ASSERT_TRUE({{ mpu.name }}_init(bus, {{ addr }}) < 0);
+}
+
+void test_init_rejects_null_bus(void)
+{
+    TEST_ASSERT_TRUE({{ mpu.name }}_init(NULL, {{ addr }}) < 0);
+}
+
+void test_who_am_i_reads_sensor_id(void)
+{
+    uint8_t who = 0;
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
+    mock_i2c_add_device({{ addr }}, g_img, sizeof(g_img));
+    TEST_ASSERT_EQUAL_INT(0, {{ mpu.name }}_who_am_i(bus, {{ addr }}, &who));
+    TEST_ASSERT_EQUAL_UINT8({{ '0x%02X' | format(addr) }}, who);
+}
+
+void test_read_scales_raw_to_physical(void)
+{
+    {{ mpu.name }}_data_t d;
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
+    mock_i2c_add_device({{ addr }}, g_img, sizeof(g_img));
+
+    TEST_ASSERT_EQUAL_INT(0, {{ mpu.name }}_read(bus, {{ addr }}, &d));
+    TEST_ASSERT_EQUAL_INT16(16384, d.raw_ax);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 1.0f, d.accel_g[0]);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 1.0f, d.accel_g[2]);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 100.0f, d.gyro_dps[0]);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 46.53f, d.temp_c);
+}
+
+void test_read_fails_when_device_absent(void)
+{
+    {{ mpu.name }}_data_t d;
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
+    TEST_ASSERT_TRUE({{ mpu.name }}_read(bus, {{ addr }}, &d) < 0);
+}
+
+void test_set_full_scale_updates_registers(void)
+{
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
+    mock_i2c_add_device({{ addr }}, g_img, sizeof(g_img));
+
+    TEST_ASSERT_EQUAL_INT(0, {{ mpu.name }}_set_full_scale(bus, {{ addr }}, 8, 1000));
+    TEST_ASSERT_EQUAL_UINT8(0x10, mock_i2c_get_reg({{ addr }}, 0x1C));
+    TEST_ASSERT_EQUAL_UINT8(0x10, mock_i2c_get_reg({{ addr }}, 0x1B));
+}
+
+int main(void)
+{
     UNITY_BEGIN();
-    RUN_TEST(test_mpu6050_init);
+    RUN_TEST(test_init_success_with_valid_whoami);
+    RUN_TEST(test_init_fails_on_wrong_whoami);
+    RUN_TEST(test_init_fails_when_device_absent);
+    RUN_TEST(test_init_rejects_null_bus);
+    RUN_TEST(test_who_am_i_reads_sensor_id);
+    RUN_TEST(test_read_scales_raw_to_physical);
+    RUN_TEST(test_read_fails_when_device_absent);
+    RUN_TEST(test_set_full_scale_updates_registers);
     return UNITY_END();
 }

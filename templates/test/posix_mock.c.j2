@@ -6,6 +6,7 @@
  */
 
 #include "posix_mock.h"
+#include "i2c_api.h"
 #include <string.h>
 
 /* ---- UART mock ---- */
@@ -241,4 +242,238 @@ void adc_mock_set_reading(const char *name, uint32_t millivolts)
 void adc_mock_reset_all(void)
 {
     memset(g_adc_mocks, 0, sizeof(g_adc_mocks));
+}
+
+/* ---- I2C mock ----
+ * In-memory replacement for i2c_api.  One bus handle per physical bus;
+ * several slave devices (by 7-bit address) can live on the same bus.
+ * A default MPU6050 (WHO_AM_I = 0x68) is preloaded on "i2c1" so the
+ * mpu6050 component's init() succeeds out of the box.
+ * =================================================================== */
+
+#define MOCK_I2C_MAX_BUSES   2
+#define MOCK_I2C_MAX_DEVICES 8
+#define MOCK_I2C_MEM_SIZE    128
+
+struct i2c_dev {
+    char   name[8];
+    uint8_t is_open;
+    struct {
+        uint8_t addr;
+        uint8_t present;
+        uint8_t mem[MOCK_I2C_MEM_SIZE];
+    } devs[MOCK_I2C_MAX_DEVICES];
+};
+
+static struct i2c_dev g_i2c_buses[MOCK_I2C_MAX_BUSES];
+static uint32_t g_i2c_read_calls  = 0;
+static uint32_t g_i2c_write_calls = 0;
+
+static struct i2c_dev *i2c_mock_find_bus(const char *name)
+{
+    for (int i = 0; i < MOCK_I2C_MAX_BUSES; i++) {
+        if (g_i2c_buses[i].name[0] != '\0' &&
+            strcmp(g_i2c_buses[i].name, name) == 0) {
+            return &g_i2c_buses[i];
+        }
+    }
+    return NULL;
+}
+
+static struct i2c_dev *i2c_mock_alloc_bus(const char *name)
+{
+    struct i2c_dev *b = i2c_mock_find_bus(name);
+    if (b != NULL) {
+        return b;
+    }
+    for (int i = 0; i < MOCK_I2C_MAX_BUSES; i++) {
+        if (g_i2c_buses[i].name[0] == '\0') {
+            strncpy(g_i2c_buses[i].name, name, sizeof(g_i2c_buses[i].name) - 1);
+            g_i2c_buses[i].name[sizeof(g_i2c_buses[i].name) - 1] = '\0';
+            return &g_i2c_buses[i];
+        }
+    }
+    return NULL;
+}
+
+static uint8_t *i2c_mock_find_mem(struct i2c_dev *b, uint8_t addr)
+{
+    for (int i = 0; i < MOCK_I2C_MAX_DEVICES; i++) {
+        if (b->devs[i].present && b->devs[i].addr == addr) {
+            return b->devs[i].mem;
+        }
+    }
+    return NULL;
+}
+
+i2c_handle_t i2c_open(const char *bus_name, const i2c_cfg_t *cfg)
+{
+    struct i2c_dev *b;
+    (void)cfg;
+    if (bus_name == NULL) {
+        return NULL;
+    }
+    b = i2c_mock_alloc_bus(bus_name);
+    if (b == NULL) {
+        return NULL;
+    }
+    b->is_open = 1;
+    return (i2c_handle_t)b;
+}
+
+const char *i2c_name(i2c_handle_t h)
+{
+    return (h == NULL) ? NULL : h->name;
+}
+
+int32_t i2c_mem_read(i2c_handle_t h, uint8_t dev_addr, uint16_t mem_addr,
+                     uint8_t mem_addr_size,
+                     uint8_t *buf, uint32_t len, uint32_t timeout_ms)
+{
+    uint8_t *mem;
+    (void)mem_addr_size; (void)timeout_ms;
+    if (h == NULL || buf == NULL || len == 0) {
+        return -5;
+    }
+    g_i2c_read_calls++;
+    mem = i2c_mock_find_mem(h, dev_addr);
+    if (mem == NULL || (uint32_t)mem_addr + len > MOCK_I2C_MEM_SIZE) {
+        return -2;
+    }
+    memcpy(buf, &mem[mem_addr], len);
+    return 0;
+}
+
+int32_t i2c_mem_write(i2c_handle_t h, uint8_t dev_addr, uint16_t mem_addr,
+                      uint8_t mem_addr_size,
+                      const uint8_t *buf, uint32_t len, uint32_t timeout_ms)
+{
+    uint8_t *mem;
+    (void)mem_addr_size; (void)timeout_ms;
+    if (h == NULL || buf == NULL || len == 0) {
+        return -5;
+    }
+    g_i2c_write_calls++;
+    mem = i2c_mock_find_mem(h, dev_addr);
+    if (mem == NULL || (uint32_t)mem_addr + len > MOCK_I2C_MEM_SIZE) {
+        return -2;
+    }
+    memcpy(&mem[mem_addr], buf, len);
+    return 0;
+}
+
+int32_t i2c_read_reg(i2c_handle_t h, uint8_t dev_addr, uint8_t reg,
+                     uint8_t *buf, uint32_t len, uint32_t timeout_ms)
+{
+    return i2c_mem_read(h, dev_addr, reg, I2C_MEMADDR_SIZE_8BIT,
+                        buf, len, timeout_ms);
+}
+
+int32_t i2c_write_reg(i2c_handle_t h, uint8_t dev_addr, uint8_t reg,
+                      const uint8_t *buf, uint32_t len, uint32_t timeout_ms)
+{
+    return i2c_mem_write(h, dev_addr, reg, I2C_MEMADDR_SIZE_8BIT,
+                         buf, len, timeout_ms);
+}
+
+int32_t i2c_transmit(i2c_handle_t h, uint8_t dev_addr,
+                     const uint8_t *buf, uint32_t len, uint32_t timeout_ms)
+{
+    (void)dev_addr; (void)timeout_ms;
+    if (h == NULL || buf == NULL || len == 0) {
+        return -5;
+    }
+    g_i2c_write_calls++;
+    return 0;
+}
+
+int32_t i2c_receive(i2c_handle_t h, uint8_t dev_addr,
+                    uint8_t *buf, uint32_t len, uint32_t timeout_ms)
+{
+    (void)dev_addr; (void)timeout_ms;
+    if (h == NULL || buf == NULL || len == 0) {
+        return -5;
+    }
+    g_i2c_read_calls++;
+    memset(buf, 0xFF, len);
+    return 0;
+}
+
+int32_t i2c_is_device_ready(i2c_handle_t h, uint8_t dev_addr, uint32_t tries)
+{
+    (void)tries;
+    if (h == NULL) {
+        return -5;
+    }
+    return (i2c_mock_find_mem(h, dev_addr) != NULL) ? 0 : -2;
+}
+
+int32_t i2c_scan(i2c_handle_t h, uint8_t *found, uint32_t max_count, uint32_t tries)
+{
+    uint32_t count = 0;
+    if (h == NULL || found == NULL) {
+        return -5;
+    }
+    for (int d = 0; d < MOCK_I2C_MAX_DEVICES; d++) {
+        if (h->devs[d].present && count < max_count) {
+            found[count++] = h->devs[d].addr;
+        }
+    }
+    (void)tries;
+    return (int32_t)count;
+}
+
+void i2c_mock_add_device(const char *bus_name, uint8_t addr,
+                         const uint8_t *init, uint32_t len)
+{
+    struct i2c_dev *b = i2c_mock_alloc_bus(bus_name);
+    if (b == NULL) {
+        return;
+    }
+    for (int i = 0; i < MOCK_I2C_MAX_DEVICES; i++) {
+        if (!b->devs[i].present) {
+            b->devs[i].addr = addr;
+            b->devs[i].present = 1;
+            memset(b->devs[i].mem, 0, MOCK_I2C_MEM_SIZE);
+            if (init != NULL) {
+                if (len > MOCK_I2C_MEM_SIZE) {
+                    len = MOCK_I2C_MEM_SIZE;
+                }
+                memcpy(b->devs[i].mem, init, len);
+            }
+            return;
+        }
+    }
+}
+
+void i2c_mock_set_reg(const char *bus_name, uint8_t addr, uint8_t reg, uint8_t val)
+{
+    struct i2c_dev *b = i2c_mock_find_bus(bus_name);
+    uint8_t *mem = (b != NULL) ? i2c_mock_find_mem(b, addr) : NULL;
+    if (mem != NULL && reg < MOCK_I2C_MEM_SIZE) {
+        mem[reg] = val;
+    }
+}
+
+uint8_t i2c_mock_get_reg(const char *bus_name, uint8_t addr, uint8_t reg)
+{
+    struct i2c_dev *b = i2c_mock_find_bus(bus_name);
+    uint8_t *mem = (b != NULL) ? i2c_mock_find_mem(b, addr) : NULL;
+    if (mem != NULL && reg < MOCK_I2C_MEM_SIZE) {
+        return mem[reg];
+    }
+    return 0;
+}
+
+uint32_t i2c_mock_read_count(void)  { return g_i2c_read_calls; }
+uint32_t i2c_mock_write_count(void) { return g_i2c_write_calls; }
+
+void i2c_mock_reset_all(void)
+{
+    memset(g_i2c_buses, 0, sizeof(g_i2c_buses));
+    g_i2c_read_calls  = 0;
+    g_i2c_write_calls = 0;
+    /* Preload a default MPU6050 so component init() succeeds */
+    i2c_mock_add_device("i2c1", 0x68, NULL, 0);
+    i2c_mock_set_reg("i2c1", 0x68, 0x75, 0x68);
 }

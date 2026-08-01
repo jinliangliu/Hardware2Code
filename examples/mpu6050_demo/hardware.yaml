@@ -1,0 +1,113 @@
+# ============================================================
+# hw2c mpu6050_demo - I2C multi-device + MPU6050 attitude demo
+#
+#   MCU        STM32G0B1RET6 @ 16 MHz (HSI)
+#   I2C1       PB6(SCL)/PB7(SDA) — ONE physical bus, TWO devices:
+#                MPU6050 @ 0x68   IMU (accel + gyro + temp)
+#                EEPROM  @ 0x50   AT24C32-style storage
+#   Shell      USART2 (PA2/PA3) - CLI + log @ 115200
+#   LED        PC0, BUTTON PC13
+# ============================================================
+
+mcu:
+  part: STM32G0B1RET6
+  clock_source: HSI
+  clock_freq_hz: 16000000
+  core_clock_mhz: 16
+  hse_freq: 8000000
+
+pins:
+  # Indicator LED — component pattern driver
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+
+  # Button — EXTI both-edge input (press + release)
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: both
+
+  # I2C1 bus — shared by MPU6050 (0x68) and EEPROM (0x50)
+  - id: PB6
+    function: I2C1_SCL
+    label: "I2C1_SCL"
+    af: 1
+  - id: PB7
+    function: I2C1_SDA
+    label: "I2C1_SDA"
+    af: 1
+
+  # Shell UART — debug CLI + log output
+  - id: PA2
+    function: USART2_TX
+    af: 1
+  - id: PA3
+    function: USART2_RX
+    af: 1
+
+peripherals:
+  # Serial transport for the shell
+  - name: usart2
+    type: UART_Serial
+    instance: USART2
+    interface: uart
+    extra:
+      baudrate: 115200
+
+  # CLI interactive shell
+  - name: shell
+    type: Internal_CLI
+    uart: usart2
+    extra:
+      prompt: "hw2c> "
+
+  # RTC (LSE) — 1 s periodic wakeup, timer service for telemetry events
+  - name: rtc
+    type: Internal_RTC
+    bus: RTC
+    extra:
+      clock_source: LSE
+      wakeup_interval_ms: 1000
+      initial_time: "2026-07-29 22:07:00"
+      alarms:
+        - type: periodic_sec
+          period_s: 1
+          event: TICK_1S
+        - type: periodic_sec
+          period_s: 30
+          event: SECONDS_30
+
+  # MPU6050 IMU on I2C1 @ 0x68 (shares the bus with the EEPROM below)
+  - name: mpu6050
+    type: I2C_Sensor_MPU6050
+    bus: I2C1
+    address: 0x68
+    extra:
+      accel_fs: 2          # +/- 2 g
+      gyro_fs: 250         # +/- 250 dps
+      sample_rate_div: 4   # Fs = 1 kHz / (1 + 4) = 200 Hz
+
+  # Second device on the SAME physical bus — proves multi-device support
+  - name: eeprom
+    type: I2C_EEPROM
+    bus: I2C1
+    address: 0x50
+    extra:
+      page_size: 32
+      total_size: 32768
+
+  # On-chip temperature sensor (ADC)
+  - name: temp_sensor
+    type: Internal_TempSensor
+
+log:
+  enable: true
+  ring_buf_size: 1024
+
+sleep:
+  mode: RUN

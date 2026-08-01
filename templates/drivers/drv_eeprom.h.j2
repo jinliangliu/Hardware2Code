@@ -1,13 +1,8 @@
 #ifndef __DRV_{{ peripheral.name | upper }}_H
 #define __DRV_{{ peripheral.name | upper }}_H
 
-#ifdef TEST
-#include "mock_hal.h"
-#else
-#include "stm32g0xx_hal.h"
-#endif
-
 #include <stdint.h>
+#include "i2c_api.h"
 
 /* I2C EEPROM geometry - defaults from model, overridable by peripheral.extra */
 #define EEPROM_PAGE_SIZE      {{ model.page_size }}U
@@ -15,7 +10,7 @@
 #define EEPROM_I2C_ADDR       {{ model.i2c_addr }}U
 
 /* I2C EEPROM API */
-int eeprom_init(I2C_HandleTypeDef *hi2c);
+int eeprom_init(i2c_handle_t bus, uint8_t dev_addr);
 int eeprom_read_byte(uint16_t mem_addr, uint8_t *data);
 int eeprom_write_byte(uint16_t mem_addr, uint8_t data);
 int eeprom_read_page(uint16_t mem_addr, uint8_t *buf, uint16_t len);

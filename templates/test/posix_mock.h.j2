@@ -66,6 +66,24 @@ void adc_mock_set_reading(const char *name, uint32_t millivolts);
 /* Clear all mock state */
 void adc_mock_reset_all(void);
 
+/* ---- I2C mock (in-memory i2c_api) ---- */
+
+/* Attach a slave device (7-bit addr) to a bus; init is an optional
+ * register image (len bytes, max 128). */
+void i2c_mock_add_device(const char *bus_name, uint8_t addr,
+                         const uint8_t *init, uint32_t len);
+
+/* Drive / inspect the register image of a device on a bus. */
+void   i2c_mock_set_reg(const char *bus_name, uint8_t addr, uint8_t reg, uint8_t val);
+uint8_t i2c_mock_get_reg(const char *bus_name, uint8_t addr, uint8_t reg);
+
+/* Transfer counters (verify the component actually touches the bus). */
+uint32_t i2c_mock_read_count(void);
+uint32_t i2c_mock_write_count(void);
+
+/* Clear all bus/device state; preloads a default MPU6050 on "i2c1". */
+void i2c_mock_reset_all(void);
+
 #ifdef __cplusplus
 }
 #endif

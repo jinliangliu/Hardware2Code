@@ -1,76 +1,75 @@
+/* test_eeprom.c.j2 - EEPROM driver unit tests (shared i2c_api bus) */
 #include "unity.h"
 #include "mock_hal.h"
 #include <string.h>
 
-{# eeprom driver file is named after the peripheral instance #}
 {% set eeprom_peri = peripherals | selectattr('type', 'in', ['I2C_EEPROM']) | first %}
-#include "../src/drivers/drv_{{ eeprom_peri.name }}.c"
+{% set eeprom_addr = eeprom_peri.get('address', eeprom_peri.get('model', {}).get('i2c_addr', 0x50)) %}
 
-static I2C_HandleTypeDef hi2c_inst;
+/* i2c_api references hi2c1 via extern (declared in main.c) */
+I2C_HandleTypeDef hi2c1;
+#include "../src/drivers/i2c_api.c"
+#include "../src/drivers/drv_{{ eeprom_peri.name }}.c"
 
 void setUp(void)
 {
+    mock_i2c_reset();
+    mock_i2c_add_device({{ eeprom_addr }}, NULL, 0);
 }
 
-void tearDown(void)
+void tearDown(void) {}
+
+void test_init_returns_ok(void)
 {
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
+    TEST_ASSERT_EQUAL_INT(0, eeprom_init(bus, {{ eeprom_addr }}));
 }
 
-void test_eeprom_init_returns_ok(void)
+void test_init_null_bus(void)
 {
-    int ret = eeprom_init(&hi2c_inst);
-    TEST_ASSERT_EQUAL_INT(0, ret);
+    TEST_ASSERT_EQUAL_INT(-1, eeprom_init(NULL, {{ eeprom_addr }}));
 }
 
-void test_eeprom_init_null_handle(void)
-{
-    int ret = eeprom_init(NULL);
-    TEST_ASSERT_EQUAL_INT(-1, ret);
-}
-
-void test_eeprom_read_byte(void)
+void test_write_read_byte_roundtrip(void)
 {
     uint8_t data = 0xFF;
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
 
-    eeprom_init(&hi2c_inst);
-    /* After init, read_byte should work (mock returns HAL_OK) */
-    int ret = eeprom_read_byte(0x0000, &data);
-    TEST_ASSERT_EQUAL_INT(0, ret);
+    eeprom_init(bus, {{ eeprom_addr }});
+    TEST_ASSERT_EQUAL_INT(0, eeprom_write_byte(0x0005, 0x42));
+    TEST_ASSERT_EQUAL_INT(0, eeprom_read_byte(0x0005, &data));
+    TEST_ASSERT_EQUAL_UINT8(0x42, data);
 }
 
-void test_eeprom_write_byte(void)
+void test_write_read_page_roundtrip(void)
 {
-    eeprom_init(&hi2c_inst);
-    int ret = eeprom_write_byte(0x0000, 0x42);
-    TEST_ASSERT_EQUAL_INT(0, ret);
+    uint8_t in[8]  = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+    uint8_t out[8] = {0};
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
+
+    eeprom_init(bus, {{ eeprom_addr }});
+    TEST_ASSERT_EQUAL_INT(0, eeprom_write_page(0x0010, in, sizeof(in)));
+    TEST_ASSERT_EQUAL_INT(0, eeprom_read_page(0x0010, out, sizeof(out)));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(in, out, 8);
 }
 
-void test_eeprom_read_page(void)
+void test_read_fails_when_device_absent(void)
 {
-    uint8_t buf[32];
+    uint8_t data = 0;
+    i2c_handle_t bus = i2c_open("i2c1", NULL);
 
-    eeprom_init(&hi2c_inst);
-    int ret = eeprom_read_page(0x0000, buf, sizeof(buf));
-    TEST_ASSERT_EQUAL_INT(0, ret);
-}
-
-void test_eeprom_write_page(void)
-{
-    uint8_t buf[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-
-    eeprom_init(&hi2c_inst);
-    int ret = eeprom_write_page(0x0000, buf, sizeof(buf));
-    TEST_ASSERT_EQUAL_INT(0, ret);
+    mock_i2c_reset();                 /* no device at 0x50 */
+    eeprom_init(bus, {{ eeprom_addr }});
+    TEST_ASSERT_TRUE(eeprom_read_byte(0x0000, &data) < 0);
 }
 
 int main(void)
 {
     UNITY_BEGIN();
-    RUN_TEST(test_eeprom_init_returns_ok);
-    RUN_TEST(test_eeprom_init_null_handle);
-    RUN_TEST(test_eeprom_read_byte);
-    RUN_TEST(test_eeprom_write_byte);
-    RUN_TEST(test_eeprom_read_page);
-    RUN_TEST(test_eeprom_write_page);
+    RUN_TEST(test_init_returns_ok);
+    RUN_TEST(test_init_null_bus);
+    RUN_TEST(test_write_read_byte_roundtrip);
+    RUN_TEST(test_write_read_page_roundtrip);
+    RUN_TEST(test_read_fails_when_device_absent);
     return UNITY_END();
 }

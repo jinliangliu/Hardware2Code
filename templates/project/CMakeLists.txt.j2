@@ -133,7 +133,13 @@ set(APP_SOURCES
 {% if has_adc %}
     src/drivers/adc_api.c
 {% endif %}
+{% if has_i2c %}
+    src/drivers/i2c_api.c
+{% endif %}
     src/drivers/gpio_api.c
+{% if has_mpu6050 %}
+    src/attitude.c
+{% endif %}
 {% if has_components %}
     src/component_registry.c
 {% for comp in components %}
@@ -178,7 +184,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/tools)
 {% endif %}
 
 # Link HAL + FreeRTOS to main executable
-target_link_libraries(${PROJECT_NAME} PRIVATE hal{% if not hil_mode %} freertos{% endif %})
+target_link_libraries(${PROJECT_NAME} PRIVATE hal{% if not hil_mode %} freertos{% endif %} m)
 
 # Disable linking step try-compile (bare-metal)
 set_target_properties(${PROJECT_NAME} PROPERTIES

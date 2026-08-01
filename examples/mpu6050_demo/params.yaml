@@ -1,0 +1,41 @@
+# Runtime parameter definitions
+# Read/write via shell CLI: "param get <name>", "param set <name> <value>"
+
+params:
+  - name: log_level
+    component: system
+    type: uint32
+    default: 3
+    min: 0
+    max: 4
+    description: "Log level (0=OFF, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG)"
+
+  - name: telemetry_enabled
+    component: system
+    type: bool
+    default: true
+    description: "Enable periodic telemetry snapshot logging"
+
+  - name: mpu_accel_fs
+    component: imu
+    type: uint32
+    default: 2
+    min: 2
+    max: 16
+    description: "MPU6050 accelerometer full scale in g (2/4/8/16)"
+
+  - name: mpu_gyro_fs
+    component: imu
+    type: uint32
+    default: 250
+    min: 250
+    max: 2000
+    description: "MPU6050 gyroscope full scale in dps (250/500/1000/2000)"
+
+  - name: attitude_alpha
+    component: imu
+    type: uint32
+    default: 980
+    min: 900
+    max: 999
+    description: "Complementary filter gyro weight (scaled x1000, 0.98)"

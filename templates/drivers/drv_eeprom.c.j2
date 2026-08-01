@@ -1,29 +1,34 @@
 {#
     drv_eeprom.c.j2 - I2C EEPROM driver (e.g. AT24C32 / AT24C256)
-    Uses HAL_I2C_Mem_* APIs with mock-compatible #ifdef TEST guard.
+
+    Transport-agnostic: all access goes through i2c_api with the device's
+    own 7-bit address, so the EEPROM can share a physical bus with other
+    I2C devices (MPU6050, sensors, ...).
 #}
-#ifdef TEST
-#include "mock_hal.h"
-#else
-#include "stm32g0xx_hal.h"
-#endif
 
 #include "drv_{{ peripheral.name }}.h"
+#include <stddef.h>
+#ifndef TEST
+#include "stm32g0xx_hal.h"   /* HAL_Delay for write-cycle wait */
+#endif
 
 /* Private variables */
-static I2C_HandleTypeDef *eeprom_i2c;
+static i2c_handle_t eeprom_bus;
+static uint8_t      eeprom_addr;
 
 /**
- * @brief   Initialize the I2C EEPROM driver
- * @param   hi2c: pointer to the I2C handle (already configured by HAL)
+ * @brief   Initialize the I2C EEPROM driver on a shared bus
+ * @param   bus:      i2c_api handle of the physical bus (already opened)
+ * @param   dev_addr: 7-bit slave address (e.g. 0x50)
  * @return  0 on success, -1 on error
  */
-int eeprom_init(I2C_HandleTypeDef *hi2c)
+int eeprom_init(i2c_handle_t bus, uint8_t dev_addr)
 {
-    if (hi2c == NULL) {
+    if (bus == NULL) {
         return -1;
     }
-    eeprom_i2c = hi2c;
+    eeprom_bus  = bus;
+    eeprom_addr = dev_addr;
     return 0;
 }
 
@@ -35,16 +40,11 @@ int eeprom_init(I2C_HandleTypeDef *hi2c)
  */
 int eeprom_read_byte(uint16_t mem_addr, uint8_t *data)
 {
-    if (data == NULL || eeprom_i2c == NULL) {
+    if (data == NULL || eeprom_bus == NULL) {
         return -1;
     }
-
-    if (HAL_I2C_Mem_Read(eeprom_i2c, (uint16_t)(EEPROM_I2C_ADDR << 1),
-                         mem_addr, I2C_MEMADD_SIZE_16BIT,
-                         data, 1, 100) != HAL_OK) {
-        return -1;
-    }
-    return 0;
+    return (i2c_mem_read(eeprom_bus, eeprom_addr, mem_addr,
+                         I2C_MEMADDR_SIZE_16BIT, data, 1, 100) == 0) ? 0 : -1;
 }
 
 /**
@@ -55,13 +55,11 @@ int eeprom_read_byte(uint16_t mem_addr, uint8_t *data)
  */
 int eeprom_write_byte(uint16_t mem_addr, uint8_t data)
 {
-    if (eeprom_i2c == NULL) {
+    if (eeprom_bus == NULL) {
         return -1;
     }
-
-    if (HAL_I2C_Mem_Write(eeprom_i2c, (uint16_t)(EEPROM_I2C_ADDR << 1),
-                          mem_addr, I2C_MEMADD_SIZE_16BIT,
-                          &data, 1, 100) != HAL_OK) {
+    if (i2c_mem_write(eeprom_bus, eeprom_addr, mem_addr,
+                      I2C_MEMADDR_SIZE_16BIT, &data, 1, 100) != 0) {
         return -1;
     }
 
@@ -82,16 +80,11 @@ int eeprom_write_byte(uint16_t mem_addr, uint8_t data)
  */
 int eeprom_read_page(uint16_t mem_addr, uint8_t *buf, uint16_t len)
 {
-    if (buf == NULL || eeprom_i2c == NULL) {
+    if (buf == NULL || eeprom_bus == NULL) {
         return -1;
     }
-
-    if (HAL_I2C_Mem_Read(eeprom_i2c, (uint16_t)(EEPROM_I2C_ADDR << 1),
-                         mem_addr, I2C_MEMADD_SIZE_16BIT,
-                         buf, len, 200) != HAL_OK) {
-        return -1;
-    }
-    return 0;
+    return (i2c_mem_read(eeprom_bus, eeprom_addr, mem_addr,
+                         I2C_MEMADDR_SIZE_16BIT, buf, len, 200) == 0) ? 0 : -1;
 }
 
 /**
@@ -103,13 +96,11 @@ int eeprom_read_page(uint16_t mem_addr, uint8_t *buf, uint16_t len)
  */
 int eeprom_write_page(uint16_t mem_addr, const uint8_t *buf, uint16_t len)
 {
-    if (buf == NULL || eeprom_i2c == NULL) {
+    if (buf == NULL || eeprom_bus == NULL) {
         return -1;
     }
-
-    if (HAL_I2C_Mem_Write(eeprom_i2c, (uint16_t)(EEPROM_I2C_ADDR << 1),
-                          mem_addr, I2C_MEMADD_SIZE_16BIT,
-                          (uint8_t *)buf, len, 200) != HAL_OK) {
+    if (i2c_mem_write(eeprom_bus, eeprom_addr, mem_addr,
+                      I2C_MEMADDR_SIZE_16BIT, buf, len, 200) != 0) {
         return -1;
     }
 

@@ -66,7 +66,7 @@ def find_gcov():
 
 GCC = find_gcc()
 CFLAGS = ["-Wall", "-Wextra", "-DTEST"]
-LDFLAGS = []
+LDFLAGS = ["-lm"]   # libm for attitude math (atan2f/sqrtf/floorf) in host tests
 INCLUDES = ["-I.", "-I../src", "-I../src/drivers", "-Iunity", "-I../config",
             "-I../../../static/stm32g0/HAL/Inc",
             "-I../../../static/stm32g0/CMSIS/Device/ST/STM32G0xx/Include",

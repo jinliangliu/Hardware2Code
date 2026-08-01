@@ -1,0 +1,153 @@
+{#
+    mpu6050_component.c.j2 - MPU6050 IMU + attitude management component
+
+    Wraps drv_mpu6050 (i2c_api transport) as a framework component:
+      init()  → i2c_open(bus) + mpu6050_init (WHO_AM_I + full scale) + attitude_init
+      step()  → mpu6050_read → attitude_update → bus_publish (scaled int32)
+
+    The I2C bus is a shared resource: i2c_open() returns the same handle
+    for every device on the bus, and this component only uses its own
+    7-bit device address (0x68) for all transactions.
+
+    Component config:
+        bus: i2c1              # physical bus name (default: peripheral bus)
+        addr: 0x68             # 7-bit device address
+        accel_fs: 2            # 2/4/8/16 g
+        gyro_fs: 250           # 250/500/1000/2000 dps
+        sample_rate_div: 0     # Fs = 1 kHz / (1 + div)
+        alpha: 0.98            # complementary filter gyro weight
+#}
+{% set mpu_peri = peripherals | selectattr('type', 'eq', 'I2C_Sensor_MPU6050') | first %}
+{% set p_extra = mpu_peri.get('extra', {}) if mpu_peri else {} %}
+{% set bus_name = (comp_config.get('bus', '') | string) or (mpu_peri.bus | lower if mpu_peri else 'i2c1') %}
+{% set dev_addr = comp_config.get('addr', mpu_peri.get('address', mpu_peri.get('model', {}).get('address', 0x68))) %}
+{% set accel_fs = comp_config.get('accel_fs', p_extra.get('accel_fs', 2)) %}
+{% set gyro_fs = comp_config.get('gyro_fs', p_extra.get('gyro_fs', 250)) %}
+{% set alpha = comp_config.get('alpha', 0.98) %}
+{% set has_att_roll  = topics | selectattr('name', 'eq', 'att_roll') | list | length > 0 %}
+{% set has_att_pitch = topics | selectattr('name', 'eq', 'att_pitch') | list | length > 0 %}
+{% set has_att_yaw   = topics | selectattr('name', 'eq', 'att_yaw') | list | length > 0 %}
+{% set has_imu_temp  = topics | selectattr('name', 'eq', 'imu_temp') | list | length > 0 %}
+
+#include "component_registry.h"
+#include "i2c_api.h"
+#include "drv_{{ mpu_peri.name }}.h"
+#include "attitude.h"
+{% if has_topics %}
+#include "component_bus.h"
+{% endif %}
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#endif
+#include <stddef.h>
+
+/* ---- Component-private context ---- */
+struct {{ comp_name }}_ctx {
+    uint8_t             initialized;
+    i2c_handle_t        bus;
+    uint8_t             dev_addr;
+    {{ mpu_peri.name }}_data_t imu;
+    attitude_t          att;
+    uint32_t            samples;
+    uint32_t            read_failures;
+};
+
+static struct {{ comp_name }}_ctx g_ctx;
+
+/* ---- init: open shared bus, verify + configure sensor, start attitude ---- */
+int {{ comp_name }}_init(component_t *c, void *cfg)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_ctx;
+    (void)c;
+    (void)cfg;
+
+    ctx->bus = i2c_open("{{ bus_name }}", NULL);
+    if (ctx->bus == NULL) {
+        return -1;
+    }
+    ctx->dev_addr = {{ dev_addr }};
+
+    if ({{ mpu_peri.name }}_init(ctx->bus, ctx->dev_addr) != 0) {
+        return -1;
+    }
+
+    attitude_init(&ctx->att, 0.0f, 0.0f, 0.0f);
+    attitude_set_alpha(&ctx->att, {{ alpha }}f);
+    ctx->samples      = 0;
+    ctx->read_failures = 0;
+    ctx->initialized  = 1;
+    c->ctx = ctx;
+    return 0;
+}
+
+/* ---- step: sample IMU, fuse attitude, publish scaled data ---- */
+void {{ comp_name }}_step(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_ctx;
+    uint32_t now;
+    (void)c;
+
+    if (!ctx->initialized) {
+        return;
+    }
+    now = HAL_GetTick();
+
+    if ({{ mpu_peri.name }}_read(ctx->bus, ctx->dev_addr, &ctx->imu) != 0) {
+        ctx->read_failures++;
+        return;
+    }
+    ctx->samples++;
+
+    attitude_update(&ctx->att, now,
+                    ctx->imu.gyro_dps[0], ctx->imu.gyro_dps[1], ctx->imu.gyro_dps[2],
+                    ctx->imu.accel_g[0], ctx->imu.accel_g[1], ctx->imu.accel_g[2]);
+
+{% if has_att_roll %}
+    bus_publish(TOPIC_ATT_ROLL, (uint32_t)(int32_t)(ctx->att.roll_deg * 100.0f));
+{% endif %}
+{% if has_att_pitch %}
+    bus_publish(TOPIC_ATT_PITCH, (uint32_t)(int32_t)(ctx->att.pitch_deg * 100.0f));
+{% endif %}
+{% if has_att_yaw %}
+    bus_publish(TOPIC_ATT_YAW, (uint32_t)(int32_t)(ctx->att.yaw_deg * 100.0f));
+{% endif %}
+{% if has_imu_temp %}
+    bus_publish(TOPIC_IMU_TEMP, (uint32_t)(int32_t)(ctx->imu.temp_c * 10.0f));
+{% endif %}
+}
+
+/* ---- getters for CLI / telemetry ---- */
+int {{ comp_name }}_get_attitude(float *roll_deg, float *pitch_deg, float *yaw_deg)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_ctx;
+    if (!ctx->initialized) {
+        return -1;
+    }
+    attitude_get(&ctx->att, roll_deg, pitch_deg, yaw_deg);
+    return 0;
+}
+
+int {{ comp_name }}_get_imu({{ mpu_peri.name }}_data_t *out)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_ctx;
+    if (!ctx->initialized || out == NULL) {
+        return -1;
+    }
+    *out = ctx->imu;
+    return 0;
+}
+
+uint32_t {{ comp_name }}_get_read_failures(void)
+{
+    return g_ctx.read_failures;
+}
+
+void {{ comp_name }}_terminate(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_ctx;
+    (void)c;
+    ctx->initialized = 0;
+    ctx->bus = NULL;
+}

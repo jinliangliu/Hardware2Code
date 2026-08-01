@@ -1,0 +1,138 @@
+/* test_i2c_api.c.j2 - I2C bus API unit tests (multi-device addressing) */
+#include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
+
+/* The generated i2c_api references hi2c1 via extern (declared in main.c) */
+I2C_HandleTypeDef hi2c1;
+#include "../src/drivers/i2c_api.c"
+
+void setUp(void)
+{
+    mock_i2c_reset();
+}
+
+void tearDown(void) {}
+
+void test_open_known_bus_returns_handle(void)
+{
+    i2c_handle_t h = i2c_open("i2c1", NULL);
+    TEST_ASSERT_NOT_NULL(h);
+}
+
+void test_open_is_idempotent_for_shared_bus(void)
+{
+    i2c_handle_t h1 = i2c_open("i2c1", NULL);
+    i2c_handle_t h2 = i2c_open("i2c1", NULL);
+    TEST_ASSERT_NOT_NULL(h1);
+    TEST_ASSERT_EQUAL_PTR(h1, h2);
+}
+
+void test_open_unknown_bus_returns_null(void)
+{
+    TEST_ASSERT_NULL(i2c_open("i2c9", NULL));
+    TEST_ASSERT_NULL(i2c_open(NULL, NULL));
+}
+
+void test_read_reg_uses_7bit_device_address(void)
+{
+    static uint8_t img[0x76];
+    uint8_t b = 0;
+    i2c_handle_t h;
+
+    memset(img, 0, sizeof(img));
+    img[0x75] = 0x68;                  /* WHO_AM_I */
+    mock_i2c_add_device(0x68, img, sizeof(img));
+
+    h = i2c_open("i2c1", NULL);
+    TEST_ASSERT_EQUAL_INT(0, i2c_read_reg(h, 0x68, 0x75, &b, 1, 0));
+    TEST_ASSERT_EQUAL_UINT8(0x68, b);
+    TEST_ASSERT_EQUAL_UINT8(0x68, mock_i2c_last_dev_addr());
+}
+
+void test_write_reg_updates_device_model(void)
+{
+    uint8_t val = 0x42;
+    i2c_handle_t h = i2c_open("i2c1", NULL);
+
+    mock_i2c_add_device(0x68, NULL, 0);
+    TEST_ASSERT_EQUAL_INT(0, i2c_write_reg(h, 0x68, 0x1B, &val, 1, 0));
+    TEST_ASSERT_EQUAL_UINT8(0x42, mock_i2c_get_reg(0x68, 0x1B));
+    TEST_ASSERT_EQUAL_UINT8(0x68, mock_i2c_last_dev_addr());
+}
+
+void test_mem_ops_distinguish_devices_on_same_bus(void)
+{
+    uint8_t data[2] = {0xAA, 0xBB};
+    uint8_t out[2]  = {0};
+    uint8_t v;
+    i2c_handle_t h = i2c_open("i2c1", NULL);
+
+    /* Two different devices sharing the bus */
+    mock_i2c_add_device(0x68, NULL, 0);
+    mock_i2c_add_device(0x50, NULL, 0);
+
+    /* Write to EEPROM via 16-bit mem address, read back */
+    TEST_ASSERT_EQUAL_INT(0, i2c_mem_write(h, 0x50, 0x0020, I2C_MEMADDR_SIZE_16BIT,
+                                           data, 2, 0));
+    TEST_ASSERT_EQUAL_INT(0, i2c_mem_read(h, 0x50, 0x0020, I2C_MEMADDR_SIZE_16BIT,
+                                          out, 2, 0));
+    TEST_ASSERT_EQUAL_UINT8(0xAA, out[0]);
+    TEST_ASSERT_EQUAL_UINT8(0xBB, out[1]);
+
+    /* Same register number on MPU6050 must NOT be affected */
+    TEST_ASSERT_EQUAL_INT(0, i2c_read_reg(h, 0x68, 0x00, &v, 1, 0));
+    TEST_ASSERT_EQUAL_UINT8(0x00, v);
+}
+
+void test_is_device_ready(void)
+{
+    i2c_handle_t h = i2c_open("i2c1", NULL);
+    mock_i2c_add_device(0x68, NULL, 0);
+    TEST_ASSERT_EQUAL_INT(0, i2c_is_device_ready(h, 0x68, 2));
+    TEST_ASSERT_NOT_EQUAL(0, i2c_is_device_ready(h, 0x51, 2));
+}
+
+void test_scan_lists_all_devices(void)
+{
+    uint8_t found[8] = {0};
+    int n, i, seen_68 = 0, seen_50 = 0;
+    i2c_handle_t h = i2c_open("i2c1", NULL);
+
+    mock_i2c_add_device(0x68, NULL, 0);
+    mock_i2c_add_device(0x50, NULL, 0);
+
+    n = i2c_scan(h, found, sizeof(found), 2);
+    TEST_ASSERT_EQUAL_INT(2, n);
+    for (i = 0; i < n && i < 8; i++) {
+        if (found[i] == 0x68) seen_68 = 1;
+        if (found[i] == 0x50) seen_50 = 1;
+    }
+    TEST_ASSERT_TRUE(seen_68);
+    TEST_ASSERT_TRUE(seen_50);
+}
+
+void test_api_rejects_bad_args(void)
+{
+    uint8_t b;
+    TEST_ASSERT_NOT_EQUAL(0, i2c_read_reg(NULL, 0x68, 0x00, &b, 1, 0));
+    TEST_ASSERT_NOT_EQUAL(0, i2c_read_reg(i2c_open("i2c1", NULL), 0x68,
+                                          0x00, NULL, 0, 0));
+    TEST_ASSERT_NOT_EQUAL(0, i2c_mem_read(i2c_open("i2c1", NULL), 0x50,
+                                          0x00, 3, &b, 1, 0));
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_open_known_bus_returns_handle);
+    RUN_TEST(test_open_is_idempotent_for_shared_bus);
+    RUN_TEST(test_open_unknown_bus_returns_null);
+    RUN_TEST(test_read_reg_uses_7bit_device_address);
+    RUN_TEST(test_write_reg_updates_device_model);
+    RUN_TEST(test_mem_ops_distinguish_devices_on_same_bus);
+    RUN_TEST(test_is_device_ready);
+    RUN_TEST(test_scan_lists_all_devices);
+    RUN_TEST(test_api_rejects_bad_args);
+    return UNITY_END();
+}

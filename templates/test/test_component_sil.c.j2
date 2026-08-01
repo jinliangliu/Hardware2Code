@@ -54,6 +54,9 @@ void setUp(void)
     uart_mock_reset_all();
     gpio_mock_reset_all();
     adc_mock_reset_all();
+{% if has_i2c %}
+    i2c_mock_reset_all();
+{% endif %}
     bus_init();
 }
 

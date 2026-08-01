@@ -257,6 +257,27 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             rendered = template.render(context)
             _write_file(out_path, rendered, dry_run, show_diff)
 
+    if context.get("has_i2c"):
+        posix_i2c_templates = {
+            "drivers/posix/i2c_api.h.j2": os.path.join(output_dir, "src", "drivers", "i2c_api.h"),
+            "drivers/posix/i2c_api.c.j2": os.path.join(output_dir, "src", "drivers", "i2c_api.c"),
+        }
+        for tmpl_name, out_path in posix_i2c_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
+    # ---------- Attitude estimation module (when an IMU is present) ----------
+    if context.get("has_mpu6050"):
+        attitude_templates = {
+            "app/attitude.h.j2": os.path.join(output_dir, "src", "attitude.h"),
+            "app/attitude.c.j2": os.path.join(output_dir, "src", "attitude.c"),
+        }
+        for tmpl_name, out_path in attitude_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
     # GPIO POSIX API always generated (all boards have GPIO)
     posix_gpio_templates = {
         "drivers/posix/gpio_api.h.j2": os.path.join(output_dir, "src", "drivers", "gpio_api.h"),
@@ -314,6 +335,8 @@ def render_templates(env: Environment, context: dict, output_dir: str,
                 driver_type = "gpio"
             elif "ADC" in ptype:
                 driver_type = "adc"
+            elif "I2C" in ptype or "i2c" in driver_name:
+                driver_type = "i2c"
             else:
                 driver_type = "unknown"
 
@@ -336,6 +359,9 @@ def render_templates(env: Environment, context: dict, output_dir: str,
                 comp_name_out = "btn_component"
             elif comp_type == "modbus":
                 comp_template = env.get_template("app/modbus_component.c.j2")
+                comp_name_out = comp["name"] + "_component"
+            elif comp_type == "mpu6050":
+                comp_template = env.get_template("app/mpu6050_component.c.j2")
                 comp_name_out = comp["name"] + "_component"
             else:
                 comp_template = env.get_template("app/component.c.j2")
@@ -467,6 +493,10 @@ def render_templates(env: Environment, context: dict, output_dir: str,
 
     if context.get("has_uart"):
         test_templates["test/test_uart.c.j2"] = os.path.join(test_dir, "test_uart.c")
+    if context.get("has_i2c"):
+        test_templates["test/test_i2c_api.c.j2"] = os.path.join(test_dir, "test_i2c_api.c")
+    if context.get("has_mpu6050"):
+        test_templates["test/test_attitude.c.j2"] = os.path.join(test_dir, "test_attitude.c")
     if context.get("has_ir"):
         test_templates["test/test_ir.c.j2"] = os.path.join(test_dir, "test_ir.c")
     if context.get("has_cellular"):

@@ -54,6 +54,10 @@
 #include "power_mgr.h"
 {% endif %}
 
+{% if has_i2c %}
+#include "i2c_api.h"
+{% endif %}
+
 /* GPIO initialization function */
 void MX_GPIO_Init(void);
 
@@ -66,8 +70,14 @@ void MX_GPIO_Init(void);
 {% endfor %}
 
 /* ------- I2C Handles (if I2C peripherals are used) ------- */
+{% set i2c_buses = [] %}
 {% for p in peripherals if 'I2C' in p.model.interface %}
-I2C_HandleTypeDef hi2c{{ p.bus[-1] }};
+{% if p.bus not in i2c_buses %}
+{% set _ = i2c_buses.append(p.bus) %}
+{% endif %}
+{% endfor %}
+{% for bus in i2c_buses %}
+I2C_HandleTypeDef hi2c{{ bus[-1] }};
 {% endfor %}
 
 /* ------- SPI Handles (if SPI peripherals are used) ------- */
@@ -157,22 +167,24 @@ void SystemClock_Config(void)
 }
 
 /* ------- I2C initialization (if peripherals with I2C are present) ------- */
-{% for p in peripherals if 'I2C' in p.model.interface %}
-static void MX_I2C{{ p.bus[-1] }}_Init(void)
+{% for bus in i2c_buses %}
+{% set p0 = peripherals | selectattr('bus', 'eq', bus) | first %}
+static void MX_I2C{{ bus[-1] }}_Init(void)
 {
-    hi2c{{ p.bus[-1] }}.Instance = {{ p.bus }};
-{% if p.i2c and p.i2c.timing_r %}
-    hi2c{{ p.bus[-1] }}.Init.Timing = {{ p.i2c.timing_r | i2c_timing_hex }};
+    __HAL_RCC_{{ bus }}_CLK_ENABLE();
+    hi2c{{ bus[-1] }}.Instance = {{ bus }};
+{% if p0.i2c and p0.i2c.timing_r %}
+    hi2c{{ bus[-1] }}.Init.Timing = {{ p0.i2c.timing_r | i2c_timing_hex }};
 {% else %}
-    hi2c{{ p.bus[-1] }}.Init.Timing = 0x00000F13;  /* 100kHz @ 16MHz (default) */
+    hi2c{{ bus[-1] }}.Init.Timing = 0x00000F13;  /* 100kHz @ 16MHz (default) */
 {% endif %}
-    hi2c{{ p.bus[-1] }}.Init.OwnAddress1 = 0;
-    hi2c{{ p.bus[-1] }}.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-    hi2c{{ p.bus[-1] }}.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-    hi2c{{ p.bus[-1] }}.Init.OwnAddress2 = 0;
-    hi2c{{ p.bus[-1] }}.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-    hi2c{{ p.bus[-1] }}.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-    if (HAL_I2C_Init(&hi2c{{ p.bus[-1] }}) != HAL_OK) while(1);
+    hi2c{{ bus[-1] }}.Init.OwnAddress1 = 0;
+    hi2c{{ bus[-1] }}.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+    hi2c{{ bus[-1] }}.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+    hi2c{{ bus[-1] }}.Init.OwnAddress2 = 0;
+    hi2c{{ bus[-1] }}.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+    hi2c{{ bus[-1] }}.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+    if (HAL_I2C_Init(&hi2c{{ bus[-1] }}) != HAL_OK) while(1);
 }
 {% endfor %}
 
@@ -314,12 +326,22 @@ int main(void)
     log_info("statemachine_init() OK");
 {% endif %}
 {% endif %}
+    /*
+     * Pre-scheduler FreeRTOS init (xQueueCreate/xTaskCreate in
+     * EventMgr_Init) may leave PRIMASK set on the ARMv6-M port until
+     * xPortStartScheduler() re-arms it.  Re-enable interrupts here so
+     * HAL_GetTick()-based waits below (LSE startup, I2C NACK timeout,
+     * ...) cannot spin forever during early init.
+     */
+    __enable_irq();
     
     /* Initialize I2C and internal peripherals */
+{% for bus in i2c_buses %}
+    MX_I2C{{ bus[-1] }}_Init();
+{% endfor %}
 {% for p in peripherals %}
 {% if 'I2C' in p.model.interface %}
-    MX_I2C{{ p.bus[-1] }}_Init();
-{{ p.name }}_init(&hi2c{{ p.bus[-1] }});
+    {{ p.name }}_init(i2c_open("{{ p.bus | lower }}", NULL), {{ '0x%02X' | format(p.get('address', p.model.get('address', p.model.get('i2c_addr', 0x68)))) }});
 {% elif 'SPI' in p.model.interface %}
     MX_SPI{{ p.bus[-1] }}_Init();
 {% if p.type in ('SPI_Flash_W25Q32', 'SPI_Flash_Generic') %}

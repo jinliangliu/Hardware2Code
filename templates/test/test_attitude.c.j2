@@ -1,0 +1,115 @@
+/* test_attitude.c.j2 - attitude estimator unit tests (pure math) */
+#include "unity.h"
+#include <math.h>
+
+#include "../src/attitude.c"
+
+#define TEST_ALPHA 0.98f
+
+void setUp(void) {}
+void tearDown(void) {}
+
+static attitude_t g_att;
+
+void test_initial_values(void)
+{
+    float r, p, y;
+    attitude_init(&g_att, 10.0f, 20.0f, 30.0f);
+    attitude_get(&g_att, &r, &p, &y);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 10.0f, r);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 20.0f, p);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 30.0f, y);
+}
+
+void test_level_attitude_from_static_accel(void)
+{
+    float r, p, y;
+    uint32_t t = 0;
+    attitude_init(&g_att, 0.0f, 0.0f, 0.0f);
+    attitude_set_alpha(&g_att, TEST_ALPHA);
+
+    /* first call primes the filter */
+    attitude_update(&g_att, t, 0, 0, 0, 0, 0, 1);
+    t += 20;
+    attitude_update(&g_att, t, 0, 0, 0, 0, 0, 1);
+
+    attitude_get(&g_att, &r, &p, &y);
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 0.0f, r);
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 0.0f, p);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, y);
+}
+
+void test_roll_converges_to_accel_reference(void)
+{
+    float r;
+    uint32_t t = 0;
+    int i;
+    attitude_init(&g_att, 0.0f, 0.0f, 0.0f);
+    attitude_set_alpha(&g_att, TEST_ALPHA);
+
+    /* accel tilted 30 deg around X: ay=0.5g, az=0.866g */
+    attitude_update(&g_att, t, 0, 0, 0, 0, 0.5f, 0.866f);
+    t += 20;
+    /* alpha=0.98 -> per-step convergence factor 0.98; ~300 steps (6 s of
+     * simulated time) brings a 30 deg error down to ~0.1 deg. */
+    for (i = 0; i < 300; i++) {
+        attitude_update(&g_att, t, 0, 0, 0, 0, 0.5f, 0.866f);
+        t += 20;
+    }
+    attitude_get(&g_att, &r, NULL, NULL);
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 30.0f, r);
+}
+
+void test_yaw_integrates_gyro(void)
+{
+    float y;
+    uint32_t t = 0;
+    attitude_init(&g_att, 0.0f, 0.0f, 0.0f);
+
+    attitude_update(&g_att, t, 0, 0, 0, 0, 0, 1);   /* prime */
+    t += 1000;
+    /* 10 deg/s for 1 s around Z, static accel so roll/pitch stay level */
+    attitude_update(&g_att, t, 0, 0, 10.0f, 0, 0, 1);
+
+    attitude_get(&g_att, NULL, NULL, &y);
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 10.0f, y);
+}
+
+void test_gyro_dominates_when_accel_untrusted(void)
+{
+    float r;
+    uint32_t t = 0;
+    attitude_init(&g_att, 0.0f, 0.0f, 0.0f);
+
+    /* 5 g linear acceleration → trust = 0 → pure gyro integration */
+    attitude_update(&g_att, t, 0, 0, 0, 5.0f, 0, 0);   /* prime */
+    t += 1000;
+    attitude_update(&g_att, t, 10.0f, 0, 0, 5.0f, 0, 0);
+
+    attitude_get(&g_att, &r, NULL, NULL);
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 10.0f, r);
+}
+
+void test_reset_clears_state(void)
+{
+    float r, p, y;
+    attitude_init(&g_att, 1.0f, 2.0f, 3.0f);
+    attitude_reset(&g_att);
+    attitude_get(&g_att, &r, &p, &y);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, r);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, p);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, y);
+    TEST_ASSERT_FALSE(g_att.initialized);
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_initial_values);
+    RUN_TEST(test_level_attitude_from_static_accel);
+    RUN_TEST(test_roll_converges_to_accel_reference);
+    RUN_TEST(test_yaw_integrates_gyro);
+    RUN_TEST(test_gyro_dominates_when_accel_untrusted);
+    RUN_TEST(test_reset_clears_state);
+    return UNITY_END();
+}
