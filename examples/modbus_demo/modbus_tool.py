@@ -217,6 +217,7 @@ def cmd_monitor(args, ser):
 
 def cmd_slave(args, ser):
     """Act as a Modbus RTU slave: answer FC03/06/16 requests."""
+    ser.reset_input_buffer()
     regs = {}
     for kv in args.registers.split(","):
         kv = kv.strip()
@@ -242,25 +243,42 @@ def cmd_slave(args, ser):
 
 
 def read_request(ser, timeout):
-    """Read one request frame from the master; returns body or None."""
-    head = None
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        b = ser.read(1)
-        if b:
-            head = b
-            break
-    if head is None:
+    """Read one request frame from the master.
+
+    Frame length depends on the function code, so we parse by length
+    instead of waiting for line silence (master may back-to-back frames).
+    Returns the body (without CRC) or None on timeout/bad CRC.
+    """
+    def read_byte():
+        return ser.read(1)
+
+    b0 = read_byte()
+    if not b0:
         return None
-    buf = bytearray(head)
-    while True:
-        b = ser.read(1)
-        if not b:
-            break
-        buf.append(b[0])
-    if len(buf) < 4:
+    b1 = read_byte()
+    if not b1:
         return None
-    body, crc_raw = buf[:-2], buf[-2:]
+    func = b1[0]
+
+    if func in (0x03, 0x04, 0x06, 0x05):     # fixed 8-byte requests
+        rest = ser.read(6)
+        if len(rest) < 6:
+            return None
+        body = b0 + b1 + rest[:4]
+        crc_raw = rest[4:6]
+    elif func == 0x10:                        # write multiple: variable
+        rest = ser.read(5)                    # addr(2) count(2) bytecount(1)
+        if len(rest) < 5:
+            return None
+        bc = rest[4]
+        tail = ser.read(bc + 2)
+        if len(tail) < bc + 2:
+            return None
+        body = b0 + b1 + rest + tail[:bc]
+        crc_raw = tail[bc:bc + 2]
+    else:
+        return None
+
     calc = crc16_modbus(body)
     if calc != (crc_raw[0] | (crc_raw[1] << 8)):
         return None  # bad CRC, discard

@@ -41,3 +41,6 @@ components:
       poll_interval_ms: 2000
       poll_addr: 0
       poll_count: 2
+      write_addr: 0
+      write_value: 123
+      write_interval_ms: 2000

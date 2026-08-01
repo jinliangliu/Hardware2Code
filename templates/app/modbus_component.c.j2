@@ -32,6 +32,11 @@
 {% set poll_interval_ms = comp_config.get('poll_interval_ms', 2000) %}
 {% set poll_addr = comp_config.get('poll_addr', 0) %}
 {% set poll_count = comp_config.get('poll_count', 1) %}
+{% set write_addr = comp_config.get('write_addr') %}
+{% set write_value = comp_config.get('write_value') %}
+{% set write_values = comp_config.get('write_values', []) %}
+{% set write_interval_ms = comp_config.get('write_interval_ms', 2000) %}
+{% set do_write = (write_addr is not none) and (write_value is not none or write_values | length > 0) %}
 {% set reg_count = (regs | map(attribute='addr') | max | int) + 1 if regs else 0 %}
 {% set temp_reg = regs | selectattr('name', 'in', ['temperature', 'temperature_x10', 'temp']) | first %}
 {% set has_temp_topic = topics | selectattr('name', 'eq', 'temperature') | list | length > 0 %}
@@ -210,6 +215,9 @@ void {{ comp_name }}_step(component_t *c)
 {% if role == 'master' %}
     {
         static uint32_t last_poll = 0;
+{% if do_write %}
+        static uint32_t last_write = 0;
+{% endif %}
         uint32_t now = HAL_GetTick();
         if (now - last_poll >= {{ poll_interval_ms }}) {
             uint16_t vals[{{ poll_count }}];
@@ -225,6 +233,24 @@ void {{ comp_name }}_step(component_t *c)
             }
             last_poll = now;
         }
+{% if do_write %}
+        if (now - last_write >= {{ write_interval_ms }}) {
+{% if write_values | length > 0 %}
+            uint16_t wvals[{{ write_values | length }}] = { {% for v in write_values %}{{ v }}{{ ', ' if not loop.last }}{% endfor %} };
+            int rc = modbus_master_write_multiple({{ target_slave }}, {{ write_addr }},
+                                                  wvals, {{ write_values | length }}, 100);
+            log_info("MB master: write reg[%u..%u] rc=%d",
+                     (unsigned){{ write_addr }},
+                     (unsigned)({{ write_addr }} + {{ write_values | length }} - 1), rc);
+{% else %}
+            int rc = modbus_master_write_single({{ target_slave }}, {{ write_addr }},
+                                                {{ write_value }}, 100);
+            log_info("MB master: write reg[%u]=%u rc=%d",
+                     (unsigned){{ write_addr }}, (unsigned){{ write_value }}, rc);
+{% endif %}
+            last_write = now;
+        }
+{% endif %}
     }
 {% else %}
     modbus_process();
