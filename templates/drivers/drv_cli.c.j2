@@ -35,6 +35,9 @@
 {% if has_log %}
 #include "drv_log.h"
 {% endif %}
+{% if has_led %}
+#include "led_component.h"
+{% endif %}
 {% if has_rtc %}
 {% for p in peripherals if p.type == 'Internal_RTC' %}
 #include "drv_{{ p.name }}.h"
@@ -318,26 +321,18 @@ static void cmd_gpio(int argc, char *argv[], cli_output_fn out)
 {% if has_led %}
 static void cmd_led(int argc, char *argv[], cli_output_fn out)
 {
-    GPIO_TypeDef *port;
-    uint16_t      pn;
-
     if (argc < 2) { out("Usage: led on|off|toggle\r\n"); return; }
-{% for pin in pins %}
-{% if pin.label == 'LED' %}
-    port = GPIO{{ pin.id[1] }};
-    pn   = GPIO_PIN_{{ pin.id[2:] }};
-{% endif %}
-{% endfor %}
+    /* Drive the LED component pattern instead of poking the GPIO: the
+     * component step re-writes the pin every period, so a direct write
+     * would be overwritten within 50 ms. */
     if (strcmp(argv[1], "on") == 0) {
-        HAL_GPIO_WritePin(port, pn,
-            {% if led_active_low %}GPIO_PIN_RESET{% else %}GPIO_PIN_SET{% endif %});
+        led_set_pattern_by_index(0, LED_PATTERN_ON);
         out("LED ON\r\n");
     } else if (strcmp(argv[1], "off") == 0) {
-        HAL_GPIO_WritePin(port, pn,
-            {% if led_active_low %}GPIO_PIN_SET{% else %}GPIO_PIN_RESET{% endif %});
+        led_set_pattern_by_index(0, LED_PATTERN_OFF);
         out("LED OFF\r\n");
     } else if (strcmp(argv[1], "toggle") == 0) {
-        HAL_GPIO_TogglePin(port, pn);
+        led_toggle_pattern(0);
         out("LED TOGGLED\r\n");
     } else {
         out("Usage: led on|off|toggle\r\n");

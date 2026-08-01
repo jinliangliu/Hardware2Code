@@ -62,7 +62,7 @@ static struct led_ctx g_led_ctx;
  */
 void led_set_pattern_by_index(uint32_t index, uint32_t pattern)
 {
-    if (index < LED_INSTANCE_COUNT && pattern <= LED_PATTERN_FAULT) {
+    if (index < LED_INSTANCE_COUNT && pattern <= LED_PATTERN_ON) {
         if (g_led_instances[index].pattern != pattern) {
             g_led_instances[index].pattern = pattern;
             g_led_instances[index].tick = 0;
@@ -91,6 +91,19 @@ void led_toggle(uint32_t index)
     if (index < LED_INSTANCE_COUNT) {
         HAL_GPIO_TogglePin(g_led_instances[index].port,
                            g_led_instances[index].pin);
+    }
+}
+
+/**
+ * @brief  Toggle between steady ON and OFF patterns (CLI "led toggle").
+ *         Uses the pattern so led_step() keeps the new state stable.
+ */
+void led_toggle_pattern(uint32_t index)
+{
+    if (index < LED_INSTANCE_COUNT) {
+        led_set_pattern_by_index(index,
+            (g_led_instances[index].pattern == LED_PATTERN_ON)
+                ? LED_PATTERN_OFF : LED_PATTERN_ON);
     }
 }
 
@@ -148,6 +161,9 @@ void led_step(component_t *c)
         switch (led->pattern) {
         case LED_PATTERN_OFF:
             break;  /* stays off */
+        case LED_PATTERN_ON:
+            state = on_state;  /* steady on */
+            break;
         case LED_PATTERN_FAST_BLINK:
             if ((led->tick & 1u) == 0u) state = on_state;
             break;

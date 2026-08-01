@@ -138,6 +138,29 @@ void test_led_step_fast_blink_toggles(void)
     TEST_ASSERT_NOT_EQUAL_UINT32(state0, state1);
 }
 
+void test_led_step_on_stays_on_and_toggle_pattern(void)
+{
+    led_init(&led_comp, NULL);
+{% if led_pins | length > 0 %}
+{% set on_state = 'GPIO_PIN_RESET' if led_pins[0].get('active_level', 'high').lower() == 'low' else 'GPIO_PIN_SET' %}
+{% set off_state = 'GPIO_PIN_SET' if led_pins[0].get('active_level', 'high').lower() == 'low' else 'GPIO_PIN_RESET' %}
+    led_set_pattern_by_index(0, LED_PATTERN_ON);
+
+    mock_HAL_GPIO_WritePin_reset();
+    led_step(&led_comp);
+    TEST_ASSERT_EQUAL_UINT32({{ on_state }}, mock_HAL_GPIO_WritePin_get_last_state());
+    mock_HAL_GPIO_WritePin_reset();
+    led_step(&led_comp);
+    TEST_ASSERT_EQUAL_UINT32({{ on_state }}, mock_HAL_GPIO_WritePin_get_last_state());
+
+    /* toggle -> OFF, step stays off */
+    led_toggle_pattern(0);
+    mock_HAL_GPIO_WritePin_reset();
+    led_step(&led_comp);
+    TEST_ASSERT_EQUAL_UINT32({{ off_state }}, mock_HAL_GPIO_WritePin_get_last_state());
+{% endif %}
+}
+
 void test_led_step_slow_blink_duty_cycle(void)
 {
     led_init(&led_comp, NULL);
@@ -234,6 +257,7 @@ int main(void)
 
     RUN_TEST(test_led_step_off_outputs_low);
     RUN_TEST(test_led_step_fast_blink_toggles);
+    RUN_TEST(test_led_step_on_stays_on_and_toggle_pattern);
     RUN_TEST(test_led_step_slow_blink_duty_cycle);
     RUN_TEST(test_led_step_fault_has_three_short_one_long);
 

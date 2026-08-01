@@ -32,11 +32,12 @@ extern "C" {
 #define LED_PATTERN_FAST_BLINK  1u
 #define LED_PATTERN_SLOW_BLINK  2u
 #define LED_PATTERN_FAULT       3u
+#define LED_PATTERN_ON          4u   /* steady on (driven by led_step) */
 
 /**
  * @brief  Set LED pattern by instance index
  * @param  index    LED instance index (0..LED_INSTANCE_COUNT-1)
- * @param  pattern  Pattern: 0=OFF, 1=FAST, 2=SLOW, 3=FAULT
+ * @param  pattern  Pattern: 0=OFF, 1=FAST, 2=SLOW, 3=FAULT, 4=ON
  */
 void led_set_pattern_by_index(uint32_t index, uint32_t pattern);
 
@@ -52,6 +53,12 @@ void led_set_pattern_by_name(const char *name, uint32_t pattern);
  * @param  index  LED instance index
  */
 void led_toggle(uint32_t index);
+
+/**
+ * @brief  Toggle between steady ON and OFF patterns (CLI "led toggle")
+ * @param  index  LED instance index
+ */
+void led_toggle_pattern(uint32_t index);
 
 #ifdef __cplusplus
 }
