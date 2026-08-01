@@ -55,9 +55,12 @@
 /* MPU support (required by Cortex-M0+ port) */
 #define configENABLE_MPU                        0
 
-/* Low power - Tickless idle with RTC wake-up (disabled for RUN mode) */
+/* Low power - Tickless idle with RTC wake-up.
+ * = 2: sleep.c provides vPortSuppressTicksAndSleep(), which enters
+ * SLEEP/STOP0/STOP1 based on power_mgr and compensates the tick from the
+ * LSE RTC, so wall time stays exact across STOP wakeups. */
 {% if has_tickless and sleep.mode != 'RUN' %}
-#define configUSE_TICKLESS_IDLE                 1
+#define configUSE_TICKLESS_IDLE                 2
 {% else %}
 #define configUSE_TICKLESS_IDLE                 0
 {% endif %}

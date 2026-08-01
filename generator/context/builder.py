@@ -408,8 +408,8 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
 
     hrtc.Instance = RTC;
     hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
-    hrtc.Init.AsynchPrediv = 127;
-    hrtc.Init.SynchPrediv = 255;
+    hrtc.Init.AsynchPrediv = 0;
+    hrtc.Init.SynchPrediv = 32767;
     hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
     if (HAL_RTC_Init(&hrtc) != HAL_OK) {
         TEST_FAIL("HAL_RTC_Init failed");
@@ -952,8 +952,8 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     rtc_ir = RtcIR(
         has_rtc=has_rtc,
         clock_source=rtc_clock_source,
-        async_prediv=127,
-        sync_prediv=255,
+        async_prediv=0,
+        sync_prediv=32767,
         wakeup_interval_ms=rtc_wakeup_interval_ms,
         alarms=alarm_objs,
         init_time=RtcInitTimeIR(

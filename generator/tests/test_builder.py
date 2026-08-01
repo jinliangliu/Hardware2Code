@@ -65,8 +65,8 @@ def test_build_context_with_rtc():
     }
     ctx = build_context(hw, "test_rtc")
     assert ctx["has_rtc"] == True
-    assert ctx["rtc_async_prediv"] == 127
-    assert ctx["rtc_sync_prediv"] == 255
+    assert ctx["rtc_async_prediv"] == 0
+    assert ctx["rtc_sync_prediv"] == 32767
     assert "stm32g0xx_hal_rtc.c" in ctx["hal_sources"]
 
 

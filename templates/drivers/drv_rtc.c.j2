@@ -60,6 +60,24 @@ uint32_t rtc_get_uptime_ms(void)
     uint32_t ms = (elapsed_ticks * 1000U) / 32768U;     /* PREDIV_S + 1 = 32768 */
     return rtc_uptime_sec * 1000U + ms;
 }
+
+/* Wall-clock milliseconds since midnight, read directly from the RTC
+ * calendar + SSR (no HAL_GetTick dependency).  The RTC keeps counting on
+ * LSE through SLEEP/STOP0/STOP1, so this stays monotonic across low-power
+ * wakeups and can be used to measure elapsed time while the MCU slept. */
+uint32_t rtc_get_time_ms(void)
+{
+    RTC_TimeTypeDef sTime = {0};
+    uint32_t ms;
+
+    /* Raw register read (SSR + TR); no WaitForSynchro needed here. */
+    HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+    ms = (({{ rtc_sync_prediv }} - (uint32_t)sTime.SubSeconds) * 1000U)
+         / ({{ rtc_sync_prediv }} + 1U);
+    return ((uint32_t)sTime.Hours * 3600U
+            + (uint32_t)sTime.Minutes * 60U
+            + (uint32_t)sTime.Seconds) * 1000U + ms;
+}
 #endif
 
 /* ---------- built-in callback stubs ---------- */

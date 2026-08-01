@@ -63,6 +63,30 @@ alarms:
 
 `rtc set <HH:MM:SS>` 会通过 `RTC_SetTime()` 统一重排所有定时器（含毫秒定时器），时钟调整后闹钟仍按新时刻触发。
 
+### 低功耗（SLEEP / STOP0 / STOP1）
+
+`hardware.yaml` 中 `sleep.mode` 选择默认模式（base 默认 STOP1），`tickless: true`
+启用 FreeRTOS tickless idle（`configUSE_TICKLESS_IDLE=2`，由 `sleep.c` 提供
+`vPortSuppressTicksAndSleep`）。三种模式均满足：
+
+- **RTC 保持**：LSE 独立供电，日历 + SSR 在低功耗期间持续计数，唤醒后系统时间无偏差。
+- **RAM 保持**：STOP0/STOP1 不掉 RAM，任务上下文、CLI 会话与变量全部保留。
+- **UART 唤醒**：USART2 UESM + HSI16 保持（HSIKERON），任意起始位即可从 STOP 唤醒内核。
+- **时间补偿**：唤醒后以 RTC 实测休眠时长补偿 HAL tick（uwTick）与 FreeRTOS tick
+  （tickless 路径 vTaskStepTick），日志时间戳始终与墙钟一致。
+
+调试命令：
+
+```
+power info                 # 查看允许深度与组件 sleep_compat
+power mode SLEEP|STOP0|STOP1   # 选择要验证的模式
+power sleep                # 立即进入该模式（RTC/串口/按键均可唤醒）
+```
+
+> 注意：base 的组件步进任务（10ms 轮询）会限制自动 tickless 的进入（空闲窗口通常
+> < 1s，而 RTC 唤醒粒度为 1s），因此自动低功耗默认不频繁触发；用 `power sleep`
+> 可显式验证每个模式的唤醒与时间保持。
+
 ### CLI 命令列表
 
 | 命令 | 功能 |

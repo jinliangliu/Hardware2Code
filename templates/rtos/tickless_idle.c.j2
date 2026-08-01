@@ -1,240 +1,196 @@
 /**
  * tickless_idle.c.j2 - FreeRTOS Tickless Idle implementation for STM32G0
- * Uses RTC WakeUp Timer + STOP mode for low power.
  *
- * Generated when: has_tickless is True (FreeRTOS enabled + RTC present)
+ * Generated when: has_tickless is True (FreeRTOS + RTC) and sleep.mode != RUN
  *
- * Clock strategy:
- *   - RTCCLK_DIV16 (2048 Hz) for sub-second resolution (max ~32s sleep)
- *   - CK_SPRE (1 Hz) fallback for very long sleeps (> 32s)
+ * Low-power strategy:
+ *   - The RTC keeps running on LSE through SLEEP / STOP0 / STOP1, so the
+ *     calendar + SSR are used as the authoritative timebase across sleep.
+ *   - The RTC wakeup timer stays at its fixed 1 Hz heartbeat (it drives the
+ *     whole RTC timer service), so the longest sleep is one second.  Idle
+ *     windows shorter than that are left to the normal SysTick tick.
+ *   - USART2 start-bit wakeup (UESM + HSI16 keeper) and the EXTI button
+ *     can both wake the core from STOP at any time.
+ *   - On wakeup the elapsed time measured from the RTC is applied to both
+ *     the FreeRTOS tick (vTaskStepTick) and the HAL tick (uwTick), so no
+ *     wall-clock drift accumulates.
  *
- * STOP mode strategy:
- *   - The WFI + SLEEPDEEP-clear sequence is placed in SRAM (.ramfunc section)
- *     because Flash is not immediately accessible after STOP exit — the first
- *     instruction fetch after WFI would HardFault if executed from Flash.
- *   - The linker places .ramfunc inside .data (RAM AT>FLASH), so the startup
- *     code automatically copies it to SRAM before main().
+ * RTC and RAM are retained in all three modes (LSE + backup domain, SRAM
+ * stays powered), satisfying the low-power demo requirements.
  */
 #include "stm32g0xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
+
+#include "power_mgr.h"
+#include "drv_rtc.h"
 #include "drv_log.h"
 
-{% if has_power_mgr %}
-#include "power_mgr.h"
-{% endif %}
+#ifndef TEST
 
-/* RTC handle - must be initialized by main before scheduler starts */
-extern RTC_HandleTypeDef hrtc;
+/* HAL timebase timer handle (defined in stm32g0xx_hal_timebase_tim.c) */
+extern TIM_HandleTypeDef TimHandle;
 
-/* Restore periodic wakeup configuration after tickless idle */
-extern void RTC_RestoreTickConfig(void);
+/* One full day in milliseconds (midnight wrap for elapsed calculation) */
+#define RTC_MS_PER_DAY     (86400000UL)
 
-/* System clock re-configuration - defined in main.c */
-extern void SystemClock_Config(void);
+/* FreeRTOS tick frequency in Hz (also the SysTick 1 ms reload) */
+#define TICKLESS_TICK_HZ   (configTICK_RATE_HZ)
 
-/* RTCCLK_DIV16 = 32768 / 16 = 2048 Hz */
-#define TICKLESS_RTC_FREQ_HZ    2048
-/* Max counter value for 16-bit auto-reload */
-#define TICKLESS_MAX_COUNTER    0xFFFF
-
-/*
- * enter_stop0_and_wake — EXECUTED FROM SRAM
- *
- * This function must live in SRAM because after STOP mode exit, Flash is
- * not immediately accessible. The first instruction fetch after WFI would
- * cause a bus fault → HardFault if executed from Flash.
- *
- * The function:
- * 1. Enables USART2 STOP-mode wakeup (UESM + HSI keeper)
- * 2. Enters STOP0 with main regulator ON via WFI with SLEEPDEEP
- * 3. On wakeup (RTC or USART2), clears SLEEPDEEP (SCB access, always safe)
- * 4. Clears USART2 wakeup flag
- *
- * All post-WFI code uses stack-based addressing (no Flash literal pools).
- */
-__attribute__((section(".ramfunc"), used))
-static void enter_stop0_and_wake(void)
+/* Stop the HAL 1 ms tick (TIM14) around low-power entry so it neither
+ * wakes the core every ms in SLEEP mode nor leaves uwTick behind. */
+static void hal_tick_disable(void)
 {
-    /*
-     * Configure USART2 for STOP-mode wakeup:
-     *  - HSI16 as USART2 clock (stays alive in STOP)
-     *  - HSIKERON to keep HSI oscillator running
-     *  - UESM to allow USART to generate wakeup on start-bit
-     *
-     * Note: Setting UESM gates the USART kernel clock after the
-     * current frame completes, blocking TX until STOP is entered.
-     * After wakeup, UESM is cleared and the USART is re-initialized
-     * in vPortSuppressTicksAndSleep.
-     */
-    log_uart_stop_wakeup_enable();
-
-    /* Configure STOP0 with main regulator ON */
-    CLEAR_BIT(PWR->CR1, PWR_CR1_LPMS);
-
-    /* Keep debug clocks running during STOP so SWD stays alive. */
-    SET_BIT(DBG->CR, DBG_CR_DBG_STOP);
-
-    /* Load SCB->SCR address into local variable (stack = SRAM, not Flash).
-     * This avoids the compiler placing a literal pool load after WFI. */
-    volatile uint32_t * const scr = &(SCB->SCR);
-
-    /* Set SLEEPDEEP and enter STOP mode */
-    *scr |= SCB_SCR_SLEEPDEEP_Msk;
-    __WFI();
-
-    /*
-     * ---------- WAKEUP FROM STOP ----------
-     * HSI16 auto-restarts; CPU resumes here.
-     * We are executing from SRAM: no Flash read → no bus fault.
-     * scr points to stack variable → no literal pool access.
-     */
-
-    /* Clear SLEEPDEEP — SCB PPB bus is always accessible */
-    *scr &= ~SCB_SCR_SLEEPDEEP_Msk;
+    HAL_NVIC_DisableIRQ(TIM14_IRQn);
 }
 
-/*
- * vPortSuppressTicksAndSleep - FreeRTOS tickless idle hook.
- * Called by the idle task when configUSE_TICKLESS_IDLE = 1.
+static void hal_tick_enable(void)
+{
+    /* Clear any pending TIM14 update interrupt before re-enabling */
+    __HAL_TIM_CLEAR_IT(&TimHandle, TIM_IT_UPDATE);
+    HAL_NVIC_EnableIRQ(TIM14_IRQn);
+}
+
+/**
+ * @brief  Enter one low-power mode and return after wakeup.
+ * @param  mode  POWER_MODE_SLEEP / STOP0 / STOP1 (RUN returns immediately)
+ * @return elapsed time in ms spent sleeping (RTC-measured), 0 if skipped
  *
- * Implementation:
- * 1. Calculate sleep duration in RTC counter ticks (RTCCLK_DIV16)
- * 2. Disable interrupts and check if a task was woken since we calculated
- * 3. Configure RTC WakeUp Timer for the sleep duration
- * 4. Enter STOP mode via SRAM-based enter_stop0_and_wake()
- * 5. On wake, reconfigure system clock (HSI) and USART2
- * 6. Inform FreeRTOS how many ticks elapsed
- * 7. Restore periodic RTC wakeup timer
+ * Wake sources while sleeping:
+ *   - RTC wakeup timer: 1 Hz heartbeat (always armed, NVIC priority 0)
+ *   - USART2 start-bit wakeup (STOP0/STOP1 via UESM + HSI16 keeper)
+ *   - EXTI button (PC13)
+ *
+ * Usable from the idle task (tickless) or from a CLI command (explicit
+ * "power sleep" debug path); both compensate the HAL tick identically.
+ */
+uint32_t power_sleep_now(power_mode_t mode)
+{
+    uint32_t t0, elapsed, reload, ctrl;
+
+    if (mode == POWER_MODE_RUN) {
+        return 0;
+    }
+
+    /* Drain pending log/CLI ring bytes and let the last TX byte finish
+     * shifting out before the clocks stop. */
+    log_flush();
+    while (!(USART2->ISR & USART_ISR_TC)) {}
+
+    hal_tick_disable();                     /* freeze HAL timebase */
+
+    /* Stop the FreeRTOS SysTick so it neither wakes SLEEP every ms nor
+     * accumulates time while frozen in STOP. */
+    ctrl   = SysTick->CTRL;
+    reload = SysTick->LOAD;
+    SysTick->CTRL = 0;
+    SysTick->VAL  = 0;
+    SCB->ICSR = SCB_ICSR_PENDSTCLR_Msk;     /* clear pending SysTick */
+
+    /* RTC ms-of-day keeps counting on LSE through every sleep mode */
+    t0 = rtc_get_time_ms();
+
+    if (mode >= POWER_MODE_STOP0) {
+        log_uart_stop_wakeup_enable();      /* USART2 can wake from STOP */
+    }
+
+    switch (mode) {
+    case POWER_MODE_SLEEP:
+        HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+        break;
+    case POWER_MODE_STOP0:
+        HAL_PWR_EnterSTOPMode(PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI);
+        break;
+    case POWER_MODE_STOP1:
+        HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+        break;
+    default:
+        hal_tick_enable();
+        return 0;
+    }
+
+    /* -------- Wakeup path -------- */
+    if (mode >= POWER_MODE_STOP0) {
+        log_uart_stop_wakeup_clear();
+    }
+
+    elapsed = rtc_get_time_ms() - t0;
+    if (rtc_get_time_ms() < t0) {
+        elapsed += RTC_MS_PER_DAY;          /* crossed midnight */
+    }
+
+    /* TIM14 was stopped (SLEEP: IRQ disabled; STOP: clock off), so advance
+     * the HAL tick by the RTC-measured sleep duration. */
+    {
+        extern volatile uint32_t uwTick;
+        uwTick += elapsed;
+    }
+    hal_tick_enable();
+
+    /* Restart SysTick with the standard 1 ms reload */
+    SysTick->LOAD = reload;
+    SysTick->VAL  = 0;
+    SysTick->CTRL = (ctrl & SysTick_CTRL_CLKSOURCE_Msk)
+                    | SysTick_CTRL_TICKINT_Msk
+                    | SysTick_CTRL_ENABLE_Msk;
+
+    return elapsed;
+}
+
+/**
+ * @brief  FreeRTOS tickless idle hook (configUSE_TICKLESS_IDLE == 2).
+ *
+ * Sleeps only when the RTC can guarantee wakeup before xExpectedIdleTime:
+ * the RTC wakeup source is a fixed 1 Hz heartbeat, so the longest sleep is
+ * one second (TICKLESS_TICK_HZ ticks).  Shorter idle windows are left to
+ * the normal SysTick tick.
  */
 void vPortSuppressTicksAndSleep(TickType_t xExpectedIdleTime)
 {
-    if (xExpectedIdleTime <= 2) {
-        /* Too short to justify sleep overhead - just do WFI (SLEEP, not STOP) */
-        __WFI();
+    power_mode_t mode = power_mgr_allowed_depth();
+
+    if (mode == POWER_MODE_RUN) {
         return;
     }
-
-{% if has_power_mgr %}
-    /*
-     * Power manager: check if STOP mode is allowed by active components.
-     * If not, fall back to WFI (CPU SLEEP, peripherals running).
-     */
-    if (!power_mgr_is_mode_allowed(POWER_MODE_STOP0)) {
-        __WFI();
-        return;
-    }
-{% endif %}
-
-    /* -------- Calculate sleep duration in RTC counter ticks -------- */
-    /*
-     * Use RTCCLK_DIV16 (2048 Hz) for sub-second resolution.
-     * counter = xExpectedIdleTime * (2048 / configTICK_RATE_HZ)
-     *
-     * Example: tick_rate=1000 Hz, xExpectedIdleTime=100 (100 ms)
-     *   counter = 100 * 2048 / 1000 = 204  → ~99.6 ms wakeup
-     *
-     * The minimum counter value is 1, giving ~0.5 ms resolution.
-     * Max counter = 65535 / 2048 ≈ 32 seconds for RTCCLK_DIV16.
-     *
-     * For longer sleeps, fall back to CK_SPRE (1 Hz, max ~18 hours).
-     */
-    uint32_t wakeup_clock = RTC_WAKEUPCLOCK_RTCCLK_DIV16;
-    uint32_t wakeup_counter = (uint32_t)xExpectedIdleTime * TICKLESS_RTC_FREQ_HZ
-                              / configTICK_RATE_HZ;
-
-    if (wakeup_counter > TICKLESS_MAX_COUNTER) {
-        /* Sleep too long for RTCCLK_DIV16 — fall back to CK_SPRE (1 Hz) */
-        wakeup_clock = RTC_WAKEUPCLOCK_CK_SPRE_16BITS;
-        wakeup_counter = xExpectedIdleTime / configTICK_RATE_HZ;
-        if (wakeup_counter == 0) {
-            wakeup_counter = 1;
-        }
-        if (wakeup_counter > TICKLESS_MAX_COUNTER) {
-            wakeup_counter = TICKLESS_MAX_COUNTER;
-        }
-    } else if (wakeup_counter == 0) {
-        wakeup_counter = 1;
+    if (xExpectedIdleTime < (TickType_t)TICKLESS_TICK_HZ) {
+        return;                             /* RTC only wakes at 1 Hz */
     }
 
-    /* Disable interrupts for atomic sleep preparation */
-    __disable_irq();
+    /* Mirror the ARM_CM0 port: mask interrupts so sleep is entered
+     * atomically; pending wakeup interrupts still exit WFI. */
+    __asm volatile ("cpsid i" ::: "memory");
+    __asm volatile ("dsb");
+    __asm volatile ("isb");
 
-    /* Re-check: did an ISR wake a task since we computed xExpectedIdleTime? */
     if (eTaskConfirmSleepModeStatus() == eAbortSleep) {
-        __enable_irq();
+        __asm volatile ("cpsie i" ::: "memory");
         return;
     }
 
-    /* -------- Configure RTC WakeUp Timer -------- */
-    /* Clear pending wakeup flag */
-    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
-
-    /* Set wakeup period */
-    HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, wakeup_counter, wakeup_clock);
-
-    /* -------- Enter STOP mode -------- */
-    /* Suspend SysTick so it doesn't wake us immediately */
-    HAL_SuspendTick();
-
-    /*
-     * Enter STOP0 with main regulator ON.
-     * The enter_stop0_and_wake() function executes from SRAM so that
-     * post-WFI instruction fetch does not access Flash (which would
-     * cause a bus fault → HardFault).
-     */
-    enter_stop0_and_wake();
-
-    /* -------- Wakeup: reconfigure clocks -------- */
-    /*
-     * System clock was stopped — reconfigure HSI.
-     * RTC backup domain (LSI/LSE) survives STOP, but the APB interface
-     * needs re-synchronization before accessing RTC registers.
-     */
-    SystemClock_Config();
-
-    /*
-     * Clear USART2 UESM + wakeup flag. Must happen AFTER SystemClock_Config
-     * because USART APB registers require a stable peripheral clock.
-     * Then re-initialize USART hardware (powered down during STOP).
-     */
-    log_uart_stop_wakeup_clear();
-    log_uart_reinit();
-
-    /* Resume SysTick */
-    HAL_ResumeTick();
-
-    /* Clear wakeup flag */
-    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
-
-    /* Re-enable interrupts */
-    __enable_irq();
-
-    /* Restore periodic RTC wakeup timer (100ms @ RTCCLK_DIV16).
-     * vPortSuppressTicksAndSleep may have changed the clock source;
-     * we must restore the original config so software timers resume firing. */
-    RTC_RestoreTickConfig();
-
-    /*
-     * Tell FreeRTOS how many ticks elapsed.
-     * Convert RTC counter ticks back to RTOS ticks.
-     *
-     * If using CK_SPRE (1 Hz): ticks = wakeup_counter * configTICK_RATE_HZ
-     * If using RTCCLK_DIV16 (2048 Hz): ticks = wakeup_counter * configTICK_RATE_HZ / 2048
-     */
-    TickType_t ticks_elapsed;
-    if (wakeup_clock == RTC_WAKEUPCLOCK_RTCCLK_DIV16) {
-        ticks_elapsed = (TickType_t)(wakeup_counter * configTICK_RATE_HZ
-                                     / TICKLESS_RTC_FREQ_HZ);
-    } else {
-        ticks_elapsed = (TickType_t)(wakeup_counter * configTICK_RATE_HZ);
+    {
+        /* Tickless context: elapsed is at most one second, which is <= the
+         * xExpectedIdleTime we gated on, so vTaskStepTick() is valid here. */
+        uint32_t elapsed = power_sleep_now(mode);
+        vTaskStepTick((TickType_t)(elapsed / (uint32_t)portTICK_PERIOD_MS));
     }
 
-    /* Clamp to xExpectedIdleTime to prevent configASSERT in vTaskStepTick.
-     * Rounding in integer division can cause ticks_elapsed to exceed
-     * the expected value, which triggers assertion failure. */
-    if (ticks_elapsed > xExpectedIdleTime) {
-        ticks_elapsed = xExpectedIdleTime;
-    }
-    vTaskStepTick(ticks_elapsed);
+    __asm volatile ("cpsie i" ::: "memory");
+    __asm volatile ("dsb");
+    __asm volatile ("isb");
 }
+
+#else /* TEST */
+
+/* Test stub: never sleep */
+uint32_t power_sleep_now(power_mode_t mode)
+{
+    (void)mode;
+    return 0;
+}
+
+void vPortSuppressTicksAndSleep(TickType_t xExpectedIdleTime)
+{
+    (void)xExpectedIdleTime;
+}
+
+#endif /* TEST */

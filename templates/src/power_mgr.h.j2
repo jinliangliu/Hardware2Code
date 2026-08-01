@@ -61,6 +61,18 @@ const char *power_mode_name(power_mode_t mode);
 void power_mgr_init(power_mode_t default_mode);
 
 /**
+ * @brief  Set the default / allowed sleep mode (e.g. from CLI "power mode")
+ * @param  mode  Desired mode (RUN/SLEEP/STOP0/STOP1/...)
+ */
+void power_mgr_set_default(power_mode_t mode);
+
+/**
+ * @brief  Get the current default / explicitly selected mode
+ * @return The mode last set via power_mgr_set_default() or power_mgr_init()
+ */
+power_mode_t power_mgr_get_default(void);
+
+/**
  * @brief  Get the allowed sleep depth based on active components
  * @return The deepest power_mode_t that all active components tolerate
  *
@@ -71,6 +83,17 @@ void power_mgr_init(power_mode_t default_mode);
  * Call before entering sleep to determine the appropriate mode.
  */
 power_mode_t power_mgr_allowed_depth(void);
+
+/**
+ * @brief  Enter one low-power mode immediately and return after wakeup.
+ * @param  mode  POWER_MODE_SLEEP / STOP0 / STOP1
+ * @return Elapsed ms spent sleeping (RTC-measured), 0 if skipped
+ *
+ * RTC keeps counting on LSE; USART2 start-bit and EXTI wake the core from
+ * STOP. HAL tick and FreeRTOS tick are compensated so time stays exact.
+ * Implemented in tickless_idle.c (or sleep.c stub).
+ */
+uint32_t power_sleep_now(power_mode_t mode);
 
 /**
  * @brief  Check if a target sleep mode is compatible with active components

@@ -53,4 +53,9 @@ void RTC_RestoreTickConfig(void);
  * through STOP since it is derived from the LSE RTC). */
 uint32_t rtc_get_uptime_ms(void);
 
+/* Wall-clock milliseconds since midnight from the RTC calendar + SSR.
+ * Keeps counting through SLEEP/STOP0/STOP1 (LSE) — used to measure
+ * elapsed time across low-power wakeups. */
+uint32_t rtc_get_time_ms(void);
+
 #endif /* __DRV_{{ peripheral.name | upper }}_H */

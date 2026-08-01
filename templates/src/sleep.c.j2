@@ -13,11 +13,18 @@
 #include "stm32g0xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "power_mgr.h"
 
 void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
 {
     /* DEBUG mode: never enter low power, keep debugger and peripherals running */
     (void)xExpectedIdleTime;
     return;
+}
+
+uint32_t power_sleep_now(power_mode_t mode)
+{
+    (void)mode;
+    return 0;
 }
 {% endif %}

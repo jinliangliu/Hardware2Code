@@ -165,4 +165,7 @@ void log_uart_reinit(void);
 #define log_fatal(...) ((void)0)
 #endif
 
+/* Push one character into the log ring (CLI TX shares the ISR drain). */
+void log_putc(char c);
+
 #endif /* DRV_LOG_H */

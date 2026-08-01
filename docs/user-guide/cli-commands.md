@@ -73,6 +73,24 @@ h2c> rtc set 08:00:00
 RTC time set to 08:00:00
 ```
 
+### Power Commands
+
+| Command | Description | Availability |
+|---------|-------------|-------------|
+| `power info` | Show allowed sleep depth + component compat | When power_mgr enabled |
+| `power mode <RUN\|SLEEP\|STOP0\|STOP1>` | Select low-power mode | When power_mgr enabled |
+| `power sleep` | Enter the selected mode now (wake by RTC / UART / button) | When power_mgr enabled |
+
+Example:
+
+```
+h2c> power mode STOP1
+Power mode set to STOP1
+h2c> power sleep
+Entering STOP1 (wake by RTC 1s / UART RX / button)...
+Woke up after 240 ms, RTC keeps time, RAM intact.
+```
+
 ### Modbus Commands
 
 | Command | Description | Availability |

@@ -32,10 +32,16 @@
 #endif
 #include "lwrb.h"
 
+{% if has_log %}
+#include "drv_log.h"
+{% endif %}
 {% if has_rtc %}
 {% for p in peripherals if p.type == 'Internal_RTC' %}
 #include "drv_{{ p.name }}.h"
 {% endfor %}
+{% endif %}
+{% if has_power_mgr %}
+#include "power_mgr.h"
 {% endif %}
 {% if has_modbus %}
 {% for p in peripherals if p.type == 'Protocol_Modbus' %}
@@ -89,7 +95,9 @@ static const char    *cli_prompt = CLI_PROMPT_DEFAULT;
 
 static void cli_uart_putc(char c)
 {
-    HAL_UART_Transmit((UART_HandleTypeDef *)cli_huart, (uint8_t *)&c, 1, 100);
+    /* CLI TX shares the log ring + TXE ISR drain: single writer to TDR,
+     * no byte races with the log stream, and no bytes lost after STOP. */
+    log_putc(c);
 }
 
 void cli_output(const char *fmt, ...)
@@ -355,7 +363,7 @@ static void cmd_rtc(int argc, char *argv[], cli_output_fn out)
         HAL_RTC_GetDate(&hrtc, &d, RTC_FORMAT_BIN);
         out("RTC Time: %02d:%02d:%02d  Date: %02d/%02d/%02d\r\n",
             t.Hours, t.Minutes, t.Seconds,
-            d.Date, d.Month, (uint8_t)(d.Year + 2000));
+            d.Date, d.Month, (int)d.Year + 2000);
     } else if (strcmp(argv[1], "set") == 0) {
         int hh, mm, ss;
         if (argc < 3) { out("Usage: rtc set <HH:MM:SS>\r\n"); return; }
@@ -377,6 +385,54 @@ static void cmd_rtc(int argc, char *argv[], cli_output_fn out)
         }
     } else {
         out("Unknown rtc subcommand: %s\r\n", argv[1]);
+    }
+}
+{% endif %}
+
+{% if has_power_mgr %}
+static void cmd_power(int argc, char *argv[], cli_output_fn out)
+{
+    if (argc < 2) {
+        out("Usage: power mode <RUN|SLEEP|STOP0|STOP1> | power sleep | power info\r\n");
+        out("Current allowed: %s\r\n", power_mode_name(power_mgr_allowed_depth()));
+        return;
+    }
+    if (strcmp(argv[1], "mode") == 0 && argc >= 3) {
+        power_mode_t m = POWER_MODE_MAX;
+        for (int i = POWER_MODE_RUN; i < POWER_MODE_MAX; i++) {
+            if (cli_strcasecmp(argv[2], power_mode_name((power_mode_t)i)) == 0) {
+                m = (power_mode_t)i;
+                break;
+            }
+        }
+        if (m == POWER_MODE_MAX || m > POWER_MODE_STOP1) {
+            out("Unsupported mode: %s (use RUN/SLEEP/STOP0/STOP1)\r\n", argv[2]);
+            return;
+        }
+        power_mgr_set_default(m);
+        out("Power mode set to %s\r\n", power_mode_name(m));
+    } else if (strcmp(argv[1], "sleep") == 0) {
+        /* Explicit debug path: enter the mode selected with "power mode".
+         * (The automatic tickless path uses power_mgr_allowed_depth().) */
+        power_mode_t m = power_mgr_get_default();
+        if (m == POWER_MODE_RUN) {
+            out("Allowed depth is RUN - nothing to sleep into.\r\n");
+            return;
+        }
+        out("Entering %s (wake by RTC 1s / UART RX / button)...\r\n",
+            power_mode_name(m));
+        uint32_t elapsed = power_sleep_now(m);
+        /* Note: the RTC calendar (authoritative system time) and the HAL
+         * tick are compensated inside power_sleep_now(). The FreeRTOS tick
+         * is intentionally not stepped here (vTaskStepTick() is only valid
+         * from the idle-task tickless path), so tasks simply resume after
+         * the sleep with their delays extended. */
+        out("Woke up after %lu ms, RTC keeps time, RAM intact.\r\n",
+            (unsigned long)elapsed);
+    } else if (strcmp(argv[1], "info") == 0) {
+        power_mgr_log_status();
+    } else {
+        out("Unknown power subcommand: %s\r\n", argv[1]);
     }
 }
 {% endif %}
@@ -493,6 +549,9 @@ CLI_HW2C_WRAPPER(led)
 {% if has_rtc %}
 CLI_HW2C_WRAPPER(rtc)
 {% endif %}
+{% if has_power_mgr %}
+CLI_HW2C_WRAPPER(power)
+{% endif %}
 {% if has_modbus %}
 CLI_HW2C_WRAPPER(modbus)
 {% endif %}
@@ -525,6 +584,9 @@ static const hw2c_cli_cmd_t _hw2c_commands[] = {
 {% endif %}
 {% if has_rtc %}
     {"rtc",      "RTC time operations",          _hw2c_rtc},
+{% endif %}
+{% if has_power_mgr %}
+    {"power",    "Power modes (sleep/stop)",     _hw2c_power},
 {% endif %}
 {% if has_modbus %}
     {"modbus",   "Modbus read/write registers",  _hw2c_modbus},
@@ -568,6 +630,9 @@ void cli_register_builtin_commands(void)
 {% endif %}
 {% if has_rtc %}
     cli_register_command("rtc",     "RTC time operations",          cmd_rtc);
+{% endif %}
+{% if has_power_mgr %}
+    cli_register_command("power",   "Power modes (sleep/stop)",     cmd_power);
 {% endif %}
 {% if has_modbus %}
     cli_register_command("modbus",  "Modbus read/write registers",  cmd_modbus);

@@ -24,6 +24,7 @@ components:
     type: led
     driver: gpio
     period_ms: 50
+    sleep_compat: STOP1
     config:
       default_pattern: off
 
@@ -34,6 +35,7 @@ components:
     type: btn
     driver: gpio
     period_ms: 10
+    sleep_compat: STOP1
     config:
       long_press_ms: 3000
       double_click_ms: 500

@@ -87,6 +87,23 @@ void power_mgr_init(power_mode_t default_mode)
 {% endif %}
 }
 
+void power_mgr_set_default(power_mode_t mode)
+{
+    if (mode < POWER_MODE_MAX) {
+        g_power_mgr.default_mode = mode;
+        g_power_mgr.current_allowed = mode;
+        g_power_mgr.last_update = 0;
+    }
+{% if has_log %}
+    log_info("PowerMgr: mode set to %s", power_mode_name(g_power_mgr.default_mode));
+{% endif %}
+}
+
+power_mode_t power_mgr_get_default(void)
+{
+    return g_power_mgr.default_mode;
+}
+
 power_mode_t power_mgr_allowed_depth(void)
 {
 {% if has_components %}

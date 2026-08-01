@@ -36,8 +36,10 @@ class RtcIR(IRObject):
 
     has_rtc: bool = False
     clock_source: str = "LSI"
-    async_prediv: int = 127
-    sync_prediv: int = 255
+    # A=0 / S=32767 => SSR ticks at 1 kHz (1 ms resolution). This keeps the
+    # SSR-based uptime / ms-alarm math (PREDIV_S = 32767) exact.
+    async_prediv: int = 0
+    sync_prediv: int = 32767
     wakeup_interval_ms: int = 1000
     alarms: list[RtcAlarmIR] = field(default_factory=list)
     init_time: RtcInitTimeIR = field(default_factory=RtcInitTimeIR)
