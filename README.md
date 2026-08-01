@@ -4,6 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
+[![Version](https://img.shields.io/badge/version-0.4.0-orange.svg)](https://github.com/jinliangliu/hw2c)
 [![MCU](https://img.shields.io/badge/MCU-STM32G0B1-green.svg)](https://www.st.com)
 [![RTOS](https://img.shields.io/badge/RTOS-FreeRTOS-orange.svg)](https://freertos.org)
 
@@ -35,7 +36,7 @@ flowchart LR
     subgraph Parse["硬件感知解析"]
         B1["引脚-外设映射"]
         B2["时钟树推断"]
-        B3["外设类型匹配<br>100+ 芯片"]
+        B3["外设类型匹配<br>80+ 芯片"]
     end
 
     subgraph Config["可视化业务编排"]
@@ -63,7 +64,7 @@ flowchart LR
 
 ---
 
-## 多层 YAML 架构
+## 六层 YAML 架构
 
 项目采用 **六层解耦** 设计，从硬件事实到运行时参数逐层抽象，各层可独立编辑、并行协作：
 
@@ -74,7 +75,7 @@ flowchart TB
         H1["MCU<br>型号/内核/Flash/RAM"] ---
         H2["Pins<br>GPIO/EXTI/AF"] ---
         H3["Peripherals<br>I2C/SPI/UART/..."] ---
-        H4["Clock<br>HSE/LSE/PLL/SysTick"] ---
+        H4["Clock<br>HSI/HSE/LSE/PLL"] ---
         H5["Sleep<br>STOP/STANDBY"]
     end
 
@@ -121,19 +122,19 @@ flowchart TB
 生成固件内置**组件管理器**，将外设驱动封装为统一生命周期的可插拔组件：
 
 ```
-┌──────────────────────────────────────────────────┐
+┌────────────────────────────────────────────────────────────────────────────┐
 │                 component_registry                │
 │  init_all() → step_all() → 组件生命周期管理       │
-├──────────┬──────────┬──────────┬─────────────────┤
-│  shell   │   led    │   btn    │    ...          │
-│  CLI交互  │ 模式驱动 │ 手势检测 │  可扩展          │
-├──────────┴──────────┴──────────┴─────────────────┤
+├────────────┬────────────────────┬────────────────┬─────────────────────────┤
+│  shell     │   led              │   btn          │    ...                  │
+│ CLI 交互   │ 模式驱动           │ 手势检测       │  可扩展                 │
+├────────────┼────────────────────┼────────────────┼─────────────────────────┤
 │              component_bus (发布/订阅)            │
 │        Topic 路由 — 组件间解耦事件通信             │
-├──────────────────────────────────────────────────┤
+├────────────┼────────────────────┼────────────────┼─────────────────────────┤
 │             param_registry (参数注册表)            │
-│        运行时参数 — CLI get/set 动态调参           │
-└──────────────────────────────────────────────────┘
+│       运行时参数 — CLI get/set 动态调参            │
+└────────────┴────────────────────┴────────────────┴─────────────────────────┘
 ```
 
 每个组件实现三个标准接口：`init()` / `step()` / `terminate()`，由框架按 `period_ms` 周期自动调度。新增组件只需编写模板并注册到 `components.yaml`，无需改动调度器代码。
@@ -144,10 +145,13 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Inputs["输入：三层 YAML"]
+    subgraph Inputs["输入：六层 YAML"]
         HW[("hardware.yaml<br>pins / peripherals / clock")]
         TASK[("task.yaml<br>app_tasks / behavior")]
         B[("bind.yaml<br>interrupt / routing")]
+        C[("components.yaml<br>组件注册")]
+        P[("params.yaml<br>运行时参数")]
+        PS[("pubsub.yaml<br>主题路由")]
     end
 
     subgraph Merge["mapper.py 合并"]
@@ -175,10 +179,10 @@ flowchart TB
 
     Inputs --> Merge --> Validate --> Context
 
-    Context --> J2["Jinja2 模板引擎<br>.j2 → .c/.h/CMakeLists.txt"]
+    Context --> J2["Jinja2 模板引擎<br>123 个 .j2 → .c/.h/CMakeLists.txt"]
 ```
 
-> 无论旧格式（单体 YAML）还是新格式（三层拆分），`mapper.py` 确保上游零改动。
+> 无论旧格式（单体 YAML）还是新格式（六层拆分），`mapper.py` 确保上游零改动。
 
 ---
 
@@ -186,20 +190,21 @@ flowchart TB
 
 | 类别 | 能力 |
 |------|------|
-| **硬件解析** | EasyEDA Pro `.enet` / KiCad XML / S-Expr 网表，CSV BOM，100+ 外设芯片启发式匹配 |
-| **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485、红外、EEPROM、温度传感器 — 20 种模板，含遥测监控与电源管理 |
+| **硬件解析** | EasyEDA Pro `.enet` / KiCad XML / S-Expr 网表，CSV BOM，80+ 外设芯片启发式匹配 |
+| **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485(DE)、红外、EEPROM、温度传感器、Modbus、MQTT — 34 个驱动模板（共 123 个 `.j2` 模板） |
 | **组件框架** | 统一生命周期组件管理器（init/step/terminate），发布/订阅事件总线，运行时参数注册表，CLI 动态调参 |
 | **业务 DSL** | 层级状态机（复合子状态 / 并行区域 / 历史状态）、defer/timeline 时间控制、when 条件动作、ref 引用复用 |
-| **任务系统** | FreeRTOS 任务定义 + 优先级/栈配置，可视化拖拽绑定中断源与外设 |
-| **低功耗** | 自动唤醒源分析，Tickless Idle 钩子，动态睡眠深度选择（组件级 sleep_compat），STOP/STANDBY/SLEEP 支持，USART 起始位唤醒 |
+| **任务系统** | FreeRTOS 任务定义 + 优先级/栈配置，事件队列驱动任务，可视化拖拽绑定中断源与外设 |
+| **低功耗** | RUN / SLEEP / STOP0 / STOP1，RTC(LSE) 保持计时、RAM 保持，UART 起始位唤醒，组件级 `sleep_compat` 动态睡眠深度，Tickless Idle |
+| **RTC 日历** | LSE 1 Hz 唤醒心跳，10 路定时器（秒/分/小时周期 + 毫秒单次），RTC ISR 最高优先级，STOP 唤醒后时间无偏差 |
 | **Bootloader** | 双槽位 A/B，硬件 CRC32，TAMP 备份寄存器，启动失败自动回退 |
 | **FOTA** | BSDIFF 差分升级，减小 OTA 传输体积，完整性校验 + 回滚 |
-| **CLI 调试** | 交互式命令行，支持 help/version/uptime/free/tasks/sysinfo/reset/gpio/led/rtc/param 等 12+ 命令 |
-| **遥测监控** | 组件心跳计数、任务栈高水位监测、堆内存追踪、每组件错误计数、定期快照日志 |
+| **CLI 调试** | 交互式命令行，12 个内置命令：help/version/uptime/free/tasks/reset/gpio/led/rtc/telemetry/power/sysinfo |
+| **遥测监控** | 单块时间戳快照（心跳/栈水位/堆/组件健康），telemetry on/off 开关 |
 | **日志** | 环形缓冲区 + 中断驱动 USART TX，ISR 安全，零阻塞 |
-| **测试** | Unity 框架 + Mock HAL，PC 端脱离硬件运行，覆盖率报告 |
-| **通信** | Modbus RTU / MQTT 3.1.1 / RS485 半双工 / Cellular 4G Cat.1 |
-| **工具链** | `arm-none-eabi-gcc` + CMake + Ninja，VSCode launch/tasks 自动生成，ST-Link + DAP-Link 烧录 |
+| **测试** | Unity 框架 + Mock HAL 主机侧单元测试（脱离硬件）；生成器/解析器 270+ Python 测试 |
+| **通信** | Modbus RTU 主/从（FC03/06/16 + CRC16 + 异常码）、MQTT 3.1.1、USB-TTL 直连 / RS485 半双工（DE 作为 uart_api 通用特性） |
+| **工具链** | `arm-none-eabi-gcc` + CMake + Ninja，VSCode launch/tasks 自动生成，ST-Link + DAP-Link(OpenOCD) 烧录 |
 | **可配置性** | 时钟源（HSI/HSE + PLL）、USART 波特率、GPIO/AF/IRQ 全部从 hardware.yaml 派生，无硬编码 |
 
 ---
@@ -207,28 +212,42 @@ flowchart TB
 ## 快速开始
 
 ```bash
-# 1. 克隆并安装
+# 1. 克隆并安装（--recurse-submodules 拉取 HAL/CMSIS/FreeRTOS/Unity）
 git clone --recurse-submodules https://github.com/jinliangliu/hw2c.git
 cd hw2c && pip install -e .
 
-# 2. 生成基础示例（HSI 16MHz + USART2 CLI + RTC + 温度传感器 + LED/按键组件 + 状态机）
-python -m generator.generate -i examples/base/hardware.yaml -o output/my_project \
+# 2. 生成基础示例（六层 YAML 完整配置）
+python -m generator.generate -i examples/base/hardware.yaml -o output/base \
   --task examples/base/task.yaml \
   --components examples/base/components.yaml \
   --bind examples/base/bind.yaml \
   --params examples/base/params.yaml \
   --pubsub examples/base/pubsub.yaml
 
-# 3. 编译烧录
-cd output/my_project
-cmake -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake && cmake --build build
-cmake --build build --target flash
+# 3. 编译 / 主机侧单元测试 / 烧录
+cd output/base
+cmake -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake
+cmake --build build
+python test/run_tests.py                     # Unity + Mock HAL，无需硬件
+cmake --build build --target flash-daplink   # DAP-Link（CMSIS-DAP）/ OpenOCD
 
 # 4. 连接串口（115200-8N1），回车激活 CLI
 # hw2c> help
 ```
 
 > Web 可视化配置台：[hw2c-web](https://github.com/jinliangliu/hw2c-web) — 提供拖拽式任务编排、引脚封装预览、时钟树配置与 YAML 实时编辑。
+
+---
+
+## 示例工程
+
+| 示例 | 内容 | 单元测试 |
+|------|------|----------|
+| `examples/base` | 最小系统：六层 YAML + 组件框架 + RTC（1 Hz 心跳 + 10 路定时器）+ 低功耗 RUN/SLEEP/STOP0/STOP1（RTC/UART 唤醒）+ 遥测快照 + CLI + 开机 logo | 9 套件（含 SIL） |
+| `examples/modbus_demo` | Modbus RTU 主/从组件：USB-TTL 直连（USART1，默认）/ RS485（DE），FC03/06/16 + CRC16 + 异常码，ISR 环形缓冲 RX，`modbus_tool.py` 主/从对测脚本 | ✓（含 test_modbus） |
+| `examples/spi_flash_demo` | SPI NOR Flash W25Q32：读 ID / 读数据 / 页写 / 扇区擦除 / 整片擦除 | 7 套件（含 test_spi_flash 4/4） |
+
+每个示例均为六层 YAML 完整配置，可独立生成、编译并通过全部单元测试。各示例的接线、生成与对测方法见 `examples/*/README.md`。
 
 ---
 
@@ -258,32 +277,28 @@ BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三�
 
 | 外设 | 驱动模板 | Builder | 单元测试 | 业务示例 |
 |------|----------|:--:|----------|----------|
-| GPIO + EXTI | `gpio.c` | ✓ | `test_gpio.c` | `examples/base` |
-| USART | `drv_uart.c`, `drv_log.c` | ✓ | `test_uart.c` | `examples/base` |
+| GPIO + EXTI | `gpio.c` | ✓ | `test_gpio.c` | base |
+| USART | `drv_uart.c`, `drv_log.c` | ✓ | `test_uart.c` | base / modbus_demo |
 | I2C MPU6050 | `drv_i2c_mpu6050.c` | ✓ | `test_mpu6050.c` | — |
-| I2C EEPROM | `drv_eeprom.c` | ✓ | — | — |
-| SPI W25Q32 | `drv_spi_flash.c` | ✓ | `test_spi_flash.c` | — |
+| I2C EEPROM | `drv_eeprom.c` | ✓ | `test_eeprom.c` | — |
+| SPI W25Q32 | `drv_spi_flash.c` | ✓ | `test_spi_flash.c` | spi_flash_demo |
 | ADC | `drv_adc.c` | — | `test_adc.c` | — |
-| Internal TempSensor | `drv_temp_sensor.c` | — | — | CH12 + VREFINT 补偿 + ADC 校准 |
+| Internal TempSensor | `drv_temp_sensor.c` | — | — | base（CH12 + VREFINT 补偿 + ADC 校准） |
 | PWM | `drv_pwm.c` | — | `test_pwm.c` | — |
-| RTC | `drv_rtc.c` | — | `test_rtc.c` | `examples/base` |
-| IWDG | `drv_iwdg.c` | — | — | — |
-| RS485 | `drv_rs485.c` | ✓ | — | — |
-| Cellular 4G | `drv_cellular.c` | ✓ | — | — |
-| 红外 NEC/SIR | `drv_ir.c` | — | — | — |
+| RTC | `drv_rtc.c` | — | `test_rtc.c`, `test_rtc_timers.c` | base |
+| IWDG | `drv_iwdg.c` | — | `test_iwdg.c` | — |
+| RS485 | `uart_api` 的 `rs485_de_pin` 特性（通用驱动映射收发切换，非独立驱动） | ✓ | `test_rs485.c` | modbus_demo |
+| Cellular 4G | `drv_cellular.c` | ✓ | `test_cellular.c` | — |
+| 红外 NEC/SIR | `drv_ir.c` | — | `test_ir.c` | — |
 | MQTT 3.1.1 | `drv_mqtt.c` | — | `test_mqtt.c` | — |
-| Modbus RTU | `drv_modbus.c` | — | `test_modbus.c` | — |
-
-> 当前示例（六层 YAML 完整配置）：`examples/base`（最小系统）、`examples/modbus_demo`
-> （RS485 + Modbus RTU 从站）、`examples/spi_flash_demo`（SPI NOR Flash）。
-> 每个示例均可生成、编译并通过全部单元测试（含 SIL 组件测试）。
-| CLI 调试终端 | `drv_cli.c` | — | `test_cli.c` | 12+ 命令，STOP 模式唤醒 |
-| FOTA 差分升级 | `drv_fota.c` | — | `test_fota_*.c` | `fota_demo` |
-| Bootloader (A/B) | `boot_*.c` | — | `test_boot_*.c` | `bootloader_demo` |
-| Log (日志) | `drv_log.c` | — | — | 环形缓冲 + 中断 TXE，GPIO/AF 可配 |
-| Sleep (低功耗) | `sleep.c` | — | — | `low_power_demo`, USART 唤醒 |
-| PowerMgr (电源管理) | `power_mgr.c` | — | — | 动态睡眠深度选择，组件级 sleep_compat |
-| Telemetry (遥测) | `telemetry.c` | — | — | 心跳/栈水印/堆/错误计数快照 |
+| Modbus RTU 主/从 | `drv_modbus.c` | — | `test_modbus.c` | modbus_demo |
+| CLI 调试终端 | `drv_cli.c` | — | `test_cli.c` | base（12 命令，STOP 模式 UART 唤醒） |
+| FOTA 差分升级 | `drv_fota.c` + `fota_bspatch.c` | — | `test_fota_*.c` | — |
+| Bootloader (A/B) | `boot_*.c` | — | `test_boot_*.c` | — |
+| Log（日志） | `drv_log.c` | — | — | 环形缓冲 + 中断 TXE，GPIO/AF 可配 |
+| Sleep（低功耗） | `sleep.c` | — | — | base（RUN/SLEEP/STOP0/STOP1，USART 唤醒） |
+| PowerMgr（电源管理） | `power_mgr.c` | — | — | 动态睡眠深度选择，组件级 sleep_compat |
+| Telemetry（遥测） | `telemetry.c` | — | — | 心跳/栈水位/堆/错误计数快照，可开关 |
 
 ### 应用层组件
 
@@ -292,6 +307,7 @@ BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三�
 | StateMachine | `statemachine.c.j2` | `test_statemachine.c` | 层级状态机引擎，支持并行区域/历史状态/守卫条件/after 超时 |
 | LED Pattern | `led_component.c.j2` | `test_led.c` | 多实例模式驱动（off/fast_blink/slow_blink/fault） |
 | Button Gesture | `btn_component.c.j2` | `test_btn.c` | 多实例手势检测（SHORT_PRESS/DOUBLE_PRESS/LONG_PRESS） |
+| Modbus 主/从 | `modbus_component.c.j2` | `test_modbus.c` | 角色可配（master/slave），数据映射到寄存器表，USB-TTL/RS485 双传输 |
 | Component Bus | `component_bus.c.j2` | — | 发布/订阅事件总线，组件间解耦通信 |
 | Param Registry | `param_registry.c.j2` | — | 运行时参数注册表，CLI get/set 动态调参 |
 
@@ -323,10 +339,10 @@ behavior:
 
 | 项目 | 版本 | 许可证 | 用途 |
 |------|------|--------|------|
-| [FreeRTOS-Kernel](https://github.com/FreeRTOS/FreeRTOS-Kernel) | V11.1.0 (202406 LTS) | MIT | RTOS 内核，任务调度 / Tickless 低功耗 / 队列 / 信号量 / 软件定时器 |
+| [FreeRTOS-Kernel](https://github.com/FreeRTOS/FreeRTOS-Kernel) | V10.4.x（kernel-only 子模块） | MIT | RTOS 内核：任务调度 / Tickless 低功耗 / 队列 / 信号量 / 软件定时器 |
 | [CMSIS Core](https://github.com/ARM-software/CMSIS_5) | V5.3.0 | Apache 2.0 | Cortex-M0+ 核心访问层，编译器抽象头文件 |
 | STM32CubeG0 CMSIS Device | V1.4.5 | Apache 2.0 | STM32G0xx 设备定义、启动代码、system 初始化 |
-| STM32CubeG0 HAL | V1.4.5 (Bundle) | BSD-3-Clause | 硬件抽象层：GPIO / UART / SPI / I2C / ADC / RTC / DMA / FDCAN / TIM 等外设驱动 |
+| STM32CubeG0 HAL | V1.4.5 (Bundle) | BSD-3-Clause | 硬件抽象层：GPIO / UART / SPI / I2C / ADC / RTC / DMA / TIM 等外设驱动 |
 | [LwRB](https://github.com/MaJerle/lwrb) | v3.2.0 | MIT | 轻量级无锁环形缓冲区，用于 USART 日志和 CLI 输入缓冲 |
 | [Unity](http://www.throwtheswitch.org/unity) | 2007–2026 | MIT | C 语言单元测试框架，PC 端离线验证驱动和状态机逻辑 |
 
@@ -335,7 +351,7 @@ behavior:
 | 项目 | 最低版本 | 许可证 | 用途 |
 |------|----------|--------|------|
 | [PyYAML](https://pyyaml.org/) | >= 6.0 | MIT | 硬件 / 任务 / 绑定 YAML 配置文件解析 |
-| [Jinja2](https://jinja.palletsprojects.com/) | >= 3.0 | BSD-3-Clause | C 代码模板引擎，94 个 `.j2` 模板渲染为 `.c/.h` |
+| [Jinja2](https://jinja.palletsprojects.com/) | >= 3.0 | BSD-3-Clause | C 代码模板引擎，123 个 `.j2` 模板渲染为 `.c/.h` |
 | [Pydantic](https://docs.pydantic.dev/) | >= 2.0 | MIT | 类型安全数据模型与 Schema 校验 |
 | [libcst](https://libcst.readthedocs.io/) | >= 1.0.0 | MIT | C 源代码解析与 USER CODE 块合并 |
 | [Click](https://click.palletsprojects.com/) | >= 8.1.0 | BSD-3-Clause | CLI 命令行框架（`hw2c gen` / `hw2c parse`） |
@@ -363,15 +379,15 @@ behavior:
 
 ```
 hw2c
-├── parser/          # 网表/BOM 解析管线
-├── generator/       # 代码生成引擎（mapper / context / schemas / builders）
-├── templates/       # Jinja2 模板（驱动 / 组件 / 状态机 / 遥测 / 电源管理 / 测试 / 配置 / CMake / 链接脚本）
+├── parser/          # 网表/BOM 解析管线（hw2c CLI）
+├── generator/       # 代码生成引擎（mapper / context / builders / validators / 207 项测试）
+├── templates/       # 123 个 Jinja2 模板（34 个驱动模板 + 组件/状态机/测试/CMake/链接脚本）
 ├── models/          # 18 个外设模型 YAML
-├── examples/        # 示例项目（base 最小系统 + 各外设 demo，含六层 YAML 配置）
-│   └── base/        #   hardware / task / components / bind / params / pubsub
-├── docs/            # MkDocs 文档（用户指南 / 开发者指南 / 路线图）
-├── static/          # Git 子模块（HAL / CMSIS / FreeRTOS / Unity）+ third_party（LwRB）
-└── tests/           # 78 个生成器单元测试
+├── examples/        # base / modbus_demo / spi_flash_demo（六层 YAML 配置 + README + 对测脚本）
+├── docs/            # MkDocs 文档（用户指南 / 开发者指南 / 参考 / 路线图）
+├── static/          # Git 子模块（HAL / CMSIS / FreeRTOS / Unity）+ hw2c_cli + LwRB
+├── output/          # 生成工程输出（本地构建产物，不入库）
+└── tests/           # 解析器/引脚分配器单元测试（67 项）
 ```
 
 ---
@@ -388,7 +404,7 @@ hw2c
 ### 引脚与时钟
 - 引脚-总线映射表硬编码（`_STM32G0_PIN_BUS`），新增 MCU 需手动添加映射
 - I2C TIMINGR 使用预计算查找表（仅覆盖 16 MHz / 64 MHz I2C 时钟场景），非全频率自适应
-- 时钟源（HSI/HSE）和 PLL 倍频/分频参数可通过 `hardware.yaml` 配置，支持动态生成 SystemClock_Config
+- RTC 依赖真实 LSE 晶振：启动时强制清除 LSE 旁路位（LSEBYP），无外部时钟的旁路模式会导致日历漂移
 
 ### 网表与 BOM
 - BOM 解析依赖启发式字符串匹配，非标准元件名可能漏识别
@@ -405,7 +421,19 @@ hw2c
 
 ### Web 前端
 - 解析进度无可视化反馈（目前为 WebSocket 单次推送最终结果）
-- Web 端 YAML 编辑器仅支持单体 legacy 格式预览，三层拆分编辑功能开发中
+- Web 端 YAML 编辑器仅支持单体 legacy 格式预览，六层拆分编辑功能开发中
+
+---
+
+## 最近更新（v0.4.0）
+
+- **base 低功耗**：RUN / SLEEP / STOP0 / STOP1 全模式，RTC(LSE) 与 RAM 保持，UART 起始位唤醒，唤醒后系统时间无偏差
+- **RTC 定时系统**：1 Hz 心跳 + 10 路定时器（秒/分/小时周期 + 毫秒单次），RTC ISR 最高优先级（STOP 模式可靠唤醒）
+- **RTC 日历修复**：SSR/TR 影子寄存器读取后解锁（修复快照时间戳冻结），启动清理 LSE 旁路位（修复日历跑快），tick 日志静音
+- **Modbus 组件化**：主/从双角色（FC03/06/16 + CRC16 + 异常码），ISR 环形缓冲 RX，USB-TTL 直连 / RS485 双传输，RS485 DE 收敛为 `uart_api` 通用特性，`modbus_tool.py` 主/从对测
+- **遥测与日志**：单块时间戳快照 + on/off 开关，开机 logo，日志零阻塞
+- **CLI**：12 个内置命令，STOP 模式可交互
+- **CI**：build_and_test（编译 + 主机单元测试 + SIL 组件测试 + Pages 部署），修复 mock_hal `size_t` 编译与 github-pages environment 缺失
 
 ---
 
