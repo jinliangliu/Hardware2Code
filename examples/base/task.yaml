@@ -57,11 +57,6 @@ behavior:
 
 # Periodic RTC alarm events
 periodic_events:
-  # 1-second RTC wakeup heartbeat
-  - event: TICK_1S
-    actions:
-      - 'log "rtc: 1s tick"'
-
   # 15-second periodic tick
   - event: TICK_15S
     actions:
