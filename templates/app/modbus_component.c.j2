@@ -1,5 +1,5 @@
 {#
-    modbus_component.c.j2 - Modbus RTU slave component
+    modbus_component.c.j2 - Modbus RTU component (slave or master)
 
     Wraps the Modbus protocol driver (drv_modbus) as a framework component.
     The UART transport always goes through uart_api.  RS485 half-duplex is
@@ -8,10 +8,15 @@
 
     Component config:
         uart: usart1           # UART peripheral name
+        role: slave|master     # default: slave (from peripheral extra.role)
 
-    Holding registers are backed by an internal table.  When pubsub.yaml
-    defines a "temperature" topic, the component subscribes and mirrors the
-    value into the register whose name contains "temperature".
+    Slave: holds an internal register table; incoming FC03/06/16 requests
+           are answered in step(); a "temperature" pub/sub topic is mirrored
+           into the register whose name contains "temperature".
+
+    Master: step() periodically polls a remote slave's holding registers
+           (config: target_slave / poll_interval_ms / poll_addr / poll_count)
+           and logs the result.
 #}
 {% set modbus_list = peripherals | selectattr('type', 'eq', 'Protocol_Modbus') | list %}
 {% set rs485_list  = peripherals | selectattr('type', 'eq', 'RS485') | list %}
@@ -22,6 +27,11 @@
 {% set rs = rs485_list[0] if rs485_list else none %}
 {% set rs_extra = rs.get('extra', {}) if rs else {} %}
 {% set mb_uart = comp_config.get('uart', '') if comp_config.get('uart') else (rs_extra.get('uart', '') if rs else '') %}
+{% set role = comp_config.get('role', mb_extra.get('role', 'slave')) %}
+{% set target_slave = comp_config.get('target_slave', 1) %}
+{% set poll_interval_ms = comp_config.get('poll_interval_ms', 2000) %}
+{% set poll_addr = comp_config.get('poll_addr', 0) %}
+{% set poll_count = comp_config.get('poll_count', 1) %}
 {% set reg_count = (regs | map(attribute='addr') | max | int) + 1 if regs else 0 %}
 {% set temp_reg = regs | selectattr('name', 'in', ['temperature', 'temperature_x10', 'temp']) | first %}
 {% set has_temp_topic = topics | selectattr('name', 'eq', 'temperature') | list | length > 0 %}
@@ -35,6 +45,7 @@
 #include <string.h>
 #ifndef TEST
 #include "stm32g0xx_hal.h"
+#include "drv_log.h"
 #endif
 
 /* ---- Component-private context ---- */
@@ -43,16 +54,22 @@ struct {{ comp_name }}_ctx {
 };
 
 static struct {{ comp_name }}_ctx g_{{ comp_name }}_ctx;
-
-/* ---- Modbus holding registers (index = Modbus address) ---- */
-#if {{ reg_count }} > 0
-static uint16_t g_modbus_regs[{{ reg_count }}];
-#endif
-
-/* ---- UART transport (USB-TTL direct, or RS485 via uart_api DE) ----
- * RX uses the USART1 RXNE interrupt to fill a ring buffer so bytes are
- * never lost to task preemption (STM32G0 USART has no hardware FIFO). */
 static uart_handle_t g_uart_handle;
+
+{% if role == 'master' %}
+/* ---- Master transport: blocking request/response ---- */
+static uint8_t modbus_comp_tx(uint8_t *data, uint16_t len)
+{
+    return (uart_write(g_uart_handle, data, len) > 0) ? 1 : 0;
+}
+
+static uint8_t modbus_comp_rx(uint8_t *buf, uint16_t len, uint32_t timeout)
+{
+    return (uart_read(g_uart_handle, buf, len, timeout) > 0) ? 1 : 0;
+}
+{% else %}
+/* ---- Slave transport: ISR ring buffer (no bytes lost to preemption) ----
+ * RX uses the USART1 RXNE interrupt; STM32G0 USART has no hardware FIFO. */
 static uint8_t  g_rx_buf[256];
 static volatile uint16_t g_rx_head = 0;
 static volatile uint16_t g_rx_tail = 0;
@@ -102,33 +119,28 @@ static uint8_t modbus_comp_rx(uint8_t *buf, uint16_t len, uint32_t timeout)
     }
     return (got > 0) ? 1 : 0;
 }
+{% endif %}
 
-/* ---- Register callbacks ---- */
+{% if role != 'master' and reg_count > 0 %}
+/* ---- Modbus holding registers (index = Modbus address) ---- */
+static uint16_t g_modbus_regs[{{ reg_count }}];
+
 static void modbus_comp_read_reg(uint16_t addr, uint16_t *val)
 {
-#if {{ reg_count }} > 0
     if (addr < {{ reg_count }} && val) {
         *val = g_modbus_regs[addr];
     }
-#else
-    (void)addr;
-    if (val) *val = 0;
-#endif
 }
 
 static void modbus_comp_write_reg(uint16_t addr, uint16_t val)
 {
-#if {{ reg_count }} > 0
     if (addr < {{ reg_count }}) {
         g_modbus_regs[addr] = val;
     }
-#else
-    (void)addr;
-    (void)val;
-#endif
 }
+{% endif %}
 
-{% if use_temp_mapping %}
+{% if role != 'master' and use_temp_mapping %}
 /* Mirror the pub/sub temperature topic into the temperature register. */
 static void modbus_comp_on_temperature(topic_id_t topic, uint32_t value, void *ctx)
 {
@@ -149,12 +161,18 @@ int {{ comp_name }}_init(component_t *c, void *cfg)
     if (g_uart_handle == NULL) {
         return -1;
     }
+
+{% if role == 'master' %}
+    /* Master needs no register table or RX interrupt. */
+    modbus_init(0, 0,
+                (void *)modbus_comp_tx, (void *)modbus_comp_rx,
+                NULL, NULL);
+{% else %}
     /* Enable USART1 RXNE interrupt for ring-buffer reception. */
     USART1->CR1 |= USART_CR1_RXNEIE_RXFNEIE;
     NVIC_EnableIRQ(USART1_IRQn);
 
 #if {{ reg_count }} > 0
-    /* Initialise register table from hardware.yaml registers. */
     memset(g_modbus_regs, 0, sizeof(g_modbus_regs));
 {% for r in regs %}
     if ({{ r.addr }} < {{ reg_count }}) g_modbus_regs[{{ r.addr }}] = {{ r.get('default', 0) }};
@@ -167,6 +185,7 @@ int {{ comp_name }}_init(component_t *c, void *cfg)
 
 {% if use_temp_mapping %}
     bus_subscribe(TOPIC_TEMPERATURE, modbus_comp_on_temperature, NULL);
+{% endif %}
 {% endif %}
 #else
     (void)0;
@@ -184,7 +203,28 @@ void {{ comp_name }}_step(component_t *c)
         return;
     }
 #ifndef TEST
+{% if role == 'master' %}
+    {
+        static uint32_t last_poll = 0;
+        uint32_t now = HAL_GetTick();
+        if (now - last_poll >= {{ poll_interval_ms }}) {
+            uint16_t vals[{{ poll_count }}];
+            int rc = modbus_master_read_regs({{ target_slave }}, {{ poll_addr }},
+                                             {{ poll_count }}, vals, 100);
+            if (rc == 0) {
+                log_info("MB master: slave %u reg[%u..%u] = %u",
+                         (unsigned){{ target_slave }}, (unsigned){{ poll_addr }},
+                         (unsigned)({{ poll_addr }} + {{ poll_count }} - 1),
+                         (unsigned)vals[0]);
+            } else {
+                log_info("MB master: poll failed rc=%d", rc);
+            }
+            last_poll = now;
+        }
+    }
+{% else %}
     modbus_process();
+{% endif %}
 #else
     (void)0;
 #endif

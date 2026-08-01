@@ -484,7 +484,98 @@ void test_modbus_write_multiple_out_of_range_returns_illegal_address(void)
     TEST_ASSERT_EQUAL_UINT8(MODBUS_EX_ILLEGAL_ADDRESS, mock_tx_buf[2]);
 }
 
+
+/* ---- Master (client) API tests ---- */
+static void mock_set_response(const uint8_t *data, uint16_t len)
+{
+    mock_rx_idx = 0;
+    mock_rx_len = 0;
+    if (len <= sizeof(mock_rx_buf)) {
+        memcpy(mock_rx_buf, data, len);
+        mock_rx_len = len;
+    }
+}
+
+void test_modbus_master_read_regs_ok(void)
+{
+    uint8_t resp[9];
+    uint16_t out[2];
+    resp[0] = 0x01;
+    resp[1] = 0x03;
+    resp[2] = 0x04;                 /* byte count */
+    resp[3] = 0x00; resp[4] = 0x01; /* reg0 = 1 */
+    resp[5] = 0x01; resp[6] = 0x2C; /* reg1 = 300 */
+    mock_frame_add_crc(resp, 7);
+    mock_set_response(resp, 9);
+
+    int rc = modbus_master_read_regs(1, 0, 2, out, 100);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_UINT16(1, out[0]);
+    TEST_ASSERT_EQUAL_UINT16(300, out[1]);
+    /* Request frame: slave=1, func=0x03, addr=0, count=2 */
+    TEST_ASSERT_EQUAL_UINT8(0x01, mock_tx_buf[0]);
+    TEST_ASSERT_EQUAL_UINT8(0x03, mock_tx_buf[1]);
+    TEST_ASSERT_EQUAL_UINT8(0x00, mock_tx_buf[2]);
+    TEST_ASSERT_EQUAL_UINT8(0x02, mock_tx_buf[5]);
+}
+
+void test_modbus_master_write_single_ok(void)
+{
+    uint8_t resp[8];
+    resp[0] = 0x01;
+    resp[1] = 0x06;
+    resp[2] = 0x00; resp[3] = 0x01;
+    resp[4] = 0x00; resp[5] = 0x2A;
+    mock_frame_add_crc(resp, 6);
+    mock_set_response(resp, 8);
+
+    int rc = modbus_master_write_single(1, 1, 42, 100);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_UINT8(0x06, mock_tx_buf[1]);
+    TEST_ASSERT_EQUAL_UINT8(0x2A, mock_tx_buf[5]);
+}
+
+void test_modbus_master_write_multiple_ok(void)
+{
+    uint8_t resp[8];
+    uint16_t vals[2] = {100, 200};
+    resp[0] = 0x01;
+    resp[1] = 0x10;
+    resp[2] = 0x00; resp[3] = 0x02;
+    resp[4] = 0x00; resp[5] = 0x02;
+    mock_frame_add_crc(resp, 6);
+    mock_set_response(resp, 8);
+
+    int rc = modbus_master_write_multiple(1, 2, vals, 2, 100);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_UINT8(0x10, mock_tx_buf[1]);
+    TEST_ASSERT_EQUAL_UINT8(0x04, mock_tx_buf[6]);  /* byte count */
+}
+
+void test_modbus_master_read_exception(void)
+{
+    uint8_t resp[5];
+    uint16_t out[1];
+    resp[0] = 0x01;
+    resp[1] = 0x83;   /* read exception */
+    resp[2] = 0x02;   /* illegal data address */
+    mock_frame_add_crc(resp, 3);
+    mock_set_response(resp, 5);
+
+    int rc = modbus_master_read_regs(1, 999, 1, out, 100);
+    TEST_ASSERT_EQUAL_INT(-MODBUS_EX_ILLEGAL_ADDRESS, rc);
+}
+
+void test_modbus_master_no_response(void)
+{
+    uint16_t out[1];
+    mock_set_response(NULL, 0);   /* slave silent */
+    int rc = modbus_master_read_regs(1, 0, 1, out, 100);
+    TEST_ASSERT_TRUE(rc < 0);
+}
+
 int main(void)
+
 
 {
     UNITY_BEGIN();
@@ -505,6 +596,11 @@ int main(void)
     RUN_TEST(test_modbus_read_range_overflow_returns_illegal_address);
     RUN_TEST(test_modbus_write_single_out_of_range_returns_illegal_address);
     RUN_TEST(test_modbus_write_multiple_out_of_range_returns_illegal_address);
+    RUN_TEST(test_modbus_master_read_regs_ok);
+    RUN_TEST(test_modbus_master_write_single_ok);
+    RUN_TEST(test_modbus_master_write_multiple_ok);
+    RUN_TEST(test_modbus_master_read_exception);
+    RUN_TEST(test_modbus_master_no_response);
 
     return UNITY_END();
 }

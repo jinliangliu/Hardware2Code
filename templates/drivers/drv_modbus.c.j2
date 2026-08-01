@@ -337,3 +337,188 @@ void modbus_process(void)
     /* Process the frame */
     modbus_handle_frame(frame, len);
 }
+/* ==================================================================
+ * Master (client) API
+ *
+ * The master initiates a request and waits for the slave response.
+ * Exchange is blocking: the caller owns the bus until the response
+ * (or timeout) completes.  Return values:
+ *   0        success
+ *  -1        tx/rx callback missing
+ *  -2        no response / short frame
+ *  -3        CRC mismatch
+ *  -4 .. -99 Modbus exception code (negated)
+ *  -100+     protocol error
+ * ================================================================== */
+
+static int modbus_master_exchange(const uint8_t *req, uint16_t req_len,
+                                  uint8_t *resp, uint16_t *resp_len,
+                                  uint32_t timeout_ms)
+{
+    uint16_t len;
+    uint16_t crc_calc, crc_recv;
+
+    if (!tx_func || !rx_func) {
+        return -1;
+    }
+
+    tx_func((uint8_t *)req, req_len);
+
+    /* Wait for the first response byte */
+    if (rx_func(resp, 1, timeout_ms) == 0) {
+        return -2;
+    }
+    /* Read remaining bytes; byte-gap timeout ends the frame */
+    for (len = 1; len < 255; len++) {
+        if (rx_func(&resp[len], 1, MODBUS_FRAME_TIMEOUT_MS) == 0) {
+            break;
+        }
+    }
+    if (len < 4) {
+        return -2;
+    }
+
+    crc_recv = (uint16_t)(resp[len - 1] << 8) | resp[len - 2];
+    crc_calc = crc16_modbus_compute(resp, (uint16_t)(len - 2));
+    if (crc_calc != crc_recv) {
+        return -3;
+    }
+    *resp_len = len;
+    return 0;
+}
+
+static int modbus_master_response_ok(const uint8_t *resp, uint16_t len,
+                                     uint8_t func, uint16_t *resp_len)
+{
+    if (len < 4) {
+        return -2;
+    }
+    if (resp[1] & 0x80U) {
+        return -(int)(resp[2]);          /* Modbus exception code */
+    }
+    if (resp[1] != func) {
+        return -100;
+    }
+    *resp_len = len;
+    return 0;
+}
+
+int modbus_master_read_regs(uint8_t slave, uint16_t addr, uint16_t count,
+                            uint16_t *out, uint32_t timeout_ms)
+{
+    uint8_t  req[8];
+    uint8_t  resp[256];
+    uint16_t resp_len;
+    uint16_t crc;
+    int      rc;
+    uint16_t i;
+
+    if (count == 0 || count > 125) {
+        return -101;
+    }
+
+    req[0] = slave;
+    req[1] = MODBUS_FC_READ_HOLDING_REGS;
+    req[2] = (uint8_t)(addr >> 8);
+    req[3] = (uint8_t)(addr & 0xFF);
+    req[4] = (uint8_t)(count >> 8);
+    req[5] = (uint8_t)(count & 0xFF);
+    crc = crc16_modbus_compute(req, 6);
+    req[6] = (uint8_t)(crc & 0xFF);
+    req[7] = (uint8_t)(crc >> 8);
+
+    rc = modbus_master_exchange(req, sizeof(req), resp, &resp_len, timeout_ms);
+    if (rc != 0) {
+        return rc;
+    }
+    rc = modbus_master_response_ok(resp, resp_len, MODBUS_FC_READ_HOLDING_REGS, &resp_len);
+    if (rc != 0) {
+        return rc;
+    }
+    if (resp_len < 3U + (uint16_t)(count * 2U)) {
+        return -102;
+    }
+    for (i = 0; i < count; i++) {
+        out[i] = ((uint16_t)resp[3 + i * 2] << 8) | resp[4 + i * 2];
+    }
+    return 0;
+}
+
+int modbus_master_write_single(uint8_t slave, uint16_t addr, uint16_t value,
+                               uint32_t timeout_ms)
+{
+    uint8_t  req[8];
+    uint8_t  resp[8];
+    uint16_t resp_len;
+    uint16_t crc;
+    int      rc;
+
+    req[0] = slave;
+    req[1] = MODBUS_FC_WRITE_SINGLE_REG;
+    req[2] = (uint8_t)(addr >> 8);
+    req[3] = (uint8_t)(addr & 0xFF);
+    req[4] = (uint8_t)(value >> 8);
+    req[5] = (uint8_t)(value & 0xFF);
+    crc = crc16_modbus_compute(req, 6);
+    req[6] = (uint8_t)(crc & 0xFF);
+    req[7] = (uint8_t)(crc >> 8);
+
+    rc = modbus_master_exchange(req, sizeof(req), resp, &resp_len, timeout_ms);
+    if (rc != 0) {
+        return rc;
+    }
+    rc = modbus_master_response_ok(resp, resp_len, MODBUS_FC_WRITE_SINGLE_REG, &resp_len);
+    if (rc != 0) {
+        return rc;
+    }
+    if (resp_len != 8) {
+        return -103;
+    }
+    return 0;
+}
+
+int modbus_master_write_multiple(uint8_t slave, uint16_t addr,
+                                 const uint16_t *values, uint16_t count,
+                                 uint32_t timeout_ms)
+{
+    uint8_t  req[7 + 252];
+    uint8_t  resp[8];
+    uint16_t resp_len;
+    uint16_t crc;
+    uint16_t i;
+    int      rc;
+
+    if (count == 0 || count > 123) {
+        return -101;
+    }
+
+    req[0] = slave;
+    req[1] = MODBUS_FC_WRITE_MULTIPLE_REGS;
+    req[2] = (uint8_t)(addr >> 8);
+    req[3] = (uint8_t)(addr & 0xFF);
+    req[4] = (uint8_t)(count >> 8);
+    req[5] = (uint8_t)(count & 0xFF);
+    req[6] = (uint8_t)(count * 2U);
+    for (i = 0; i < count; i++) {
+        req[7 + i * 2]     = (uint8_t)(values[i] >> 8);
+        req[8 + i * 2]     = (uint8_t)(values[i] & 0xFF);
+    }
+    crc = crc16_modbus_compute(req, (uint16_t)(7 + count * 2U));
+    req[7 + count * 2U]     = (uint8_t)(crc & 0xFF);
+    req[8 + count * 2U]     = (uint8_t)(crc >> 8);
+
+    rc = modbus_master_exchange(req, (uint16_t)(9 + count * 2U),
+                                resp, &resp_len, timeout_ms);
+    if (rc != 0) {
+        return rc;
+    }
+    rc = modbus_master_response_ok(resp, resp_len, MODBUS_FC_WRITE_MULTIPLE_REGS, &resp_len);
+    if (rc != 0) {
+        return rc;
+    }
+    if (resp_len != 8) {
+        return -103;
+    }
+    return 0;
+}
+
