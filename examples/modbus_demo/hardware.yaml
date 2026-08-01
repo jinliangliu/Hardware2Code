@@ -59,6 +59,14 @@ peripherals:
     extra:
       baudrate: 115200
 
+  # RS485 transport (USART1 @ 9600, Modbus RTU default)
+  - name: usart1
+    type: UART_Serial
+    instance: USART1
+    interface: uart
+    extra:
+      baudrate: 9600
+
   - name: shell
     type: Internal_CLI
     uart: usart2
@@ -80,7 +88,7 @@ peripherals:
       bearer: rs485
       slave_id: 1
       registers:
-        - { addr: 0, name: "status", default: 0 }
+        - { addr: 0, name: "status", default: 1 }
         - { addr: 1, name: "temperature_x10", default: 300 }
 
   - name: rtc

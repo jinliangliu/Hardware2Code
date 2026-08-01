@@ -10,7 +10,7 @@
 static UART_HandleTypeDef *huart_ptr;
 #endif
 
-void UART_Init(UART_HandleTypeDef *huart) {
+static void UART_Init(UART_HandleTypeDef *huart) {
 #ifndef TEST
     huart_ptr = huart;
 #else
@@ -19,7 +19,7 @@ void UART_Init(UART_HandleTypeDef *huart) {
 #endif
 }
 
-void UART_SendByte(uint8_t byte) {
+static void UART_SendByte(uint8_t byte) {
 #ifndef TEST
     HAL_UART_Transmit(huart_ptr, &byte, 1, 100);
 #else
@@ -27,7 +27,7 @@ void UART_SendByte(uint8_t byte) {
 #endif
 }
 
-void UART_SendString(const char *str) {
+static void UART_SendString(const char *str) {
 #ifndef TEST
     HAL_UART_Transmit(huart_ptr, (uint8_t *)str, strlen(str), 100);
 #else
@@ -35,7 +35,7 @@ void UART_SendString(const char *str) {
 #endif
 }
 
-uint8_t UART_ReceiveByte(void) {
+static uint8_t UART_ReceiveByte(void) {
 #ifndef TEST
     uint8_t byte;
     HAL_UART_Receive(huart_ptr, &byte, 1, 100);
@@ -54,7 +54,7 @@ static uint16_t  rx_count = 0;
 static bool      rx_complete = false;
 #endif
 
-void UART_StartRx_IT(uint8_t *buf, uint16_t size)
+static void UART_StartRx_IT(uint8_t *buf, uint16_t size)
 {
 #ifndef TEST
     rx_buf_ptr   = buf;
@@ -68,7 +68,7 @@ void UART_StartRx_IT(uint8_t *buf, uint16_t size)
 #endif
 }
 
-uint16_t UART_GetRxCount(void)
+static uint16_t UART_GetRxCount(void)
 {
 #ifndef TEST
     /*
@@ -84,7 +84,7 @@ uint16_t UART_GetRxCount(void)
 #endif
 }
 
-bool UART_IsRxComplete(void)
+static bool UART_IsRxComplete(void)
 {
 #ifndef TEST
     return rx_complete;

@@ -9,9 +9,6 @@ peripheral_assign:
   - peripheral: shell
     task: shell_task
     role: cli
-  - peripheral: modbus
-    task: modbus_task
-    role: modbus_slave
   - peripheral: rtc
     task: events_process_task
     role: tick_timer

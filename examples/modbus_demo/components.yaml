@@ -25,3 +25,12 @@ components:
       long_press_ms: 1000
       double_click_ms: 500
       debounce_ms: 50
+
+  # Modbus RTU slave - wraps drv_modbus + drv_rs485
+  # step() polls incoming frames; registers mirror the temperature topic.
+  - name: modbus_slave
+    type: modbus
+    driver: rs485
+    period_ms: 10
+    config:
+      description: "Modbus RTU slave over RS485"

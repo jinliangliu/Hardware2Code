@@ -1,28 +1,34 @@
+{#
+    drv_rs485.c.j2 - RS485 half-duplex driver
+
+    Uses the POSIX-style uart_api / gpio_api interfaces instead of direct
+    HAL calls, so the driver is hardware-agnostic and consistent with the
+    component framework.  DE direction control is a plain GPIO output.
+#}
 #ifdef TEST
 #include "mock_hal.h"
 #else
 #include "stm32g0xx_hal.h"
 #endif
+#include "uart_api.h"
+#include "gpio_api.h"
 #include "drv_{{ peripheral.name }}.h"
 
 #ifndef TEST
-static UART_HandleTypeDef *huart_ptr;
-static GPIO_TypeDef *de_port;
-static uint16_t de_pin;
+static uart_handle_t g_uart_handle;
+static gpio_handle_t g_de_handle;
 #endif
 
-void rs485_init(UART_HandleTypeDef *huart, GPIO_TypeDef *de_gpio, uint16_t de_gpio_pin)
+void rs485_init(uart_handle_t uart, gpio_handle_t de_gpio)
 {
 #ifndef TEST
-    huart_ptr = huart;
-    de_port = de_gpio;
-    de_pin = de_gpio_pin;
+    g_uart_handle = uart;
+    g_de_handle   = de_gpio;
     /* DE low = receive mode by default */
-    HAL_GPIO_WritePin(de_port, de_pin, GPIO_PIN_RESET);
+    gpio_write(g_de_handle, 0);
 #else
-    (void)huart;
+    (void)uart;
     (void)de_gpio;
-    (void)de_gpio_pin;
     mock_HAL_GPIO_WritePin_set(0, GPIO_PIN_RESET);
 #endif
 }
@@ -30,7 +36,7 @@ void rs485_init(UART_HandleTypeDef *huart, GPIO_TypeDef *de_gpio, uint16_t de_gp
 void rs485_set_tx(void)
 {
 #ifndef TEST
-    HAL_GPIO_WritePin(de_port, de_pin, GPIO_PIN_SET);
+    gpio_write(g_de_handle, 1);
 #else
     mock_HAL_GPIO_WritePin_set(0, GPIO_PIN_SET);
 #endif
@@ -39,7 +45,7 @@ void rs485_set_tx(void)
 void rs485_set_rx(void)
 {
 #ifndef TEST
-    HAL_GPIO_WritePin(de_port, de_pin, GPIO_PIN_RESET);
+    gpio_write(g_de_handle, 0);
 #else
     mock_HAL_GPIO_WritePin_set(0, GPIO_PIN_RESET);
 #endif
@@ -49,15 +55,15 @@ void rs485_send(uint8_t *data, uint16_t len)
 {
 #ifndef TEST
     rs485_set_tx();
-    HAL_UART_Transmit(huart_ptr, data, len, 100);
-    /* Wait for TC before switching back to RX */
-    while (__HAL_UART_GET_FLAG(huart_ptr, UART_FLAG_TC) == RESET);
+    /* Blocking write completes when the frame is shifted out; DE is
+     * released right after, which is sufficient for Modbus timing. */
+    uart_write(g_uart_handle, data, len);
     rs485_set_rx();
 #else
     (void)data;
     (void)len;
     rs485_set_tx();
-    HAL_UART_Transmit(NULL, data, len, 100);
+    mock_uart_write_called_flag();
     rs485_set_rx();
 #endif
 }
@@ -65,11 +71,11 @@ void rs485_send(uint8_t *data, uint16_t len)
 void rs485_recv(uint8_t *data, uint16_t len, uint32_t timeout)
 {
 #ifndef TEST
-    HAL_UART_Receive(huart_ptr, data, len, timeout);
+    uart_read(g_uart_handle, data, len, timeout);
 #else
     (void)data;
     (void)len;
     (void)timeout;
-    HAL_UART_Receive(NULL, data, len, timeout);
+    mock_uart_read_called_flag();
 #endif
 }

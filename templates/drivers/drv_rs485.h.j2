@@ -6,8 +6,10 @@
 #else
 #include "stm32g0xx_hal.h"
 #endif
+#include "uart_api.h"
+#include "gpio_api.h"
 
-void rs485_init(UART_HandleTypeDef *huart, GPIO_TypeDef *de_gpio, uint16_t de_pin);
+void rs485_init(uart_handle_t uart, gpio_handle_t de_gpio);
 void rs485_set_tx(void);
 void rs485_set_rx(void);
 void rs485_send(uint8_t *data, uint16_t len);

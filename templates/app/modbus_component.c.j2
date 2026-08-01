@@ -1,0 +1,159 @@
+{#
+    modbus_component.c.j2 - Modbus RTU slave component
+
+    Wraps the Modbus protocol driver (drv_modbus) and RS485 transport
+    (drv_rs485) as a framework component:
+      init   -> uart_open + gpio_open(DE) + rs485_init + modbus_init
+      step   -> modbus_process() (poll incoming frames)
+
+    Holding registers are backed by an internal table.  When pubsub.yaml
+    defines a "temperature" topic, the component subscribes and mirrors the
+    value into the register whose name contains "temperature".
+#}
+{% set modbus_list = peripherals | selectattr('type', 'eq', 'Protocol_Modbus') | list %}
+{% set rs485_list  = peripherals | selectattr('type', 'eq', 'RS485') | list %}
+{% set mb = modbus_list[0] if modbus_list else none %}
+{% set mb_extra = mb.get('extra', {}) if mb else {} %}
+{% set regs = mb_extra.get('registers', []) if mb else [] %}
+{% set slave_id = mb_extra.get('slave_id', 1) if mb else 1 %}
+{% set rs = rs485_list[0] if rs485_list else none %}
+{% set rs_extra = rs.get('extra', {}) if rs else {} %}
+{% set rs_name = rs.name if rs else 'rs485' %}
+{% set uart_name = rs_extra.get('uart', '') if rs else '' %}
+{% set de_pin_id = rs_extra.get('de_pin', '') if rs else '' %}
+{% set de_pin_obj = pins | selectattr('id', 'eq', de_pin_id) | first if de_pin_id else none %}
+{% set de_label = de_pin_obj.get('label', de_pin_id) if de_pin_obj else de_pin_id %}
+{% set reg_count = (regs | map(attribute='addr') | max | int) + 1 if regs else 0 %}
+{% set temp_reg = regs | selectattr('name', 'in', ['temperature', 'temperature_x10', 'temp']) | first %}
+{% set has_temp_topic = topics | selectattr('name', 'eq', 'temperature') | list | length > 0 %}
+{% set use_temp_mapping = has_temp_topic and temp_reg is defined and temp_reg and reg_count > 0 %}
+
+#include "component_registry.h"
+#include "uart_api.h"
+#include "gpio_api.h"
+#include "drv_{{ mb.name }}.h"
+#include "drv_{{ rs_name }}.h"
+#include "component_bus.h"
+#include <string.h>
+
+/* ---- Component-private context ---- */
+struct {{ comp_name }}_ctx {
+    uint8_t  initialized;
+};
+
+static struct {{ comp_name }}_ctx g_{{ comp_name }}_ctx;
+
+/* ---- Modbus holding registers (index = Modbus address) ---- */
+#if {{ reg_count }} > 0
+static uint16_t g_modbus_regs[{{ reg_count }}];
+#endif
+
+/* ---- Transport wrappers for the Modbus protocol driver ---- */
+static uint8_t modbus_comp_tx(uint8_t *data, uint16_t len)
+{
+    {{ rs_name }}_send(data, len);
+    return 1;
+}
+
+static uint8_t modbus_comp_rx(uint8_t *buf, uint16_t len, uint32_t timeout)
+{
+    {{ rs_name }}_recv(buf, len, timeout);
+    return 1;
+}
+
+/* ---- Register callbacks ---- */
+static void modbus_comp_read_reg(uint16_t addr, uint16_t *val)
+{
+#if {{ reg_count }} > 0
+    if (addr < {{ reg_count }} && val) {
+        *val = g_modbus_regs[addr];
+    }
+#else
+    (void)addr;
+    if (val) *val = 0;
+#endif
+}
+
+static void modbus_comp_write_reg(uint16_t addr, uint16_t val)
+{
+#if {{ reg_count }} > 0
+    if (addr < {{ reg_count }}) {
+        g_modbus_regs[addr] = val;
+    }
+#else
+    (void)addr;
+    (void)val;
+#endif
+}
+
+{% if use_temp_mapping %}
+/* Mirror the pub/sub temperature topic into the temperature register. */
+static void modbus_comp_on_temperature(topic_id_t topic, uint32_t value, void *ctx)
+{
+    (void)topic;
+    (void)ctx;
+    if ({{ temp_reg.addr }} < {{ reg_count }}) {
+        g_modbus_regs[{{ temp_reg.addr }}] = (uint16_t)value;
+    }
+}
+{% endif %}
+
+/* ---- Component lifecycle ---- */
+int {{ comp_name }}_init(component_t *c, void *cfg)
+{
+    (void)cfg;
+#ifndef TEST
+    static uart_handle_t  s_uart;
+    static gpio_handle_t  s_de;
+
+    s_uart = uart_open("{{ uart_name }}", NULL);
+    s_de   = gpio_open("{{ de_label | lower }}", NULL);
+    if (s_uart == NULL || s_de == NULL) {
+        return -1;
+    }
+
+    {{ rs_name }}_init(s_uart, s_de);
+
+#if {{ reg_count }} > 0
+    /* Initialise register table from hardware.yaml registers. */
+    memset(g_modbus_regs, 0, sizeof(g_modbus_regs));
+{% for r in regs %}
+    if ({{ r.addr }} < {{ reg_count }}) g_modbus_regs[{{ r.addr }}] = {{ r.get('default', 0) }};
+{% endfor %}
+#endif
+
+    modbus_init({{ slave_id }},
+                (void *)modbus_comp_tx, (void *)modbus_comp_rx,
+                (void *)modbus_comp_read_reg, (void *)modbus_comp_write_reg);
+
+{% if use_temp_mapping %}
+    bus_subscribe(TOPIC_TEMPERATURE, modbus_comp_on_temperature, NULL);
+{% endif %}
+#else
+    (void)0;
+#endif
+
+    g_{{ comp_name }}_ctx.initialized = 1;
+    c->ctx = &g_{{ comp_name }}_ctx;
+    return 0;
+}
+
+void {{ comp_name }}_step(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = (struct {{ comp_name }}_ctx *)c->ctx;
+    if (ctx == NULL || !ctx->initialized) {
+        return;
+    }
+#ifndef TEST
+    modbus_process();
+#else
+    (void)0;
+#endif
+}
+
+void {{ comp_name }}_terminate(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = (struct {{ comp_name }}_ctx *)c->ctx;
+    if (ctx == NULL) return;
+    ctx->initialized = 0;
+}

@@ -333,6 +333,9 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             elif comp_type == "btn":
                 comp_template = env.get_template("app/btn_component.c.j2")
                 comp_name_out = "btn_component"
+            elif comp_type == "modbus":
+                comp_template = env.get_template("app/modbus_component.c.j2")
+                comp_name_out = comp["name"] + "_component"
             else:
                 comp_template = env.get_template("app/component.c.j2")
                 comp_name_out = comp["name"] + "_component"
@@ -378,6 +381,16 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             "src/btn_component.h.j2": os.path.join(output_dir, "src", "btn_component.h"),
         }
         for tmpl_name, out_path in btn_comp_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
+    # ---------- Modbus Component ----------
+    if context.get("has_modbus_component"):
+        mb_comp_templates = {
+            "src/modbus_component.h.j2": os.path.join(output_dir, "src", "modbus_component.h"),
+        }
+        for tmpl_name, out_path in mb_comp_templates.items():
             template = env.get_template(tmpl_name)
             rendered = template.render(context)
             _write_file(out_path, rendered, dry_run, show_diff)
@@ -945,6 +958,9 @@ def generate_project(
         )
         context["has_btn_component"] = any(
             c.get("type") == "btn" for c in context.get("components", [])
+        )
+        context["has_modbus_component"] = any(
+            c.get("type") == "modbus" for c in context.get("components", [])
         )
 
         # Pre-compute LED/BTN pin lists for component templates

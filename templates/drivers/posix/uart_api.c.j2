@@ -23,20 +23,20 @@ struct uart_dev {
 /* ---- Lookup table: maps name string to HAL handle ---- */
 {% set uart_instances = [] %}
 {% for p in peripherals %}
-{% if p.type == 'UART_Serial' or p.type == 'RS485' or p.type == 'Cellular_4G' %}
+{% if p.type == 'UART_Serial' %}
 {% set _ = uart_instances.append(p) %}
 {% endif %}
 {% endfor %}
 
 {% if uart_instances | length > 0 %}
-/* Declared in drv_<name>.c */
+/* Declared in main.c as huart_<name> */
 {% for p in uart_instances %}
-extern UART_HandleTypeDef h{{ p.name }};
+extern UART_HandleTypeDef huart_{{ p.name }};
 {% endfor %}
 
 static struct uart_dev g_uart_devs[] = {
 {% for p in uart_instances %}
-    { .name = "{{ p.name }}", .huart = &h{{ p.name }}, .is_open = 0 },
+    { .name = "{{ p.name }}", .huart = &huart_{{ p.name }}, .is_open = 0 },
 {% endfor %}
 };
 

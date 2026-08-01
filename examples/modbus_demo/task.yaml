@@ -14,9 +14,6 @@ app_tasks:
   - name: shell_task
     priority: 1
     stack_size: 1024
-  - name: modbus_task
-    priority: 2
-    stack_size: 512
 
 behavior:
   initial_state: IDLE
