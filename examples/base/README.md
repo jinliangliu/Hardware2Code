@@ -44,34 +44,65 @@ python -m generator.generate -i examples/base/hardware.yaml -o output/base \
 
 ### 2.2 运行时架构（分层）
 
-```
-┌─ 应用层 ────────────────────────────────────────────────┐
-│  CLI 命令         状态机行为        定时事件动作          │
-├─ 组件层 ────────────────────────────────────────────────┤
-│  component_registry / component_bus / param_registry    │
-│  shell · led · btn（init/step/terminate 生命周期）        │
-├─ 事件层 ────────────────────────────────────────────────┤
-│  event_queue（100 深）← EXTI / RTC 定时器 / 组件          │
-│  EventMgr_Task（最高优先级）→ statemachine_process        │
-├─ 任务层 ────────────────────────────────────────────────┤
-│  event_mgr / cli / comp_step（FreeRTOS 8 级优先级）       │
-├─ 驱动层 ────────────────────────────────────────────────┤
-│  drv_rtc · drv_log · drv_shell(CLI) · drv_temp_sensor    │
-│  gpio · uart_api · LwRB 环形缓冲 · hw2c_cli 引擎          │
-└─ 硬件层 ────────────────────────────────────────────────┘
-   STM32G0B1RET6 · HAL + CMSIS · USART2/EXTI/RTC(LSE)/ADC
+```mermaid
+flowchart TB
+    subgraph APP["应用层"]
+        A1["CLI 命令"]
+        A2["状态机行为"]
+        A3["定时事件动作"]
+    end
+
+    subgraph COMP["组件层"]
+        B1["component_registry / component_bus / param_registry"]
+        B2["shell · led · btn（init / step / terminate 生命周期）"]
+    end
+
+    subgraph EVT["事件层"]
+        C1["event_queue（100 深）← EXTI / RTC 定时器 / 组件"]
+        C2["EventMgr_Task（最高优先级）→ statemachine_process"]
+    end
+
+    subgraph TASK["任务层"]
+        D1["event_mgr / cli / comp_step（FreeRTOS 8 级优先级）"]
+    end
+
+    subgraph DRV["驱动层"]
+        E1["drv_rtc · drv_log · drv_shell（CLI）· drv_temp_sensor"]
+        E2["gpio · uart_api · LwRB 环形缓冲 · hw2c_cli 引擎"]
+    end
+
+    subgraph HW["硬件层"]
+        F1["STM32G0B1RET6 · HAL + CMSIS · USART2 / EXTI / RTC（LSE）/ ADC"]
+    end
+
+    APP --> COMP --> EVT --> TASK --> DRV --> HW
 ```
 
 ### 2.3 关键数据流
 
-- **按键**：`PC13 EXTI 中断 → btn_queue → btn_component 手势检测 → event_queue
-  → statemachine 动作 → led_component 模式驱动`
-- **串口输入**：`USART2 RXNE 中断 → LwRB 环形缓冲 → 信号量 → cli_task →
-  hw2c_cli_input() 行编辑/解析 → cmd_xxx(argc, argv)`
-- **串口输出**：`log/CLI → 共享 LwRB 环形缓冲 → TXE 中断逐字节 → USART2 TDR`
-  （单写者设计，日志与 CLI 回显不抢 TDR）
-- **RTC 定时**：`LSE 1 Hz 唤醒中断 → rtc_uptime_sec++ → rtc_fire_expired →
-  event_queue → EventMgr 分发`
+```mermaid
+flowchart LR
+    subgraph BTN["按键"]
+        A["PC13 EXTI 中断"] --> B["btn_queue"] --> C["btn_component 手势检测"]
+        C --> D["event_queue"] --> E["statemachine 动作"] --> F["led_component 模式驱动"]
+    end
+
+    subgraph RX["串口输入"]
+        G["USART2 RXNE 中断"] --> H["LwRB 环形缓冲"] --> I["信号量"]
+        I --> J["cli_task"] --> K["hw2c_cli_input 行编辑/解析"] --> L["cmd_xxx（argc, argv）"]
+    end
+
+    subgraph TX["串口输出"]
+        M["log / CLI"] --> N["共享 LwRB 环形缓冲"] --> O["TXE 中断逐字节"] --> P["USART2 TDR"]
+    end
+
+    subgraph RTC["RTC 定时"]
+        Q["LSE 1 Hz 唤醒中断"] --> R["rtc_uptime_sec++"] --> S["rtc_fire_expired"]
+        S --> T["event_queue"] --> U["EventMgr 分发"]
+    end
+```
+
+> 串口输出为单写者设计：日志与 CLI 回显共用同一环形缓冲 + TXE 中断，不抢 TDR。
 
 ## 3. 软件任务
 
