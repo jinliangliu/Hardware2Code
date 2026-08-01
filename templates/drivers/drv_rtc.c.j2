@@ -58,6 +58,9 @@ uint32_t rtc_get_uptime_ms(void)
     uint32_t ssr = RTC->SSR & 0x3FFFU;
     uint32_t elapsed_ticks = 32767U - ssr;              /* ticks since last second */
     uint32_t ms = (elapsed_ticks * 1000U) / 32768U;     /* PREDIV_S + 1 = 32768 */
+    /* Reading SSR/TR locks the higher-order calendar shadow registers on
+     * STM32G0 until DR is read — unlock so later TR reads stay current. */
+    (void)RTC->DR;
     return rtc_uptime_sec * 1000U + ms;
 }
 
@@ -72,6 +75,8 @@ uint32_t rtc_get_time_ms(void)
 
     /* Raw register read (SSR + TR); no WaitForSynchro needed here. */
     HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+    /* Unlock the calendar shadow registers (SSR/TR lock until DR is read). */
+    (void)RTC->DR;
     ms = (({{ rtc_sync_prediv }} - (uint32_t)sTime.SubSeconds) * 1000U)
          / ({{ rtc_sync_prediv }} + 1U);
     return ((uint32_t)sTime.Hours * 3600U
@@ -271,6 +276,16 @@ void HAL_RTC_MspInit(RTC_HandleTypeDef* hrtc)
     if (hrtc->Instance == RTC) {
         __HAL_RCC_PWR_CLK_ENABLE();
         HAL_PWR_EnableBkUpAccess();
+
+        /*
+         * Force LSE to crystal mode. LSEBYP lives in the backup domain and
+         * survives system resets; HAL's RCC_LSE_ON only sets LSEON and does
+         * NOT clear a stale LSEBYP. With bypass set and no external clock on
+         * OSC32_IN, the RTC runs off an undefined input and the calendar
+         * drifts (observed 1.0x..1.7x wall-clock rate). Restart LSE cleanly.
+         */
+        CLEAR_BIT(RCC->BDCR, RCC_BDCR_LSEON | RCC_BDCR_LSEBYP);
+        for (volatile uint32_t i = 0; i < 2000U; i++) { /* let LSE stop */ }
 
         RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
         PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;

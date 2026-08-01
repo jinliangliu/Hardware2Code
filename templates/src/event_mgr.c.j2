@@ -121,19 +121,6 @@ void EventMgr_Task(void *pvParameters)
                 power_mgr_log_status();
 {% endif %}
 {% endfor %}
-{% if has_telemetry %}
-                if (telemetry_log_enabled()) {
-                    log_info("=== System Info ===");
-                    log_debug("  Heap free: %u bytes", (unsigned int)xPortGetFreeHeapSize());
-                    log_debug("  Task count: %u", (unsigned int)uxTaskGetNumberOfTasks());
-                    log_debug("  Runtime: %lu ms", (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS));
-                }
-{% else %}
-                log_info("=== System Info ===");
-                log_debug("  Heap free: %u bytes", (unsigned int)xPortGetFreeHeapSize());
-                log_debug("  Task count: %u", (unsigned int)uxTaskGetNumberOfTasks());
-                log_debug("  Runtime: %lu ms", (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS));
-{% endif %}
             }
 {% endfor %}
 {% endif %}
