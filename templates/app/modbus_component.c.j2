@@ -61,24 +61,9 @@ struct {{ comp_name }}_ctx {
 static struct {{ comp_name }}_ctx g_{{ comp_name }}_ctx;
 static uart_handle_t g_uart_handle;
 
-{% if role == 'master' %}
-/* ---- Master transport: blocking request/response ---- */
-/* Referenced by stm32g0xx_it.c USART1_IRQHandler; master uses blocking
- * UART I/O so the interrupt handler is intentionally empty. */
-void modbus_component_uart_isr(void) { }
-
-static uint8_t modbus_comp_tx(uint8_t *data, uint16_t len)
-{
-    return (uart_write(g_uart_handle, data, len) > 0) ? 1 : 0;
-}
-
-static uint8_t modbus_comp_rx(uint8_t *buf, uint16_t len, uint32_t timeout)
-{
-    return (uart_read(g_uart_handle, buf, len, timeout) > 0) ? 1 : 0;
-}
-{% else %}
-/* ---- Slave transport: ISR ring buffer (no bytes lost to preemption) ----
- * RX uses the USART1 RXNE interrupt; STM32G0 USART has no hardware FIFO. */
+/* ---- UART transport: ISR ring buffer (both master and slave) ----
+ * RX uses the USART1 RXNE interrupt; STM32G0 USART has no hardware FIFO,
+ * so interrupt-driven buffering avoids losing bytes to task preemption. */
 static uint8_t  g_rx_buf[256];
 static volatile uint16_t g_rx_head = 0;
 static volatile uint16_t g_rx_tail = 0;
@@ -110,7 +95,7 @@ static uint8_t modbus_comp_tx(uint8_t *data, uint16_t len)
 static uint8_t modbus_comp_rx(uint8_t *buf, uint16_t len, uint32_t timeout)
 {
     /* Pull bytes from the ISR-filled ring buffer; wait up to timeout for
-     * the first byte (modbus_process reads the frame byte-by-byte). */
+     * the first byte (modbus_process / master exchange reads byte-by-byte). */
     uint32_t start = HAL_GetTick();
     uint16_t got = 0;
     for (;;) {
@@ -128,7 +113,7 @@ static uint8_t modbus_comp_rx(uint8_t *buf, uint16_t len, uint32_t timeout)
     }
     return (got > 0) ? 1 : 0;
 }
-{% endif %}
+
 
 {% if role != 'master' and reg_count > 0 %}
 /* ---- Modbus holding registers (index = Modbus address) ---- */
@@ -171,16 +156,16 @@ int {{ comp_name }}_init(component_t *c, void *cfg)
         return -1;
     }
 
-{% if role == 'master' %}
-    /* Master needs no register table or RX interrupt. */
-    modbus_init(0, 0,
-                (void *)modbus_comp_tx, (void *)modbus_comp_rx,
-                NULL, NULL);
-{% else %}
     /* Enable USART1 RXNE interrupt for ring-buffer reception. */
     USART1->CR1 |= USART_CR1_RXNEIE_RXFNEIE;
     NVIC_EnableIRQ(USART1_IRQn);
 
+{% if role == 'master' %}
+    /* Master: no register table; tx/rx callbacks used by the client API. */
+    modbus_init(0, 0,
+                (void *)modbus_comp_tx, (void *)modbus_comp_rx,
+                NULL, NULL);
+{% else %}
 #if {{ reg_count }} > 0
     memset(g_modbus_regs, 0, sizeof(g_modbus_regs));
 {% for r in regs %}
