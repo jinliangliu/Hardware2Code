@@ -11,6 +11,7 @@
 
 #include "power_mgr.h"
 #include <string.h>
+#include <stdio.h>
 
 {% if has_components %}
 #include "component_registry.h"
@@ -185,23 +186,38 @@ uint32_t power_mgr_blocking_count(power_mode_t mode)
 void power_mgr_log_status(void)
 {
 {% if has_log %}
+    char buf[384];
+    int  len = 0;
     power_mode_t allowed = power_mgr_allowed_depth();
-    log_info("=== PowerMgr Status ===");
-    log_info("  Allowed depth: %s", power_mode_name(allowed));
-    log_info("  Default mode:  %s", power_mode_name(g_power_mgr.default_mode));
 
+    len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                    "=== PowerMgr Status ===\r\n");
+    len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                    "  Allowed depth: %s   Default: %s\r\n",
+                    power_mode_name(allowed),
+                    power_mode_name(g_power_mgr.default_mode));
 {% if has_components %}
-    log_info("--- Component sleep compat ---");
+    len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                    "  Components:\r\n");
     for (uint32_t i = 0; i < component_count(); i++) {
         component_t *c = component_get_by_index(i);
         if (c == NULL) continue;
         const char *sc = c->sleep_compat;
-        log_info("  %-16s  state=%d  compat=%s",
-                 c->name, (int)c->state,
-                 (sc && *sc) ? sc : "(none)");
+        if (len >= (int)sizeof(buf) - 96) break;
+        len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                        "    %-16s state=%d compat=%s\r\n",
+                        c->name, (int)c->state,
+                        (sc && *sc) ? sc : "(none)");
     }
 {% endif %}
-    log_info("=== End PowerMgr ===");
+    len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                    "=== End PowerMgr ===");
+    if (len < 0) len = 0;
+    if (len >= (int)sizeof(buf)) len = (int)sizeof(buf) - 1;
+    buf[len] = '\0';
+
+    /* Single timestamp header, one block */
+    log_block(LOG_LEVEL_INFO, buf);
 {% else %}
     (void)0;
 {% endif %}

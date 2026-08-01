@@ -168,4 +168,8 @@ void log_uart_reinit(void);
 /* Push one character into the log ring (CLI TX shares the ISR drain). */
 void log_putc(char c);
 
+/* Print a multi-line block with a single timestamp header (telemetry,
+ * power status, etc.). The text may contain embedded CRLF line breaks. */
+void log_block(int level, const char *text);
+
 #endif /* DRV_LOG_H */

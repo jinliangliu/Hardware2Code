@@ -17,6 +17,7 @@
 
 #include "telemetry.h"
 #include <string.h>
+#include <stdio.h>
 
 {% if has_log %}
 #ifndef TEST
@@ -44,6 +45,19 @@ static struct {
 static telemetry_callback_t g_cb[TELEMETRY_CB_MAX] = {NULL};
 static void               *g_cb_ctx[TELEMETRY_CB_MAX] = {NULL};
 static uint32_t            g_cb_count = 0;
+
+/* Runtime switch for the periodic snapshot log (CLI: telemetry on|off) */
+static bool g_snapshot_log_enabled = true;
+
+void telemetry_log_set_enabled(bool en)
+{
+    g_snapshot_log_enabled = en;
+}
+
+bool telemetry_log_enabled(void)
+{
+    return g_snapshot_log_enabled;
+}
 
 void telemetry_init(void)
 {
@@ -205,37 +219,55 @@ int telemetry_collect(telemetry_snapshot_t *snap)
 void telemetry_log_snapshot(void)
 {
     telemetry_snapshot_t snap;
-    telemetry_collect(&snap);
+    char buf[640];
+    int  len = 0;
 
 {% if has_log %}
-    log_info("=== Telemetry Snapshot ===");
-    log_info("  Uptime:    %lu s", (unsigned long)snap.uptime_sec);
-    log_info("  Heartbeat: %lu", (unsigned long)snap.heartbeat_count);
-
-    log_info("--- Memory ---");
-    log_info("  Heap free:     %lu / %lu bytes",
-             (unsigned long)snap.heap_free, (unsigned long)snap.heap_size);
-    log_info("  Heap min free: %lu bytes", (unsigned long)snap.heap_min_free);
-
-    log_info("--- Tasks (%lu) ---", (unsigned long)snap.task_count);
-    for (uint32_t i = 0; i < snap.task_count && i < TELEMETRY_MAX_TASKS; i++) {
-        log_info("  %-16s  stack: %u/%u free=%u  runtime=%lu",
-                 snap.tasks[i].name,
-                 (unsigned int)snap.tasks[i].total_stack,
-                 (unsigned int)(snap.tasks[i].total_stack + snap.tasks[i].watermark),
-                 (unsigned int)snap.tasks[i].watermark,
-                 (unsigned long)snap.tasks[i].cpu_ticks);
+    if (!g_snapshot_log_enabled) {
+        return;
     }
-    log_info("  Min stack free: %lu words", (unsigned long)snap.min_stack_free);
+    telemetry_collect(&snap);
 
-    log_info("--- Components ---");
-    log_info("  Total: %lu  Running: %lu  Error: %lu  TotalErrors: %lu",
-             (unsigned long)snap.comp_total,
-             (unsigned long)snap.comp_running,
-             (unsigned long)snap.comp_error,
-             (unsigned long)snap.total_errors);
-    log_info("=== End Telemetry ===");
+    len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                    "=== Telemetry Snapshot ===\r\n");
+    len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                    "  Uptime: %lu s   Heartbeat: %lu\r\n",
+                    (unsigned long)snap.uptime_sec,
+                    (unsigned long)snap.heartbeat_count);
+    len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                    "  Heap:   %lu / %lu bytes (min free %lu)\r\n",
+                    (unsigned long)snap.heap_free,
+                    (unsigned long)snap.heap_size,
+                    (unsigned long)snap.heap_min_free);
+    len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                    "  Tasks(%lu):\r\n", (unsigned long)snap.task_count);
+    for (uint32_t i = 0; i < snap.task_count && i < TELEMETRY_MAX_TASKS; i++) {
+        if (len >= (int)sizeof(buf) - 96) break;
+        len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                        "    %-16s stack %u/%u free=%u run=%lu\r\n",
+                        snap.tasks[i].name,
+                        (unsigned int)snap.tasks[i].total_stack,
+                        (unsigned int)(snap.tasks[i].total_stack + snap.tasks[i].watermark),
+                        (unsigned int)snap.tasks[i].watermark,
+                        (unsigned long)snap.tasks[i].cpu_ticks);
+    }
+    len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                    "  Min stack free: %lu words\r\n",
+                    (unsigned long)snap.min_stack_free);
+    len += snprintf(buf + len, sizeof(buf) - (size_t)len,
+                    "  Components: %lu total, %lu running, %lu error, %lu total-errors\r\n",
+                    (unsigned long)snap.comp_total,
+                    (unsigned long)snap.comp_running,
+                    (unsigned long)snap.comp_error,
+                    (unsigned long)snap.total_errors);
+    if (len < 0) len = 0;
+    if (len >= (int)sizeof(buf)) len = (int)sizeof(buf) - 1;
+    buf[len] = '\0';
+
+    /* Single timestamp header, one block — no per-line timestamps */
+    log_block(LOG_LEVEL_INFO, buf);
 {% else %}
+    telemetry_collect(&snap);
     (void)snap;
 {% endif %}
 }

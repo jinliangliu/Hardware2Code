@@ -156,6 +156,31 @@ void log_set_level(int level)
 }
 
 /* ================================================================
+ * Timestamp prefix helper
+ * ================================================================ */
+static int log_format_prefix(char *buf, int size, int level)
+{
+{% if has_rtc %}
+    rtc_time_t now;
+    uint32_t   ms;
+
+    RTC_GetTime(&now);
+    ms = (({{ rtc_sync_prediv }} - now.ssr) * 1000U) / ({{ rtc_sync_prediv }} + 1U);
+
+    /* "[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] " */
+    return snprintf(buf, (size_t)size,
+                    "[%04u-%02u-%02u %02u:%02u:%02u.%03u] [%s] ",
+                    2000U + now.year, now.month, now.day,
+                    now.hour, now.min, now.sec, (unsigned int)ms,
+                    level_strings[level]);
+{% else %}
+    (void)buf;
+    (void)size;
+    return 0;
+{% endif %}
+}
+
+/* ================================================================
  * Core log_output
  * ================================================================ */
 void log_output(int level, const char *file, int line, const char *fmt, ...)
@@ -168,30 +193,7 @@ void log_output(int level, const char *file, int line, const char *fmt, ...)
     char msg_buf[LOG_MSG_BUF_SIZE];
     int  msg_len;
 
-{% if has_rtc %}
-    /* Get current RTC time for timestamp */
-    rtc_time_t now;
-    RTC_GetTime(&now);
-
-    /*
-     * Derive milliseconds from RTC sub-second counter (via RTC_GetTime).
-     * SSR counts down from SYNC_PREDIV to 0.
-     * For LSE 32768 Hz with SyncPrediv=255: each SSR step = 1000/256 ≈ 3.9 ms.
-     */
-    uint32_t ms  = (({{ rtc_sync_prediv }} - now.ssr) * 1000U) / ({{ rtc_sync_prediv }} + 1U);
-
-    /* Format: "[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] " prefix */
-    msg_len = snprintf(msg_buf, sizeof(msg_buf),
-                       "[%04u-%02u-%02u %02u:%02u:%02u.%03u] [%s] ",
-                       2000U + now.year, now.month, now.day,
-                       now.hour, now.min, now.sec, (unsigned int)ms,
-                       level_strings[level]);
-{% else %}
-    /* Format: "[LEVEL] " prefix */
-    msg_len = snprintf(msg_buf, sizeof(msg_buf),
-                       "[%s] ",
-                       level_strings[level]);
-{% endif %}
+    msg_len = log_format_prefix(msg_buf, (int)sizeof(msg_buf), level);
 
     if (msg_len < 0 || (size_t)msg_len >= sizeof(msg_buf)) {
         return;   /* overflow, safe to drop */
@@ -232,6 +234,42 @@ void log_output(int level, const char *file, int line, const char *fmt, ...)
     if (pushed > 0) {
         __HAL_UART_ENABLE_IT(&log_huart, UART_IT_TXE);
     }
+}
+
+/* ================================================================
+ * log_block — one timestamp + multi-line body (single ring push)
+ *
+ * Used for consolidated reports (telemetry snapshot, power status)
+ * so only the first line carries "[YYYY-...] [LEVEL] ".
+ * ================================================================ */
+void log_block(int level, const char *text)
+{
+    char   prefix[LOG_MSG_BUF_SIZE];
+    int    plen;
+    size_t tlen;
+
+    if (level < current_log_level) {
+        return;
+    }
+
+    plen = log_format_prefix(prefix, (int)sizeof(prefix), level);
+    if (plen < 0) {
+        return;
+    }
+    tlen = strlen(text);
+    if (tlen == 0) {
+        return;
+    }
+
+    for (int i = 0; i < plen; i++) {
+        if (lwrb_write(&log_ringbuf, (uint8_t *)&prefix[i], 1) != 1) break;
+    }
+    for (size_t i = 0; i < tlen; i++) {
+        if (lwrb_write(&log_ringbuf, (uint8_t *)&text[i], 1) != 1) break;
+    }
+    lwrb_write(&log_ringbuf, (uint8_t *)"\r\n", 2);
+
+    __HAL_UART_ENABLE_IT(&log_huart, UART_IT_TXE);
 }
 
 /* ================================================================

@@ -38,6 +38,9 @@
 {% if has_led %}
 #include "led_component.h"
 {% endif %}
+{% if has_telemetry %}
+#include "telemetry.h"
+{% endif %}
 {% if has_rtc %}
 {% for p in peripherals if p.type == 'Internal_RTC' %}
 #include "drv_{{ p.name }}.h"
@@ -384,6 +387,28 @@ static void cmd_rtc(int argc, char *argv[], cli_output_fn out)
 }
 {% endif %}
 
+{% if has_telemetry %}
+static void cmd_telemetry(int argc, char *argv[], cli_output_fn out)
+{
+    if (argc < 2) {
+        out("Usage: telemetry on|off|status\r\n");
+        return;
+    }
+    if (strcmp(argv[1], "on") == 0) {
+        telemetry_log_set_enabled(true);
+        out("Telemetry snapshot log ON\r\n");
+    } else if (strcmp(argv[1], "off") == 0) {
+        telemetry_log_set_enabled(false);
+        out("Telemetry snapshot log OFF\r\n");
+    } else if (strcmp(argv[1], "status") == 0) {
+        out("Telemetry snapshot log: %s\r\n",
+            telemetry_log_enabled() ? "ON" : "OFF");
+    } else {
+        out("Usage: telemetry on|off|status\r\n");
+    }
+}
+{% endif %}
+
 {% if has_power_mgr %}
 static void cmd_power(int argc, char *argv[], cli_output_fn out)
 {
@@ -544,6 +569,9 @@ CLI_HW2C_WRAPPER(led)
 {% if has_rtc %}
 CLI_HW2C_WRAPPER(rtc)
 {% endif %}
+{% if has_telemetry %}
+CLI_HW2C_WRAPPER(telemetry)
+{% endif %}
 {% if has_power_mgr %}
 CLI_HW2C_WRAPPER(power)
 {% endif %}
@@ -579,6 +607,9 @@ static const hw2c_cli_cmd_t _hw2c_commands[] = {
 {% endif %}
 {% if has_rtc %}
     {"rtc",      "RTC time operations",          _hw2c_rtc},
+{% endif %}
+{% if has_telemetry %}
+    {"telemetry","Telemetry snapshot log on/off", _hw2c_telemetry},
 {% endif %}
 {% if has_power_mgr %}
     {"power",    "Power modes (sleep/stop)",     _hw2c_power},
@@ -625,6 +656,9 @@ void cli_register_builtin_commands(void)
 {% endif %}
 {% if has_rtc %}
     cli_register_command("rtc",     "RTC time operations",          cmd_rtc);
+{% endif %}
+{% if has_telemetry %}
+    cli_register_command("telemetry","Telemetry snapshot log on/off", cmd_telemetry);
 {% endif %}
 {% if has_power_mgr %}
     cli_register_command("power",   "Power modes (sleep/stop)",     cmd_power);

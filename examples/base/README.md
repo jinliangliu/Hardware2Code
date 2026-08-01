@@ -191,6 +191,7 @@ gpio       Read/write GPIO pins
 led        Control LED (on/off/toggle)
 rtc        RTC time operations
 sysinfo    System info (temp/RAM/flash)
+telemetry  Telemetry snapshot log on/off
 power      Power modes (sleep/stop)
 
 hw2c> sysinfo
@@ -202,10 +203,15 @@ Flash       : 59656 / 524288 bytes (used / total)
 常用组合：`led on/off/toggle`（组件 pattern 驱动，状态保持）、`rtc time` / `rtc set`、
 `power mode STOP1` + `power sleep`（进低功耗，串口发任意字符立即唤醒）。
 
+周期遥测/电源快照以**单时间戳块**输出（只有首行带时间），可用
+`telemetry on|off|status` 开关控制——关闭后 30s 快照与每事件 `System Info`
+调试块一并静默（RTC 心跳与事件机制不受影响）。
+
 ## 9. 日志系统
 
 - LwRB 环形缓冲（1024 B）+ USART2 TXE 中断逐字节发送。
 - 时间戳来自 RTC（1 kHz SSR，毫秒级），`[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL]`。
+- 多行报告（遥测快照、电源状态）走 `log_block()`：一条时间戳 + 多行正文，不再逐行刷时间。
 - CLI 回显与日志共用同一环形缓冲（单写者），无字节竞争。
 - 每秒心跳不打印日志（事件照发，仅静默丢弃），避免刷屏。
 

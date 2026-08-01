@@ -108,6 +108,15 @@ int telemetry_collect(telemetry_snapshot_t *snap);
 void telemetry_log_snapshot(void);
 
 /**
+ * @brief  Enable/disable the periodic telemetry snapshot log
+ * @param  en  true = print snapshot, false = skip (CLI: telemetry on|off)
+ */
+void telemetry_log_set_enabled(bool en);
+
+/** @return Current snapshot log switch state */
+bool telemetry_log_enabled(void);
+
+/**
  * @brief  Get the minimum free heap seen since boot
  * @return Minimum free heap in bytes
  */
