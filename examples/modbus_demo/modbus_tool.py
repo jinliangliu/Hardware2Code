@@ -15,12 +15,16 @@ Usage:
   python modbus_tool.py write <addr> <value>
   python modbus_tool.py write_multi <addr> <v0> <v1> ...
   python modbus_tool.py monitor [interval_s]     # poll temperature every N s
+  python modbus_tool.py slave                    # act as a Modbus RTU slave
 
 Options:
   --port COM4   serial port (default COM4)
   --baud 9600   baud rate (default 9600, matches firmware USART1)
   --slave 1     Modbus slave address (default 1)
   --timeout 0.2 response timeout in seconds (default 0.2)
+
+Slave mode options:
+  --registers "0=1,1=300"   initial holding registers (default 0=0,1=0)
 """
 
 from __future__ import print_function
@@ -211,6 +215,89 @@ def cmd_monitor(args, ser):
         print("\nstopped")
 
 
+def cmd_slave(args, ser):
+    """Act as a Modbus RTU slave: answer FC03/06/16 requests."""
+    regs = {}
+    for kv in args.registers.split(","):
+        kv = kv.strip()
+        if "=" in kv:
+            a, v = kv.split("=", 1)
+            regs[int(a.strip())] = int(v.strip())
+    print("Modbus slave @%d, registers=%s (Ctrl+C to stop)"
+          % (args.slave, regs), flush=True)
+    try:
+        while True:
+            req = read_request(ser, args.timeout)
+            if req is None:
+                continue
+            if req[0] != args.slave and req[0] != 0:
+                continue  # not addressed to us
+            resp = build_response(req, regs)
+            if resp is not None:
+                ser.write(resp)
+            print("req=%s resp=%s" % (req.hex().upper(), (resp or b"").hex().upper()),
+                  flush=True)
+    except KeyboardInterrupt:
+        print("\nstopped")
+
+
+def read_request(ser, timeout):
+    """Read one request frame from the master; returns body or None."""
+    head = None
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        b = ser.read(1)
+        if b:
+            head = b
+            break
+    if head is None:
+        return None
+    buf = bytearray(head)
+    while True:
+        b = ser.read(1)
+        if not b:
+            break
+        buf.append(b[0])
+    if len(buf) < 4:
+        return None
+    body, crc_raw = buf[:-2], buf[-2:]
+    calc = crc16_modbus(body)
+    if calc != (crc_raw[0] | (crc_raw[1] << 8)):
+        return None  # bad CRC, discard
+    return body
+
+
+def build_response(req, regs):
+    """Build a slave response for the given request body (no CRC yet)."""
+    slave, func = req[0], req[1]
+    if func == 0x03:
+        if len(req) < 6:
+            return None
+        addr = (req[2] << 8) | req[3]
+        cnt = (req[4] << 8) | req[5]
+        vals = [regs.get(addr + i, 0) for i in range(cnt)]
+        body = bytes([slave, func, cnt * 2]) + \
+               b"".join(bytes([(v >> 8) & 0xFF, v & 0xFF]) for v in vals)
+    elif func == 0x06:
+        addr = (req[2] << 8) | req[3]
+        val = (req[4] << 8) | req[5]
+        regs[addr] = val
+        body = bytes([slave, func, req[2], req[3], req[4], req[5]])
+    elif func == 0x10:
+        if len(req) < 7:
+            return None
+        addr = (req[2] << 8) | req[3]
+        cnt = (req[4] << 8) | req[5]
+        for i in range(cnt):
+            if 7 + 2 * i + 1 < len(req):
+                regs[addr + i] = (req[7 + 2 * i] << 8) | req[8 + 2 * i]
+        body = bytes([slave, func, req[2], req[3], req[4], req[5]])
+    else:
+        body = bytes([slave, func | 0x80, 0x01])  # illegal function
+    crc = crc16_modbus(body)
+    return body + bytes([crc & 0xFF, (crc >> 8) & 0xFF])
+
+
 def main():
     parser = argparse.ArgumentParser(description="Modbus RTU master for hw2c modbus_demo")
     parser.add_argument("--port", default="COM4", help="serial port (default COM4)")
@@ -239,6 +326,11 @@ def main():
     p_mon.add_argument("count", type=int, nargs="?", default=1)
     p_mon.add_argument("interval", type=float, nargs="?", default=1.0)
     p_mon.set_defaults(func=cmd_monitor)
+
+    p_slave = sub.add_parser("slave", help="act as Modbus RTU slave")
+    p_slave.add_argument("--registers", default="0=1,1=300",
+                         help="initial registers as addr=value pairs (comma separated)")
+    p_slave.set_defaults(func=cmd_slave)
 
     args = parser.parse_args()
     try:

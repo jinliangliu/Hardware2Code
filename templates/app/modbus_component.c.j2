@@ -58,6 +58,10 @@ static uart_handle_t g_uart_handle;
 
 {% if role == 'master' %}
 /* ---- Master transport: blocking request/response ---- */
+/* Referenced by stm32g0xx_it.c USART1_IRQHandler; master uses blocking
+ * UART I/O so the interrupt handler is intentionally empty. */
+void modbus_component_uart_isr(void) { }
+
 static uint8_t modbus_comp_tx(uint8_t *data, uint16_t len)
 {
     return (uart_write(g_uart_handle, data, len) > 0) ? 1 : 0;

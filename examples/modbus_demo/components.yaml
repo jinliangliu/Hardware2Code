@@ -27,12 +27,17 @@ components:
       debounce_ms: 50
 
   # Modbus RTU slave - wraps drv_modbus + drv_rs485
-  # Modbus RTU slave over USART1 (uart_api transport; RS485 DE handled
-  # by uart_api when rs485_de_pin is configured on the UART peripheral).
-  - name: modbus_slave
+  # Modbus RTU master: periodically polls the remote slave on USART1
+  # (uart_api transport; RS485 DE handled by uart_api if configured).
+  - name: modbus_master
     type: modbus
     driver: usart1
-    period_ms: 10
+    period_ms: 50
     config:
-      description: "Modbus RTU slave over USART1"
+      description: "Modbus RTU master polling slave on USART1"
       uart: usart1
+      role: master
+      target_slave: 1
+      poll_interval_ms: 2000
+      poll_addr: 0
+      poll_count: 2
