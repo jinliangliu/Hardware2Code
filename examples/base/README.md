@@ -215,6 +215,20 @@ Flash       : 59656 / 524288 bytes (used / total)
 - CLI 回显与日志共用同一环形缓冲（单写者），无字节竞争。
 - 每秒心跳不打印日志（事件照发，仅静默丢弃），避免刷屏。
 
+开机横幅（ASCII logo 无时间戳，`log_raw()` 输出）：
+
+```text
+H   H  W   W  2222  CCCC
+H   H  W   W     2  C
+HHHHH  W W W   22   C
+H   H  WW WW  2     C
+H   H  W   W  2222  CCCC
+====================================================
+[ts] [INF] base v1.0 — Hardware2Code | STM32G0B1RET6 @ 16 MHz
+...
+[ts] [INF] System ready — 3 components, 3176 B heap free, starting scheduler
+```
+
 ## 10. 使用
 
 ```bash

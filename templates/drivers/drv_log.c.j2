@@ -273,6 +273,26 @@ void log_block(int level, const char *text)
 }
 
 /* ================================================================
+ * log_raw — raw multi-line block without timestamp/level prefix
+ *
+ * Used for the boot ASCII logo and similar banners.
+ * ================================================================ */
+void log_raw(const char *text)
+{
+    size_t tlen = strlen(text);
+
+    if (tlen == 0) {
+        return;
+    }
+    for (size_t i = 0; i < tlen; i++) {
+        if (lwrb_write(&log_ringbuf, (uint8_t *)&text[i], 1) != 1) break;
+    }
+    lwrb_write(&log_ringbuf, (uint8_t *)"\r\n", 2);
+
+    __HAL_UART_ENABLE_IT(&log_huart, UART_IT_TXE);
+}
+
+/* ================================================================
  * Flush — actively drain ring buffer (blocking, bypasses ISR)
  *
  * On Cortex-M0+ the TXE ISR may not fire promptly during early init

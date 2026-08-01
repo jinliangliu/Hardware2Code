@@ -266,7 +266,16 @@ int main(void)
     /* Initialize logging subsystem — USART2 @ 115200, ring buffer, TXE IRQ */
     log_init();
     log_flush();  /* Ensure banner is fully transmitted before proceeding */
-    log_info("App main() entry, initialization starting...");
+    /* hw2c boot banner: ASCII logo (raw, no timestamp) + project info */
+    log_raw(
+        "H   H  W   W  2222  CCCC\r\n"
+        "H   H  W   W     2  C\r\n"
+        "HHHHH  W W W   22   C\r\n"
+        "H   H  WW WW  2     C\r\n"
+        "H   H  W   W  2222  CCCC\r\n"
+        "====================================================\r\n"
+    );
+    log_info("{{ project_name }} v1.0 — Hardware2Code | {{ mcu.part }} @ {{ (mcu.clock_freq_hz / 1000000) | int }} MHz");
     log_flush();  /* Drain ring buffer completely */
     HAL_Delay(500);  /* Let UART finish all pending transmissions */
 {% endif %}
@@ -437,6 +446,19 @@ int main(void)
 
     /* 标记启动成功 — Bootloader 在下次上电时检测此标志 */
     boot_app_mark_ok();
+{% endif %}
+
+{% if has_log %}
+    /* Boot complete summary */
+{% if has_components %}
+    log_info("System ready — %lu components, %lu B heap free, starting scheduler",
+             (unsigned long)component_count(),
+             (unsigned long)xPortGetFreeHeapSize());
+{% else %}
+    log_info("System ready — %lu B heap free, starting scheduler",
+             (unsigned long)xPortGetFreeHeapSize());
+{% endif %}
+    log_flush();
 {% endif %}
 
 {% if sleep %}

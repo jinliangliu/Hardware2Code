@@ -172,4 +172,8 @@ void log_putc(char c);
  * power status, etc.). The text may contain embedded CRLF line breaks. */
 void log_block(int level, const char *text);
 
+/* Print a raw multi-line block without timestamp/level prefix
+ * (boot ASCII logo and similar banners). */
+void log_raw(const char *text);
+
 #endif /* DRV_LOG_H */
