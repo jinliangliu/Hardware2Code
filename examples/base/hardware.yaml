@@ -65,11 +65,32 @@ peripherals:
       clock_source: LSE
       wakeup_interval_ms: 1000      # 1 second wakeup tick
       initial_time: "2026-07-29 22:07:00"
+      # 10 timers: built-in minute/hour periodic + 8 alarms below
       alarms:
-        - period_s: 30             # 30-second alarm for telemetry reporting
+        - type: periodic_sec
+          period_s: 1               # 1-second periodic tick
+          event: TICK_1S
+        - type: periodic_sec
+          period_s: 15              # 15-second periodic tick
+          event: TICK_15S
+        - type: periodic_sec
+          period_s: 30              # 30-second alarm for telemetry reporting
           event: SECONDS_30
-        - period_s: 300            # 5 minute alarm for system heartbeat
+        - type: periodic_sec
+          period_s: 120             # 2-minute periodic tick
+          event: TICK_2MIN
+        - type: periodic_sec
+          period_s: 300             # 5 minute alarm for system heartbeat
           event: MINUTE_5
+        - type: one_shot
+          period_s: 5               # single-shot after 5 seconds
+          event: ONE_SHOT_5S
+        - type: one_shot_ms
+          delay_ms: 500             # single-shot after 500 ms (RTC SSR)
+          event: ONE_SHOT_500MS
+        - type: one_shot_ms
+          delay_ms: 2000            # single-shot after 2 seconds (RTC SSR)
+          event: ONE_SHOT_2S
 
   # On-chip temperature sensor (ADC1 CH16) — calibrated 0.1°C reading
   - name: temp_sensor

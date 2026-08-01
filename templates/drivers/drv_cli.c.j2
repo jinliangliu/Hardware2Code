@@ -364,11 +364,15 @@ static void cmd_rtc(int argc, char *argv[], cli_output_fn out)
             return;
         }
         {
-            RTC_TimeTypeDef t = {0};
-            t.Hours   = hh;
-            t.Minutes = mm;
-            t.Seconds = ss;
-            HAL_RTC_SetTime(&hrtc, &t, RTC_FORMAT_BIN);
+            /* Preserve the current date, apply the new time via the RTC
+             * driver so the uptime epoch and all timer deadlines are
+             * rescheduled consistently. */
+            rtc_time_t now = {0};
+            RTC_GetTime(&now);
+            now.hour  = (uint8_t)hh;
+            now.min   = (uint8_t)mm;
+            now.sec   = (uint8_t)ss;
+            RTC_SetTime(&now);
             out("RTC time set to %02d:%02d:%02d\r\n", hh, mm, ss);
         }
     } else {

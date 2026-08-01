@@ -826,8 +826,12 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
             # Parse alarms
             alarms_raw = extra.get("alarms", [])
             for alarm in alarms_raw:
+                atype = alarm.get("type", "periodic_sec")
+                period_s = int(alarm.get("period_s", 0))
+                delay_ms = int(alarm.get("delay_ms", 0))
                 rtc_alarms.append({
-                    "period_ms": int(alarm.get("period_s", 0)) * 1000,
+                    "type": atype,
+                    "period_ms": (period_s * 1000) if atype != "one_shot_ms" else delay_ms,
                     "event": alarm.get("event", "").upper(),
                 })
             # Parse initial_time from extra config
@@ -941,7 +945,7 @@ def build_context(hw: dict, project_name: str, hil_mode: bool = False) -> BuildC
     )
 
     alarm_objs = [
-        RtcAlarmIR(period_ms=a["period_ms"], event=a["event"])
+        RtcAlarmIR(type=a["type"], period_ms=a["period_ms"], event=a["event"])
         for a in rtc_alarms
     ]
     init_t = rtc_init_time

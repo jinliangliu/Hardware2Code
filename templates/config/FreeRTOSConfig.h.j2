@@ -74,7 +74,11 @@ void vPortSuppressTicksAndSleep( uint32_t xExpectedIdleTime );
 #endif
 
 #define configLIBRARY_LOWEST_INTERRUPT_PRIORITY         0x03
-#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY    0x01
+/* 0x00: allow the priority-0 RTC ISR (top priority, required to wake the
+ * core from STOP) to call FreeRTOS fromISR() APIs. On Cortex-M0+ the port
+ * masks every interrupt with PRIMASK inside critical sections, so kernel
+ * structures stay protected. */
+#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY    0x00
 #define configKERNEL_INTERRUPT_PRIORITY                 ( configLIBRARY_LOWEST_INTERRUPT_PRIORITY << (8 - configPRIO_BITS) )
 #define configMAX_SYSCALL_INTERRUPT_PRIORITY            ( configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - configPRIO_BITS) )
 

@@ -13,7 +13,7 @@
 project:
   name: base
   version: "1.0.0"
-  heap_size: 16384
+  heap_size: 24576
 
 event_task:
   name: events_process_task
@@ -57,6 +57,16 @@ behavior:
 
 # Periodic RTC alarm events
 periodic_events:
+  # 1-second RTC wakeup heartbeat
+  - event: TICK_1S
+    actions:
+      - 'log "rtc: 1s tick"'
+
+  # 15-second periodic tick
+  - event: TICK_15S
+    actions:
+      - 'log "rtc: 15s tick"'
+
   # 30-second telemetry report: heartbeat, stack watermarks, heap, component health
   - event: SECONDS_30
     actions:
@@ -69,3 +79,29 @@ periodic_events:
     actions:
       - 'log "system: 5-min alive"'
       - telemetry_snapshot
+
+  # 2-minute periodic tick
+  - event: TICK_2MIN
+    actions:
+      - 'log "rtc: 2min tick"'
+
+  # Built-in minute boundary (every minute at :00)
+  - event: MINUTE_TICK
+    actions:
+      - 'log "rtc: minute tick"'
+
+  # Built-in hour boundary (every hour at :00:00)
+  - event: HOUR_TICK
+    actions:
+      - 'log "rtc: hour tick"'
+
+  # Single-shot timers (fire once)
+  - event: ONE_SHOT_5S
+    actions:
+      - 'log "rtc: one-shot 5s fired"'
+  - event: ONE_SHOT_500MS
+    actions:
+      - 'log "rtc: one-shot 500ms fired"'
+  - event: ONE_SHOT_2S
+    actions:
+      - 'log "rtc: one-shot 2s fired"'

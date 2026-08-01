@@ -2,7 +2,7 @@
 
 ## base — 最小系统
 
-- **功能**：HSI 16MHz 最小系统，含 CLI 交互终端、RTC、内部温度传感器（VREFINT 补偿）、STOP1 低功耗 USART 唤醒。所有 GPIO/AF/IRQ 从 `hardware.yaml` pins 派生，无硬编码。
+- **功能**：HSI 16MHz 最小系统，含 CLI 交互终端、RTC（每秒 WAKEUP 内核 + 10 路定时器）、内部温度传感器（VREFINT 补偿）、STOP1 低功耗 USART 唤醒。所有 GPIO/AF/IRQ 从 `hardware.yaml` pins 派生，无硬编码。
 - **硬件连接**：USART2 → PA2(TX)/PA3(RX) (115200bps)；LED → PC0（低电平有效）；按键 → PC13。
 - **生成命令**（六层完整配置）：
 
@@ -36,6 +36,32 @@ peripherals:
 sleep:
   mode: STOP1                   # SLEEP / STOP0 / STOP1
 ```
+
+### RTC 定时器（10 路）
+
+RTC 以 LSE 32.768 kHz 为时钟源，WakeUp 定时器每秒唤醒内核一次，作为 1 Hz 心跳驱动全部定时器；RTC 中断为最高优先级（NVIC 0），确保可从 STOP 模式唤醒内核。定时器类型：
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `periodic_sec` | 秒级周期闹钟 | 1s / 15s / 30s / 2min / 5min |
+| `periodic_minute` | 分钟边界（每分 :00，内建） | `MINUTE_TICK` |
+| `periodic_hour` | 小时边界（每小时 :00:00，内建） | `HOUR_TICK` |
+| `one_shot` | 单次（秒级） | 5s 后触发一次 |
+| `one_shot_ms` | 毫秒单次（RTC SSR + Alarm B） | 500ms / 2s 后触发一次 |
+
+`hardware.yaml` 中 alarms 配置示例：
+
+```yaml
+alarms:
+  - type: periodic_sec
+    period_s: 1               # 每秒心跳
+    event: TICK_1S
+  - type: one_shot_ms
+    delay_ms: 500             # 500ms 单次（毫秒级）
+    event: ONE_SHOT_500MS
+```
+
+`rtc set <HH:MM:SS>` 会通过 `RTC_SetTime()` 统一重排所有定时器（含毫秒定时器），时钟调整后闹钟仍按新时刻触发。
 
 ### CLI 命令列表
 

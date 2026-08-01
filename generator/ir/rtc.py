@@ -13,6 +13,7 @@ from .base import IRObject
 class RtcAlarmIR(IRObject):
     """Single RTC alarm entry."""
 
+    type: str = "periodic_sec"   # periodic_sec/min/hour | one_shot | one_shot_ms
     period_ms: int = 0
     event: str = ""
 
