@@ -1,10 +1,15 @@
 {#
     modbus_component.c.j2 - Modbus RTU slave component
 
-    Wraps the Modbus protocol driver (drv_modbus) and RS485 transport
-    (drv_rs485) as a framework component:
-      init   -> uart_open + gpio_open(DE) + rs485_init + modbus_init
-      step   -> modbus_process() (poll incoming frames)
+    Wraps the Modbus protocol driver (drv_modbus) as a framework component.
+    Transport is decoupled from RS485/DE:
+      transport = "uart"   -> direct USB-TTL / plain UART (uart_api)
+      transport = "rs485"  -> half-duplex RS485 via drv_rs485 + DE pin
+
+    The transport is selected in components.yaml:
+        config:
+          transport: uart        # or rs485
+          uart: usart1           # UART peripheral name
 
     Holding registers are backed by an internal table.  When pubsub.yaml
     defines a "temperature" topic, the component subscribes and mirrors the
@@ -19,10 +24,8 @@
 {% set rs = rs485_list[0] if rs485_list else none %}
 {% set rs_extra = rs.get('extra', {}) if rs else {} %}
 {% set rs_name = rs.name if rs else 'rs485' %}
-{% set uart_name = rs_extra.get('uart', '') if rs else '' %}
-{% set de_pin_id = rs_extra.get('de_pin', '') if rs else '' %}
-{% set de_pin_obj = pins | selectattr('id', 'eq', de_pin_id) | first if de_pin_id else none %}
-{% set de_label = de_pin_obj.get('label', de_pin_id) if de_pin_obj else de_pin_id %}
+{% set transport = comp_config.get('transport', 'uart') %}
+{% set mb_uart = comp_config.get('uart', '') if comp_config.get('uart') else (rs_extra.get('uart', '') if rs else '') %}
 {% set reg_count = (regs | map(attribute='addr') | max | int) + 1 if regs else 0 %}
 {% set temp_reg = regs | selectattr('name', 'in', ['temperature', 'temperature_x10', 'temp']) | first %}
 {% set has_temp_topic = topics | selectattr('name', 'eq', 'temperature') | list | length > 0 %}
@@ -32,9 +35,14 @@
 #include "uart_api.h"
 #include "gpio_api.h"
 #include "drv_{{ mb.name }}.h"
-#include "drv_{{ rs_name }}.h"
 #include "component_bus.h"
 #include <string.h>
+#ifndef TEST
+#include "stm32g0xx_hal.h"
+#endif
+{% if transport == 'rs485' %}
+#include "drv_{{ rs_name }}.h"
+{% endif %}
 
 /* ---- Component-private context ---- */
 struct {{ comp_name }}_ctx {
@@ -48,7 +56,8 @@ static struct {{ comp_name }}_ctx g_{{ comp_name }}_ctx;
 static uint16_t g_modbus_regs[{{ reg_count }}];
 #endif
 
-/* ---- Transport wrappers for the Modbus protocol driver ---- */
+{% if transport == 'rs485' %}
+/* ---- RS485 transport (drv_rs485 handles DE direction) ---- */
 static uint8_t modbus_comp_tx(uint8_t *data, uint16_t len)
 {
     {{ rs_name }}_send(data, len);
@@ -57,9 +66,64 @@ static uint8_t modbus_comp_tx(uint8_t *data, uint16_t len)
 
 static uint8_t modbus_comp_rx(uint8_t *buf, uint16_t len, uint32_t timeout)
 {
-    {{ rs_name }}_recv(buf, len, timeout);
-    return 1;
+    /* Return 1 only when the transport actually delivered bytes. */
+    return ({{ rs_name }}_recv(buf, len, timeout) > 0) ? 1 : 0;
 }
+{% else %}
+/* ---- Plain UART transport (USB-TTL direct, no DE control) ----
+ * RX uses the USART1 RXNE interrupt to fill a ring buffer so bytes are
+ * never lost to task preemption (STM32G0 USART has no hardware FIFO). */
+static uart_handle_t g_uart_handle;
+static uint8_t  g_rx_buf[256];
+static volatile uint16_t g_rx_head = 0;
+static volatile uint16_t g_rx_tail = 0;
+
+#define MODBUS_RX_BUF_SIZE (sizeof(g_rx_buf))
+
+/* Called from USART1_IRQHandler (see stm32g0xx_it.c) */
+void modbus_component_uart_isr(void)
+{
+    uint32_t isr = USART1->ISR;
+    if (isr & USART_ISR_RXNE_RXFNE) {
+        uint8_t ch = (uint8_t)(USART1->RDR & 0xFF);
+        uint16_t next = (uint16_t)((g_rx_head + 1) % MODBUS_RX_BUF_SIZE);
+        if (next != g_rx_tail) {
+            g_rx_buf[g_rx_head] = ch;
+            g_rx_head = next;
+        }
+    }
+    if (isr & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE)) {
+        USART1->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF;
+    }
+}
+
+static uint8_t modbus_comp_tx(uint8_t *data, uint16_t len)
+{
+    return (uart_write(g_uart_handle, data, len) > 0) ? 1 : 0;
+}
+
+static uint8_t modbus_comp_rx(uint8_t *buf, uint16_t len, uint32_t timeout)
+{
+    /* Pull bytes from the ISR-filled ring buffer; wait up to timeout for
+     * the first byte (modbus_process reads the frame byte-by-byte). */
+    uint32_t start = HAL_GetTick();
+    uint16_t got = 0;
+    for (;;) {
+        while (g_rx_tail != g_rx_head && got < len) {
+            buf[got++] = g_rx_buf[g_rx_tail];
+            g_rx_tail = (uint16_t)((g_rx_tail + 1) % MODBUS_RX_BUF_SIZE);
+        }
+        if (got > 0) {
+            break;
+        }
+        if (HAL_GetTick() - start >= timeout) {
+            break;
+        }
+        __NOP();
+    }
+    return (got > 0) ? 1 : 0;
+}
+{% endif %}
 
 /* ---- Register callbacks ---- */
 static void modbus_comp_read_reg(uint16_t addr, uint16_t *val)
@@ -103,16 +167,23 @@ int {{ comp_name }}_init(component_t *c, void *cfg)
 {
     (void)cfg;
 #ifndef TEST
-    static uart_handle_t  s_uart;
+{% if transport == 'rs485' %}
     static gpio_handle_t  s_de;
-
-    s_uart = uart_open("{{ uart_name }}", NULL);
-    s_de   = gpio_open("{{ de_label | lower }}", NULL);
-    if (s_uart == NULL || s_de == NULL) {
+    g_uart_handle = uart_open("{{ mb_uart }}", NULL);
+    s_de = gpio_open("{{ de_label | lower }}", NULL);
+    if (g_uart_handle == NULL || s_de == NULL) {
         return -1;
     }
-
-    {{ rs_name }}_init(s_uart, s_de);
+    {{ rs_name }}_init(g_uart_handle, s_de);
+{% else %}
+    g_uart_handle = uart_open("{{ mb_uart }}", NULL);
+    if (g_uart_handle == NULL) {
+        return -1;
+    }
+    /* Enable USART1 RXNE interrupt for ring-buffer reception. */
+    USART1->CR1 |= USART_CR1_RXNEIE_RXFNEIE;
+    NVIC_EnableIRQ(USART1_IRQn);
+{% endif %}
 
 #if {{ reg_count }} > 0
     /* Initialise register table from hardware.yaml registers. */

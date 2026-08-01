@@ -80,3 +80,13 @@ void USART2_LPUART2_IRQHandler(void)
 {% endif %}
 }
 {% endif %}
+
+{% if has_modbus_component %}
+/* USART1 interrupt — RXNE forwarded to the Modbus component ring buffer */
+extern void modbus_component_uart_isr(void);
+
+void USART1_IRQHandler(void)
+{
+    modbus_component_uart_isr();
+}
+{% endif %}

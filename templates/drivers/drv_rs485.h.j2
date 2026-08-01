@@ -13,6 +13,6 @@ void rs485_init(uart_handle_t uart, gpio_handle_t de_gpio);
 void rs485_set_tx(void);
 void rs485_set_rx(void);
 void rs485_send(uint8_t *data, uint16_t len);
-void rs485_recv(uint8_t *data, uint16_t len, uint32_t timeout);
+int32_t rs485_recv(uint8_t *data, uint16_t len, uint32_t timeout);
 
 #endif

@@ -68,14 +68,15 @@ void rs485_send(uint8_t *data, uint16_t len)
 #endif
 }
 
-void rs485_recv(uint8_t *data, uint16_t len, uint32_t timeout)
+int32_t rs485_recv(uint8_t *data, uint16_t len, uint32_t timeout)
 {
 #ifndef TEST
-    uart_read(g_uart_handle, data, len, timeout);
+    return uart_read(g_uart_handle, data, len, timeout);
 #else
     (void)data;
     (void)len;
     (void)timeout;
     mock_uart_read_called_flag();
+    return 0;
 #endif
 }

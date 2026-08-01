@@ -324,6 +324,7 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             comp_ctx["driver_type"] = driver_type
             comp_ctx["period_ms"] = comp.get("period_ms", 100)
             comp_ctx["description"] = comp.get("config", {}).get("description", "")
+            comp_ctx["comp_config"] = comp.get("config", {})
 
             # Use specialized template for led/btn components
             comp_type = comp.get("type", "")
