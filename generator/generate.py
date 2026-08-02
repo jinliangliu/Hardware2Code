@@ -267,6 +267,16 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             rendered = template.render(context)
             _write_file(out_path, rendered, dry_run, show_diff)
 
+    if context.get("has_spi"):
+        posix_spi_templates = {
+            "drivers/posix/spi_api.h.j2": os.path.join(output_dir, "src", "drivers", "spi_api.h"),
+            "drivers/posix/spi_api.c.j2": os.path.join(output_dir, "src", "drivers", "spi_api.c"),
+        }
+        for tmpl_name, out_path in posix_spi_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
     # ---------- Attitude estimation module (when an IMU is present) ----------
     if context.get("has_mpu6050"):
         attitude_templates = {
@@ -337,6 +347,8 @@ def render_templates(env: Environment, context: dict, output_dir: str,
                 driver_type = "adc"
             elif "I2C" in ptype or "i2c" in driver_name:
                 driver_type = "i2c"
+            elif "SPI" in ptype or "spi" in driver_name:
+                driver_type = "spi"
             else:
                 driver_type = "unknown"
 
@@ -468,7 +480,7 @@ def render_templates(env: Environment, context: dict, output_dir: str,
         test_templates["test/test_rtc_timers.c.j2"] = os.path.join(test_dir, "test_rtc_timers.c")
 
     for p in context.get("peripherals", []):
-        if p.get("type") == "I2C_Sensor_MPU6050":
+        if p.get("type") in ("I2C_Sensor_MPU6050", "SPI_Sensor_MPU6500"):
             test_templates["test/test_mpu6050.c.j2"] = os.path.join(test_dir, "test_mpu6050.c")
             break
 
@@ -495,6 +507,8 @@ def render_templates(env: Environment, context: dict, output_dir: str,
         test_templates["test/test_uart.c.j2"] = os.path.join(test_dir, "test_uart.c")
     if context.get("has_i2c"):
         test_templates["test/test_i2c_api.c.j2"] = os.path.join(test_dir, "test_i2c_api.c")
+    if context.get("has_spi"):
+        test_templates["test/test_spi_api.c.j2"] = os.path.join(test_dir, "test_spi_api.c")
     if context.get("has_mpu6050"):
         test_templates["test/test_attitude.c.j2"] = os.path.join(test_dir, "test_attitude.c")
     if context.get("has_ir"):

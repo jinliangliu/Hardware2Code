@@ -33,19 +33,19 @@ components:
       double_click_ms: 500
       debounce_ms: 50
 
-  # MPU6050 IMU + attitude management component.
+  # MPU6500 IMU (SPI) + attitude management component.
   # Named "imu" (distinct from the drv_mpu6050 driver functions) so the
   # component lifecycle functions are imu_init/imu_step/imu_terminate.
-  # driver = the I2C bus name (shared; EEPROM lives on the same bus)
+  # driver = the SPI bus name; cs = chip-select GPIO label
   - name: imu
     type: mpu6050
-    driver: i2c1
+    driver: spi1
     period_ms: 20          # 50 Hz sampling -> attitude update rate
     sleep_compat: RUN
     config:
-      description: "MPU6050 IMU over shared I2C1 bus"
-      bus: i2c1
-      addr: 0x68
+      description: "MPU6500 IMU over SPI1 (CS=PC4)"
+      bus: spi1
+      cs: mpu_cs
       accel_fs: 2          # +/- 2 g
       gyro_fs: 250         # +/- 250 dps
       alpha: 0.98          # complementary filter gyro weight

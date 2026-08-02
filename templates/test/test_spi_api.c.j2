@@ -1,0 +1,110 @@
+/* test_spi_api.c.j2 - SPI bus API unit tests (CS + register protocol) */
+#include "unity.h"
+#include "mock_hal.h"
+#include <string.h>
+
+{% set spi_peri = peripherals | selectattr('model.interface', 'eq', 'SPI') | first %}
+{% set spi_cs_id = spi_peri.get('cs_pin', spi_peri.get('extra', {}).get('chip_select_pin', '')) %}
+{% set spi_cs_obj = pins | selectattr('id', 'eq', spi_cs_id) | first %}
+{% set cs_label = (spi_cs_obj.get('label', spi_cs_id) | lower) if spi_cs_obj else (spi_cs_id | lower) %}
+
+/* spi_api references hspi1 via extern (declared in main.c) */
+SPI_HandleTypeDef hspi1;
+#include "../src/drivers/gpio_api.c"
+#include "../src/drivers/spi_api.c"
+
+void setUp(void)
+{
+    mock_spi_reset();
+}
+
+void tearDown(void) {}
+
+void test_open_known_bus_returns_handle(void)
+{
+    spi_handle_t h = spi_open("spi1", NULL);
+    TEST_ASSERT_NOT_NULL(h);
+}
+
+void test_open_is_idempotent_for_shared_bus(void)
+{
+    spi_handle_t h1 = spi_open("spi1", NULL);
+    spi_handle_t h2 = spi_open("spi1", NULL);
+    TEST_ASSERT_NOT_NULL(h1);
+    TEST_ASSERT_EQUAL_PTR(h1, h2);
+}
+
+void test_open_unknown_bus_returns_null(void)
+{
+    TEST_ASSERT_NULL(spi_open("spi9", NULL));
+    TEST_ASSERT_NULL(spi_open(NULL, NULL));
+}
+
+void test_read_reg_uses_rw_bit_and_mock_model(void)
+{
+    uint8_t b = 0;
+    spi_handle_t h = spi_open("spi1", NULL);
+
+    mock_spi_set_reg(0x75, 0x70);              /* WHO_AM_I */
+    TEST_ASSERT_EQUAL_INT(0, spi_read_reg(h, "{{ cs_label }}", 0x75, &b, 1, 0));
+    TEST_ASSERT_EQUAL_UINT8(0x70, b);
+    TEST_ASSERT_EQUAL_UINT32(1, mock_spi_read_count());
+}
+
+void test_write_reg_updates_mock_model(void)
+{
+    uint8_t val = 0x42;
+    spi_handle_t h = spi_open("spi1", NULL);
+
+    mock_spi_set_reg(0x00, 0x00);            /* mark device present */
+    TEST_ASSERT_EQUAL_INT(0, spi_write_reg(h, "{{ cs_label }}", 0x1B, &val, 1, 0));
+    TEST_ASSERT_EQUAL_UINT8(0x42, mock_spi_get_reg(0x1B));
+    TEST_ASSERT_EQUAL_UINT32(1, mock_spi_write_count());
+}
+
+void test_multi_byte_read_autoincrements(void)
+{
+    uint8_t out[4] = {0};
+    uint8_t img[8] = {0x01, 0x02, 0x03, 0x04};
+    spi_handle_t h = spi_open("spi1", NULL);
+
+    mock_spi_load_image(img, sizeof(img));
+    TEST_ASSERT_EQUAL_INT(0, spi_read_reg(h, "{{ cs_label }}", 0x00, out, 4, 0));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(img, out, 4);
+}
+
+void test_raw_transfer_roundtrip(void)
+{
+    uint8_t tx[3] = {0x80, 0x00, 0x00};
+    uint8_t rx[3] = {0};
+    spi_handle_t h = spi_open("spi1", NULL);
+
+    mock_spi_set_reg(0x00, 0xAA);
+    TEST_ASSERT_EQUAL_INT(0, spi_transfer(h, "{{ cs_label }}", tx, rx, 3, 0));
+    TEST_ASSERT_EQUAL_UINT8(0x00, rx[0]);
+    TEST_ASSERT_EQUAL_UINT8(0xAA, rx[1]);
+}
+
+void test_api_rejects_bad_args(void)
+{
+    uint8_t b;
+    TEST_ASSERT_NOT_EQUAL(0, spi_read_reg(NULL, "{{ cs_label }}", 0x00, &b, 1, 0));
+    TEST_ASSERT_NOT_EQUAL(0, spi_read_reg(spi_open("spi1", NULL), "{{ cs_label }}",
+                                          0x00, NULL, 0, 0));
+    TEST_ASSERT_NOT_EQUAL(0, spi_read_reg(spi_open("spi1", NULL), "nopin",
+                                          0x00, &b, 1, 0));
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_open_known_bus_returns_handle);
+    RUN_TEST(test_open_is_idempotent_for_shared_bus);
+    RUN_TEST(test_open_unknown_bus_returns_null);
+    RUN_TEST(test_read_reg_uses_rw_bit_and_mock_model);
+    RUN_TEST(test_write_reg_updates_mock_model);
+    RUN_TEST(test_multi_byte_read_autoincrements);
+    RUN_TEST(test_raw_transfer_roundtrip);
+    RUN_TEST(test_api_rejects_bad_args);
+    return UNITY_END();
+}

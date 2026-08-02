@@ -6,7 +6,12 @@
  */
 
 #include "posix_mock.h"
+{% if has_i2c %}
 #include "i2c_api.h"
+{% endif %}
+{% if has_spi %}
+#include "spi_api.h"
+{% endif %}
 #include <string.h>
 
 /* ---- UART mock ---- */
@@ -244,6 +249,7 @@ void adc_mock_reset_all(void)
     memset(g_adc_mocks, 0, sizeof(g_adc_mocks));
 }
 
+{% if has_i2c %}
 /* ---- I2C mock ----
  * In-memory replacement for i2c_api.  One bus handle per physical bus;
  * several slave devices (by 7-bit address) can live on the same bus.
@@ -477,3 +483,182 @@ void i2c_mock_reset_all(void)
     i2c_mock_add_device("i2c1", 0x68, NULL, 0);
     i2c_mock_set_reg("i2c1", 0x68, 0x75, 0x68);
 }
+{% endif %}
+
+{% if has_spi %}
+/* ---- SPI mock ----
+ * In-memory replacement for spi_api.  Single-device register model
+ * (MPU6500-style): first TX byte is the register address with R/W in
+ * bit 7.  A default MPU6500 (WHO_AM_I = 0x70) is preloaded so the imu
+ * component's init() succeeds out of the box.
+ * =================================================================== */
+
+#define MOCK_SPI_MAX_BUSES 2
+#define MOCK_SPI_MEM_SIZE 128
+
+struct spi_dev {
+    char    name[8];
+    uint8_t is_open;
+    uint8_t mem[MOCK_SPI_MEM_SIZE];
+};
+
+static struct spi_dev g_spi_buses[MOCK_SPI_MAX_BUSES];
+static uint32_t g_spi_read_calls  = 0;
+static uint32_t g_spi_write_calls = 0;
+
+static struct spi_dev *spi_mock_find_bus(const char *name)
+{
+    for (int i = 0; i < MOCK_SPI_MAX_BUSES; i++) {
+        if (g_spi_buses[i].name[0] != '\0' &&
+            strcmp(g_spi_buses[i].name, name) == 0) {
+            return &g_spi_buses[i];
+        }
+    }
+    return NULL;
+}
+
+static struct spi_dev *spi_mock_alloc_bus(const char *name)
+{
+    struct spi_dev *b = spi_mock_find_bus(name);
+    if (b != NULL) {
+        return b;
+    }
+    for (int i = 0; i < MOCK_SPI_MAX_BUSES; i++) {
+        if (g_spi_buses[i].name[0] == '\0') {
+            strncpy(g_spi_buses[i].name, name,
+                    sizeof(g_spi_buses[i].name) - 1);
+            g_spi_buses[i].name[sizeof(g_spi_buses[i].name) - 1] = '\0';
+            return &g_spi_buses[i];
+        }
+    }
+    return NULL;
+}
+
+spi_handle_t spi_open(const char *bus_name, const spi_cfg_t *cfg)
+{
+    struct spi_dev *b;
+    (void)cfg;
+    if (bus_name == NULL) {
+        return NULL;
+    }
+    b = spi_mock_alloc_bus(bus_name);
+    if (b == NULL) {
+        return NULL;
+    }
+    b->is_open = 1;
+    return (spi_handle_t)b;
+}
+
+const char *spi_name(spi_handle_t h)
+{
+    return (h == NULL) ? NULL : h->name;
+}
+
+int32_t spi_transfer(spi_handle_t h, const char *cs_name,
+                     const uint8_t *tx, uint8_t *rx, uint32_t len,
+                     uint32_t timeout_ms)
+{
+    uint32_t i;
+    uint8_t  reg;
+    (void)cs_name; (void)timeout_ms;
+    if (h == NULL || tx == NULL || rx == NULL || len == 0) {
+        return -5;
+    }
+    reg = tx[0] & 0x7FU;
+    if (tx[0] & 0x80U) {
+        g_spi_read_calls++;
+        rx[0] = 0x00;
+        for (i = 1; i < len; i++) {
+            rx[i] = (reg < MOCK_SPI_MEM_SIZE) ? h->mem[reg++] : 0x00;
+        }
+    } else {
+        g_spi_write_calls++;
+        for (i = 1; i < len; i++) {
+            if (reg < MOCK_SPI_MEM_SIZE) {
+                h->mem[reg++] = tx[i];
+            }
+        }
+        memset(rx, 0, len);
+    }
+    return 0;
+}
+
+int32_t spi_transmit(spi_handle_t h, const char *cs_name,
+                     const uint8_t *tx, uint32_t len, uint32_t timeout_ms)
+{
+    (void)cs_name; (void)timeout_ms;
+    if (h == NULL || tx == NULL || len == 0) {
+        return -5;
+    }
+    g_spi_write_calls++;
+    if (len >= 2) {
+        uint8_t reg = tx[0] & 0x7FU;
+        for (uint32_t i = 1; i < len && reg < MOCK_SPI_MEM_SIZE; i++) {
+            h->mem[reg++] = tx[i];
+        }
+    }
+    return 0;
+}
+
+int32_t spi_receive(spi_handle_t h, const char *cs_name,
+                    uint8_t *rx, uint32_t len, uint32_t timeout_ms)
+{
+    (void)cs_name; (void)timeout_ms;
+    if (h == NULL || rx == NULL || len == 0) {
+        return -5;
+    }
+    g_spi_read_calls++;
+    memset(rx, 0xFF, len);
+    return 0;
+}
+
+int32_t spi_read_reg(spi_handle_t h, const char *cs_name, uint8_t reg,
+                     uint8_t *buf, uint32_t len, uint32_t timeout_ms)
+{
+    uint8_t tx[2 + 32];
+    uint8_t rx[2 + 32];
+    uint32_t i;
+    (void)cs_name;
+    if (h == NULL || buf == NULL || len == 0 || len > 32) {
+        return -5;
+    }
+    tx[0] = (uint8_t)(reg | 0x80U);
+    memset(&tx[1], 0, len);
+    if (spi_transfer(h, cs_name, tx, rx, len + 1, timeout_ms) != 0) {
+        return -2;
+    }
+    for (i = 0; i < len; i++) {
+        buf[i] = rx[i + 1];
+    }
+    return 0;
+}
+
+int32_t spi_write_reg(spi_handle_t h, const char *cs_name, uint8_t reg,
+                      const uint8_t *buf, uint32_t len, uint32_t timeout_ms)
+{
+    uint8_t tx[1 + 32];
+    uint8_t rx[1 + 32];
+    uint32_t i;
+    (void)cs_name;
+    if (h == NULL || buf == NULL || len == 0 || len > 32) {
+        return -5;
+    }
+    tx[0] = (uint8_t)(reg & 0x7FU);
+    for (i = 0; i < len; i++) {
+        tx[i + 1] = buf[i];
+    }
+    return spi_transfer(h, cs_name, tx, rx, len + 1, timeout_ms);
+}
+
+uint32_t spi_mock_read_count(void)  { return g_spi_read_calls; }
+uint32_t spi_mock_write_count(void) { return g_spi_write_calls; }
+
+void spi_mock_reset_all(void)
+{
+    memset(g_spi_buses, 0, sizeof(g_spi_buses));
+    g_spi_read_calls  = 0;
+    g_spi_write_calls = 0;
+    /* Preload a default MPU6500 so the imu component init() succeeds */
+    spi_mock_alloc_bus("spi1")->mem[0x75] = 0x70;
+}
+{% endif %}

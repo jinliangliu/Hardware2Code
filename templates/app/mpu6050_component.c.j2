@@ -1,25 +1,27 @@
 {#
     mpu6050_component.c.j2 - MPU6050 IMU + attitude management component
 
-    Wraps drv_mpu6050 (i2c_api transport) as a framework component:
-      init()  → i2c_open(bus) + mpu6050_init (WHO_AM_I + full scale) + attitude_init
-      step()  → mpu6050_read → attitude_update → bus_publish (scaled int32)
+    Wraps drv_mpu6050 (i2c_api or spi_api transport) as a framework
+    component: init() opens the shared bus, verifies WHO_AM_I and sets
+    full scale; step() samples at 50 Hz, fuses attitude and publishes.
 
-    The I2C bus is a shared resource: i2c_open() returns the same handle
-    for every device on the bus, and this component only uses its own
-    7-bit device address (0x68) for all transactions.
+    The bus is a shared resource; this component only addresses its own
+    device — by 7-bit address on I2C, or by chip-select GPIO on SPI.
 
     Component config:
-        bus: i2c1              # physical bus name (default: peripheral bus)
-        addr: 0x68             # 7-bit device address
+        bus: i2c1|spi1         # physical bus name (default: peripheral bus)
+        addr: 0x68             # I2C: 7-bit device address
+        cs: mpu_cs             # SPI: chip-select GPIO label
         accel_fs: 2            # 2/4/8/16 g
         gyro_fs: 250           # 250/500/1000/2000 dps
         sample_rate_div: 0     # Fs = 1 kHz / (1 + div)
         alpha: 0.98            # complementary filter gyro weight
 #}
-{% set mpu_peri = peripherals | selectattr('type', 'eq', 'I2C_Sensor_MPU6050') | first %}
+{% set mpu_peri = peripherals | selectattr('type', 'in', ['I2C_Sensor_MPU6050', 'SPI_Sensor_MPU6500']) | first %}
 {% set p_extra = mpu_peri.get('extra', {}) if mpu_peri else {} %}
-{% set bus_name = (comp_config.get('bus', '') | string) or (mpu_peri.bus | lower if mpu_peri else 'i2c1') %}
+{% set is_spi = mpu_peri.get('model', {}).get('interface', '') == 'SPI' %}
+{% set bus_name = (comp_config.get('bus', '') | string) or (mpu_peri.bus | lower if mpu_peri else ('spi1' if is_spi else 'i2c1')) %}
+{% set cs_name = comp_config.get('cs', '') | string %}
 {% set dev_addr = comp_config.get('addr', mpu_peri.get('address', mpu_peri.get('model', {}).get('address', 0x68))) %}
 {% set accel_fs = comp_config.get('accel_fs', p_extra.get('accel_fs', 2)) %}
 {% set gyro_fs = comp_config.get('gyro_fs', p_extra.get('gyro_fs', 250)) %}
@@ -30,7 +32,11 @@
 {% set has_imu_temp  = topics | selectattr('name', 'eq', 'imu_temp') | list | length > 0 %}
 
 #include "component_registry.h"
+{% if is_spi %}
+#include "spi_api.h"
+{% else %}
 #include "i2c_api.h"
+{% endif %}
 #include "drv_{{ mpu_peri.name }}.h"
 #include "attitude.h"
 {% if has_topics %}
@@ -46,8 +52,13 @@
 /* ---- Component-private context ---- */
 struct {{ comp_name }}_ctx {
     uint8_t             initialized;
+{% if is_spi %}
+    spi_handle_t        bus;
+    const char         *cs_name;
+{% else %}
     i2c_handle_t        bus;
     uint8_t             dev_addr;
+{% endif %}
     {{ mpu_peri.name }}_data_t imu;
     attitude_t          att;
     uint32_t            samples;
@@ -63,6 +74,17 @@ int {{ comp_name }}_init(component_t *c, void *cfg)
     (void)c;
     (void)cfg;
 
+{% if is_spi %}
+    ctx->bus = spi_open("{{ bus_name }}", NULL);
+    if (ctx->bus == NULL) {
+        return -1;
+    }
+    ctx->cs_name = "{{ cs_name }}";
+
+    if ({{ mpu_peri.name }}_init(ctx->bus, ctx->cs_name) != 0) {
+        return -1;
+    }
+{% else %}
     ctx->bus = i2c_open("{{ bus_name }}", NULL);
     if (ctx->bus == NULL) {
         return -1;
@@ -72,6 +94,7 @@ int {{ comp_name }}_init(component_t *c, void *cfg)
     if ({{ mpu_peri.name }}_init(ctx->bus, ctx->dev_addr) != 0) {
         return -1;
     }
+{% endif %}
 
     attitude_init(&ctx->att, 0.0f, 0.0f, 0.0f);
     attitude_set_alpha(&ctx->att, {{ alpha }}f);
@@ -94,7 +117,11 @@ void {{ comp_name }}_step(component_t *c)
     }
     now = HAL_GetTick();
 
+{% if is_spi %}
+    if ({{ mpu_peri.name }}_read(ctx->bus, ctx->cs_name, &ctx->imu) != 0) {
+{% else %}
     if ({{ mpu_peri.name }}_read(ctx->bus, ctx->dev_addr, &ctx->imu) != 0) {
+{% endif %}
         ctx->read_failures++;
         return;
     }

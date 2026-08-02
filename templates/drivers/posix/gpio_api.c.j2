@@ -6,7 +6,11 @@
  */
 
 #include "gpio_api.h"
+#ifdef TEST
+#include "mock_hal.h"
+#else
 #include "stm32g0xx_hal.h"
+#endif
 #include <string.h>
 
 struct gpio_dev {
@@ -45,7 +49,12 @@ gpio_handle_t gpio_open(const char *name, const gpio_cfg_t *cfg)
     if (name == NULL) return NULL;
     for (uint32_t i = 0; i < g_gpio_count; i++) {
         if (strcmp(g_gpio_devs[i].name, name) == 0) {
-            if (g_gpio_devs[i].is_open) return NULL;
+            /* Idempotent: a GPIO is a shared resource (same semantics as
+             * i2c_open/spi_open).  Returning the existing handle lets
+             * bus layers (e.g. spi_api CS) open the same pin repeatedly. */
+            if (g_gpio_devs[i].is_open) {
+                return (gpio_handle_t)&g_gpio_devs[i];
+            }
             g_gpio_devs[i].is_open = 1;
             return (gpio_handle_t)&g_gpio_devs[i];
         }

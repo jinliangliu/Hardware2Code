@@ -1,9 +1,9 @@
 {#
-    drv_mpu6050.c.j2 - MPU6050 IMU driver source template
+    drv_mpu6050.c.j2 - MPU6050/MPU6500 IMU driver source template
 
-    All register access goes through i2c_api (POSIX-style bus handle),
-    so the driver is independent of the physical I2C peripheral and can
-    coexist with other devices on the same bus.
+    Transport-agnostic: register access goes through the POSIX bus API.
+    I2C models address the device by 7-bit slave address; SPI models by
+    chip-select GPIO label.  Only the transport macros below differ.
 
     Requires context: peripheral (name, address, extra, bus), model.
 #}
@@ -11,22 +11,33 @@
 {% set accel_fs = mpu.get('accel_fs', 2) %}
 {% set gyro_fs = mpu.get('gyro_fs', 250) %}
 {% set sample_rate_div = mpu.get('sample_rate_div', 0) %}
-{% set accel_cfg = {'2': 0x00, '4': 0x08, '8': 0x10, '16': 0x18}[accel_fs | string] %}
-{% set gyro_cfg  = {'250': 0x00, '500': 0x08, '1000': 0x10, '2000': 0x18}[gyro_fs | string] %}
+{% set whoami = mpu.get('whoami', model.get('whoami', 0x68)) %}
 {% set accel_scale = {'2': 16384.0, '4': 8192.0, '8': 4096.0, '16': 2048.0}[accel_fs | string] %}
 {% set gyro_scale  = {'250': 131.0, '500': 65.5, '1000': 32.8, '2000': 16.4}[gyro_fs | string] %}
-{% set whoami = mpu.get('whoami', model.get('whoami', 0x68)) %}
 
 #include "drv_{{ peripheral.name }}.h"
 #include <stddef.h>
 
+/* ---- transport macros: pick i2c_api or spi_api per model interface ---- */
+{% if model.interface == 'SPI' %}
+#define MPU_READ_REG(reg, buf, len)  spi_read_reg(bus, cs_name, (reg), (buf), (len), 0)
+#define MPU_WRITE_REG(reg, buf, len) spi_write_reg(bus, cs_name, (reg), (buf), (len), 0)
+{% else %}
+#define MPU_READ_REG(reg, buf, len)  i2c_read_reg(bus, dev_addr, (reg), (buf), (len), 0)
+#define MPU_WRITE_REG(reg, buf, len) i2c_write_reg(bus, dev_addr, (reg), (buf), (len), 0)
+{% endif %}
+
 /*
  * Wake-up + config sequence:
- *   1. verify WHO_AM_I (catches wrong address / missing pull-ups)
+ *   1. verify WHO_AM_I (catches wrong wiring / missing pull-ups)
  *   2. clear SLEEP in PWR_MGMT_1
  *   3. set DLPF (CONFIG), sample-rate divider, accel/gyro full scale
  */
+{% if model.interface == 'SPI' %}
+int {{ peripheral.name }}_init(spi_handle_t bus, const char *cs_name)
+{% else %}
 int {{ peripheral.name }}_init(i2c_handle_t bus, uint8_t dev_addr)
+{% endif %}
 {
     uint8_t who = 0x00;
     uint8_t val;
@@ -35,45 +46,63 @@ int {{ peripheral.name }}_init(i2c_handle_t bus, uint8_t dev_addr)
         return -1;
     }
 
+{% if model.interface == 'SPI' %}
+    if ({{ peripheral.name }}_who_am_i(bus, cs_name, &who) != 0) {
+{% else %}
     if ({{ peripheral.name }}_who_am_i(bus, dev_addr, &who) != 0) {
-        return -2;                       /* bus/address error */
+{% endif %}
+        return -2;                       /* bus/CS error */
     }
     if (who != {{ '0x%02X' | format(whoami) }}) {
-        return -3;                       /* wrong device on this address */
+        return -3;                       /* wrong device on this CS/address */
     }
 
     /* Wake up (clear SLEEP bit). */
     val = 0x00;
-    if (i2c_write_reg(bus, dev_addr, MPU6050_PWR_MGMT_1, &val, 1, 0) != 0) {
+    if (MPU_WRITE_REG(MPU6050_PWR_MGMT_1, &val, 1) != 0) {
         return -4;
     }
 
     /* DLPF: 44 Hz low-pass (0x03) — good default for attitude fusion. */
     val = 0x03;
-    if (i2c_write_reg(bus, dev_addr, MPU6050_CONFIG, &val, 1, 0) != 0) {
+    if (MPU_WRITE_REG(MPU6050_CONFIG, &val, 1) != 0) {
         return -4;
     }
 
     /* Sample-rate divider: Fs = 1 kHz / (1 + SMPLRT_DIV). */
     val = {{ sample_rate_div }};
-    if (i2c_write_reg(bus, dev_addr, MPU6050_SMPLRT_DIV, &val, 1, 0) != 0) {
+    if (MPU_WRITE_REG(MPU6050_SMPLRT_DIV, &val, 1) != 0) {
         return -4;
     }
 
+{% if model.interface == 'SPI' %}
+    return {{ peripheral.name }}_set_full_scale(bus, cs_name,
+                                               {{ accel_fs }}, {{ gyro_fs }});
+{% else %}
     return {{ peripheral.name }}_set_full_scale(bus, dev_addr,
                                                {{ accel_fs }}, {{ gyro_fs }});
+{% endif %}
 }
 
+{% if model.interface == 'SPI' %}
+int {{ peripheral.name }}_who_am_i(spi_handle_t bus, const char *cs_name, uint8_t *out)
+{% else %}
 int {{ peripheral.name }}_who_am_i(i2c_handle_t bus, uint8_t dev_addr, uint8_t *out)
+{% endif %}
 {
     if (bus == NULL || out == NULL) {
         return -1;
     }
-    return (i2c_read_reg(bus, dev_addr, MPU6050_WHO_AM_I, out, 1, 0) == 0) ? 0 : -2;
+    return (MPU_READ_REG(MPU6050_WHO_AM_I, out, 1) == 0) ? 0 : -2;
 }
 
+{% if model.interface == 'SPI' %}
+int {{ peripheral.name }}_set_full_scale(spi_handle_t bus, const char *cs_name,
+                                        uint8_t accel_fs_g, uint16_t gyro_fs_dps)
+{% else %}
 int {{ peripheral.name }}_set_full_scale(i2c_handle_t bus, uint8_t dev_addr,
                                         uint8_t accel_fs_g, uint16_t gyro_fs_dps)
+{% endif %}
 {
     uint8_t val;
 
@@ -88,7 +117,7 @@ int {{ peripheral.name }}_set_full_scale(i2c_handle_t bus, uint8_t dev_addr,
         case 16: val = 0x18; break;
         default: val = 0x00; break;
     }
-    if (i2c_write_reg(bus, dev_addr, MPU6050_ACCEL_CONFIG, &val, 1, 0) != 0) {
+    if (MPU_WRITE_REG(MPU6050_ACCEL_CONFIG, &val, 1) != 0) {
         return -4;
     }
 
@@ -99,21 +128,26 @@ int {{ peripheral.name }}_set_full_scale(i2c_handle_t bus, uint8_t dev_addr,
         case 2000: val = 0x18; break;
         default:   val = 0x00; break;
     }
-    if (i2c_write_reg(bus, dev_addr, MPU6050_GYRO_CONFIG, &val, 1, 0) != 0) {
+    if (MPU_WRITE_REG(MPU6050_GYRO_CONFIG, &val, 1) != 0) {
         return -4;
     }
     return 0;
 }
 
+{% if model.interface == 'SPI' %}
+int {{ peripheral.name }}_read(spi_handle_t bus, const char *cs_name,
+                              {{ peripheral.name }}_data_t *out)
+{% else %}
 int {{ peripheral.name }}_read(i2c_handle_t bus, uint8_t dev_addr,
                               {{ peripheral.name }}_data_t *out)
+{% endif %}
 {
     uint8_t buf[14];
 
     if (bus == NULL || out == NULL) {
         return -1;
     }
-    if (i2c_read_reg(bus, dev_addr, MPU6050_ACCEL_XOUT_H, buf, sizeof(buf), 0) != 0) {
+    if (MPU_READ_REG(MPU6050_ACCEL_XOUT_H, buf, sizeof(buf)) != 0) {
         return -2;
     }
 

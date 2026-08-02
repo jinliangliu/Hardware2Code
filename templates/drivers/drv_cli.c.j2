@@ -75,8 +75,11 @@
 {% if has_i2c %}
 #include "i2c_api.h"
 {% endif %}
+{% if has_spi %}
+#include "spi_api.h"
+{% endif %}
 {% if has_mpu6050 %}
-{% for p in peripherals if p.type == 'I2C_Sensor_MPU6050' %}
+{% for p in peripherals if p.type in ['I2C_Sensor_MPU6050', 'SPI_Sensor_MPU6500'] %}
 #include "drv_{{ p.name }}.h"
 {% endfor %}
 {% endif %}
@@ -469,19 +472,38 @@ static void cmd_i2c(int argc, char *argv[], cli_output_fn out)
 
 {% if has_mpu6050 %}
 /* ---- MPU6050 status: live sample + fused attitude ---- */
-{% set mpu_peri = peripherals | selectattr('type', 'eq', 'I2C_Sensor_MPU6050') | first %}
+{% set mpu_peri = peripherals | selectattr('type', 'in', ['I2C_Sensor_MPU6050', 'SPI_Sensor_MPU6500']) | first %}
 {% set mpu_comp = components | selectattr('type', 'eq', 'mpu6050') | first %}
+{% set mpu_is_spi = mpu_peri.get('model', {}).get('interface', '') == 'SPI' %}
+{% set mpu_cs_id = mpu_peri.get('cs_pin', '') %}
+{% set mpu_cs_obj = pins | selectattr('id', 'eq', mpu_cs_id) | first %}
+{% set mpu_cs_label = (mpu_cs_obj.get('label', mpu_cs_id) | lower) if mpu_cs_obj else (mpu_cs_id | lower) %}
 {% if mpu_comp %}
 int {{ mpu_comp.name }}_get_attitude(float *roll, float *pitch, float *yaw);
 {% endif %}
 static void cmd_mpu(int argc, char *argv[], cli_output_fn out)
 {
+{% if mpu_is_spi %}
+    spi_handle_t h;
+{% else %}
     i2c_handle_t h;
+{% endif %}
     {{ mpu_peri.name }}_data_t d;
     float r = 0, p = 0, y = 0;
     (void)argc;
     (void)argv;
 
+{% if mpu_is_spi %}
+    h = spi_open("{{ mpu_peri.bus | lower }}", NULL);
+    if (h == NULL) {
+        out("SPI bus unavailable\r\n");
+        return;
+    }
+    if ({{ mpu_peri.name }}_read(h, "{{ mpu_cs_label }}", &d) != 0) {
+        out("MPU6500 read failed (check wiring, CS %s)\r\n", "{{ mpu_cs_label }}");
+        return;
+    }
+{% else %}
     h = i2c_open("{{ mpu_peri.bus | lower }}", NULL);
     if (h == NULL) {
         out("I2C bus unavailable\r\n");
@@ -492,6 +514,7 @@ static void cmd_mpu(int argc, char *argv[], cli_output_fn out)
             (unsigned){{ mpu_peri.get('address', mpu_peri.model.get('address', 0x68)) }});
         return;
     }
+{% endif %}
 {% if mpu_comp %}
     if ({{ mpu_comp.name }}_get_attitude(&r, &p, &y) == 0) {
         out("attitude  roll=%6.1f pitch=%6.1f yaw=%6.1f deg\r\n", r, p, y);

@@ -57,6 +57,9 @@
 {% if has_i2c %}
 #include "i2c_api.h"
 {% endif %}
+{% if has_spi %}
+#include "spi_api.h"
+{% endif %}
 
 /* GPIO initialization function */
 void MX_GPIO_Init(void);
@@ -81,8 +84,14 @@ I2C_HandleTypeDef hi2c{{ bus[-1] }};
 {% endfor %}
 
 /* ------- SPI Handles (if SPI peripherals are used) ------- */
+{% set spi_buses = [] %}
 {% for p in peripherals if 'SPI' in p.model.interface %}
-SPI_HandleTypeDef hspi{{ p.bus[-1] }};
+{% if p.bus not in spi_buses %}
+{% set _ = spi_buses.append(p.bus) %}
+{% endif %}
+{% endfor %}
+{% for bus in spi_buses %}
+SPI_HandleTypeDef hspi{{ bus[-1] }};
 {% endfor %}
 
 /* ------- UART Handles (if UART peripherals are used) ------- */
@@ -189,25 +198,27 @@ static void MX_I2C{{ bus[-1] }}_Init(void)
 {% endfor %}
 
 /* ------- SPI initialization (if peripherals with SPI are present) ------- */
-{% for p in peripherals if 'SPI' in p.model.interface %}
-static void MX_SPI{{ p.bus[-1] }}_Init(void)
+{% for bus in spi_buses %}
+{% set p0 = peripherals | selectattr('bus', 'eq', bus) | first %}
+static void MX_SPI{{ bus[-1] }}_Init(void)
 {
-    hspi{{ p.bus[-1] }}.Instance = {{ p.bus }};
-    hspi{{ p.bus[-1] }}.Init.Mode = SPI_MODE_MASTER;
-    hspi{{ p.bus[-1] }}.Init.Direction = SPI_DIRECTION_2LINES;
-    hspi{{ p.bus[-1] }}.Init.DataSize = SPI_DATASIZE_8BIT;
-    hspi{{ p.bus[-1] }}.Init.CLKPolarity = SPI_POLARITY_LOW;
-    hspi{{ p.bus[-1] }}.Init.CLKPhase = SPI_PHASE_1EDGE;
-    hspi{{ p.bus[-1] }}.Init.NSS = SPI_NSS_SOFT;
-{% if p.spi and p.spi.prescaler %}
-    hspi{{ p.bus[-1] }}.Init.BaudRatePrescaler = {{ p.spi.prescaler | spi_prescaler_code }};
+    __HAL_RCC_{{ bus }}_CLK_ENABLE();
+    hspi{{ bus[-1] }}.Instance = {{ bus }};
+    hspi{{ bus[-1] }}.Init.Mode = SPI_MODE_MASTER;
+    hspi{{ bus[-1] }}.Init.Direction = SPI_DIRECTION_2LINES;
+    hspi{{ bus[-1] }}.Init.DataSize = SPI_DATASIZE_8BIT;
+    hspi{{ bus[-1] }}.Init.CLKPolarity = SPI_POLARITY_LOW;
+    hspi{{ bus[-1] }}.Init.CLKPhase = SPI_PHASE_1EDGE;
+    hspi{{ bus[-1] }}.Init.NSS = SPI_NSS_SOFT;
+{% if p0.spi and p0.spi.prescaler %}
+    hspi{{ bus[-1] }}.Init.BaudRatePrescaler = {{ p0.spi.prescaler | spi_prescaler_code }};
 {% else %}
-    hspi{{ p.bus[-1] }}.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+    hspi{{ bus[-1] }}.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
 {% endif %}
-    hspi{{ p.bus[-1] }}.Init.FirstBit = SPI_FIRSTBIT_MSB;
-    hspi{{ p.bus[-1] }}.Init.TIMode = SPI_TIMODE_DISABLE;
-    hspi{{ p.bus[-1] }}.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-    if (HAL_SPI_Init(&hspi{{ p.bus[-1] }}) != HAL_OK) while(1);
+    hspi{{ bus[-1] }}.Init.FirstBit = SPI_FIRSTBIT_MSB;
+    hspi{{ bus[-1] }}.Init.TIMode = SPI_TIMODE_DISABLE;
+    hspi{{ bus[-1] }}.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+    if (HAL_SPI_Init(&hspi{{ bus[-1] }}) != HAL_OK) while(1);
 }
 {% endfor %}
 
@@ -339,15 +350,20 @@ int main(void)
 {% for bus in i2c_buses %}
     MX_I2C{{ bus[-1] }}_Init();
 {% endfor %}
+{% for bus in spi_buses %}
+    MX_SPI{{ bus[-1] }}_Init();
+{% endfor %}
 {% for p in peripherals %}
 {% if 'I2C' in p.model.interface %}
     {{ p.name }}_init(i2c_open("{{ p.bus | lower }}", NULL), {{ '0x%02X' | format(p.get('address', p.model.get('address', p.model.get('i2c_addr', 0x68)))) }});
 {% elif 'SPI' in p.model.interface %}
-    MX_SPI{{ p.bus[-1] }}_Init();
 {% if p.type in ('SPI_Flash_W25Q32', 'SPI_Flash_Generic') %}
     spi_flash_init(&hspi{{ p.bus[-1] }});
 {% else %}
-{{ p.name }}_init(&hspi{{ p.bus[-1] }});
+{% set spi_cs_id = p.get('cs_pin', p.get('extra', {}).get('chip_select_pin', '')) %}
+{% set spi_cs_obj = pins | selectattr('id', 'eq', spi_cs_id) | first %}
+{% set spi_cs_label = (spi_cs_obj.get('label', spi_cs_id) | lower) if spi_cs_obj else (spi_cs_id | lower) %}
+    {{ p.name }}_init(spi_open("{{ p.bus | lower }}", NULL), "{{ spi_cs_label }}");
 {% endif %}
 {% elif p.type == 'Internal_RTC' %}
     RTC_Init();

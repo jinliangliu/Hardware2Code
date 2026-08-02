@@ -215,25 +215,120 @@ void HAL_I2C_Init(I2C_HandleTypeDef *hi2c) {
     (void)hi2c;
 }
 
-/* ========== SPI mock ========== */
-static bool spi_init_called = false;
+/* ========== SPI mock: register model (single device) ==========
+ * Emulates the MPU6500-style register protocol: the first byte is the
+ * register address with R/W in bit 7; the following bytes are data.
+ * Test code uses mock_spi_set/get_reg() and mock_spi_load_image(). */
+#define MOCK_SPI_MEM_SIZE 128
+
+static uint8_t  g_spi_mem[MOCK_SPI_MEM_SIZE];
+static uint32_t g_spi_read_calls  = 0;
+static uint32_t g_spi_write_calls = 0;
+static bool     g_spi_present     = false;
+
+void mock_spi_reset(void)
+{
+    memset(g_spi_mem, 0, sizeof(g_spi_mem));
+    g_spi_read_calls  = 0;
+    g_spi_write_calls = 0;
+    g_spi_present     = false;
+}
+
+void mock_spi_set_reg(uint8_t reg, uint8_t val)
+{
+    g_spi_present = true;
+    if (reg < MOCK_SPI_MEM_SIZE) {
+        g_spi_mem[reg] = val;
+    }
+}
+
+uint8_t mock_spi_get_reg(uint8_t reg)
+{
+    return (reg < MOCK_SPI_MEM_SIZE) ? g_spi_mem[reg] : 0;
+}
+
+void mock_spi_load_image(const uint8_t *init, uint32_t len)
+{
+    g_spi_present = true;
+    if (init != NULL) {
+        if (len > MOCK_SPI_MEM_SIZE) {
+            len = MOCK_SPI_MEM_SIZE;
+        }
+        memcpy(g_spi_mem, init, len);
+    }
+}
+
+uint32_t mock_spi_read_count(void)  { return g_spi_read_calls; }
+uint32_t mock_spi_write_count(void) { return g_spi_write_calls; }
 
 void HAL_SPI_Init(SPI_HandleTypeDef *hspi) {
     (void)hspi;
-    spi_init_called = true;
 }
-void HAL_SPI_Transmit(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint16_t Size, uint32_t Timeout) {
-    (void)hspi; (void)pTxData; (void)Size; (void)Timeout;
-}
-void HAL_SPI_Receive(SPI_HandleTypeDef *hspi, uint8_t *pRxData, uint16_t Size, uint32_t Timeout) {
+
+HAL_StatusTypeDef HAL_SPI_Transmit(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint16_t Size, uint32_t Timeout) {
+    uint16_t i;
+    uint8_t  reg;
     (void)hspi; (void)Timeout;
-    if (pRxData) memset(pRxData, 0, Size);
+    if (!g_spi_present) {
+        return HAL_ERROR;
+    }
+    g_spi_write_calls++;
+    if (pTxData == NULL || Size < 2) {
+        return HAL_OK;
+    }
+    reg = pTxData[0] & 0x7FU;
+    for (i = 1; i < Size && reg < MOCK_SPI_MEM_SIZE; i++) {
+        g_spi_mem[reg++] = pTxData[i];
+    }
+    return HAL_OK;
 }
-void HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint8_t *pRxData, uint16_t Size, uint32_t Timeout) {
-    (void)hspi; (void)pTxData; (void)Size; (void)Timeout;
-    if (pRxData) memset(pRxData, 0, Size);
+
+HAL_StatusTypeDef HAL_SPI_Receive(SPI_HandleTypeDef *hspi, uint8_t *pRxData, uint16_t Size, uint32_t Timeout) {
+    (void)hspi; (void)Timeout;
+    if (!g_spi_present) {
+        return HAL_ERROR;
+    }
+    if (pRxData) {
+        memset(pRxData, 0xFF, Size);
+    }
+    return HAL_OK;
 }
-bool mock_HAL_SPI_Init_called(void) { return spi_init_called; }
+
+HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxData,
+                                          uint8_t *pRxData, uint16_t Size, uint32_t Timeout) {
+    uint16_t i;
+    uint8_t  reg;
+    (void)hspi; (void)Timeout;
+    if (!g_spi_present) {
+        return HAL_ERROR;
+    }
+    if (pTxData == NULL || Size == 0) {
+        return HAL_OK;
+    }
+    reg = pTxData[0] & 0x7FU;
+    if (pTxData[0] & 0x80U) {
+        /* register read: first RX byte is a dummy */
+        g_spi_read_calls++;
+        if (pRxData != NULL) {
+            pRxData[0] = 0x00;
+            for (i = 1; i < Size; i++) {
+                pRxData[i] = (reg < MOCK_SPI_MEM_SIZE) ? g_spi_mem[reg++] : 0x00;
+            }
+        }
+    } else {
+        /* register write */
+        g_spi_write_calls++;
+        for (i = 1; i < Size; i++) {
+            if (reg < MOCK_SPI_MEM_SIZE) {
+                g_spi_mem[reg++] = pTxData[i];
+            }
+        }
+        if (pRxData != NULL) {
+            memset(pRxData, 0, Size);
+        }
+    }
+    return HAL_OK;
+}
 
 /* ========== TIM mock for PWM ========== */
 static bool pwm_init_called = false;

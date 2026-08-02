@@ -2,9 +2,8 @@
 # hw2c mpu6050_demo - I2C multi-device + MPU6050 attitude demo
 #
 #   MCU        STM32G0B1RET6 @ 16 MHz (HSI)
-#   I2C1       PB6(SCL)/PB7(SDA) — ONE physical bus, TWO devices:
-#                MPU6050 @ 0x68   IMU (accel + gyro + temp)
-#                EEPROM  @ 0x50   AT24C32-style storage
+#   SPI1       PA5(SCK)/PA6(MISO)/PA7(MOSI) + CS=PC4
+#                MPU6500-compatible IMU (accel + gyro + temp)
 #   Shell      USART2 (PA2/PA3) - CLI + log @ 115200
 #   LED        PC0, BUTTON PC13
 # ============================================================
@@ -32,15 +31,23 @@ pins:
       enable: true
       trigger: both
 
-  # I2C1 bus — shared by MPU6050 (0x68) and EEPROM (0x50)
-  - id: PB6
-    function: I2C1_SCL
-    label: "I2C1_SCL"
+  # SPI1 bus — IMU chip-select (software GPIO, active low)
+  - id: PA5
+    function: SPI1_SCK
+    label: "SPI1_SCK"
     af: 1
-  - id: PB7
-    function: I2C1_SDA
-    label: "I2C1_SDA"
-    af: 1
+  - id: PA6
+    function: SPI1_MISO
+    label: "SPI1_MISO"
+    af: 0
+  - id: PA7
+    function: SPI1_MOSI
+    label: "SPI1_MOSI"
+    af: 0
+  - id: PC4
+    function: GPIO_Output
+    label: "MPU_CS"
+    active_level: low
 
   # Shell UART — debug CLI + log output
   - id: PA2
@@ -82,24 +89,15 @@ peripherals:
           period_s: 30
           event: SECONDS_30
 
-  # MPU6050 IMU on I2C1 @ 0x68 (shares the bus with the EEPROM below)
+  # MPU6500-compatible IMU on SPI1 (register map shared with MPU6050)
   - name: mpu6050
-    type: I2C_Sensor_MPU6050
-    bus: I2C1
-    address: 0x68
+    type: SPI_Sensor_MPU6500
+    bus: SPI1
+    cs_pin: "PC4"
     extra:
       accel_fs: 2          # +/- 2 g
       gyro_fs: 250         # +/- 250 dps
       sample_rate_div: 4   # Fs = 1 kHz / (1 + 4) = 200 Hz
-
-  # Second device on the SAME physical bus — proves multi-device support
-  - name: eeprom
-    type: I2C_EEPROM
-    bus: I2C1
-    address: 0x50
-    extra:
-      page_size: 32
-      total_size: 32768
 
   # On-chip temperature sensor (ADC)
   - name: temp_sensor

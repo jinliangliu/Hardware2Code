@@ -39,8 +39,8 @@ def detect_peripherals(peripherals: list, load_model_func) -> dict:
         iface = model.get('interface', '').upper()
         if 'I2C' in iface:
             has_i2c = True
-            if p['type'] == 'I2C_Sensor_MPU6050':
-                has_mpu6050 = True
+        if p['type'] in ('I2C_Sensor_MPU6050', 'SPI_Sensor_MPU6500'):
+            has_mpu6050 = True
         if model.get('type') == 'Internal_RTC':
             has_rtc = True
         if 'SPI' in iface:

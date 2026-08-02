@@ -1,0 +1,38 @@
+model: "MPU6500"
+type: "SPI_Sensor_MPU6500"
+interface: "SPI"
+driver_template: "drivers/drv_mpu6050.c.j2"
+header_template: "drivers/drv_mpu6050.h.j2"
+whoami: 0x70
+registers:
+  PWR_MGMT_1: 0x6B
+  CONFIG: 0x1A
+  GYRO_CONFIG: 0x1B
+  ACCEL_CONFIG: 0x1C
+  SMPLRT_DIV: 0x19
+  WHO_AM_I: 0x75
+  ACCEL_XOUT_H: 0x3B
+  TEMP_OUT_H: 0x41
+capabilities:
+  - accelerometer_read
+  - gyroscope_read
+wakeup_capable: false
+default_params:
+  accel_fs: 2
+  gyro_fs: 250
+  sample_rate_div: 0
+extra_schema:
+  accel_fs:
+    type: int
+    required: false
+    default: 2
+    values: [2, 4, 8, 16]
+  gyro_fs:
+    type: int
+    required: false
+    default: 250
+    values: [250, 500, 1000, 2000]
+  sample_rate_div:
+    type: int
+    required: false
+    default: 0

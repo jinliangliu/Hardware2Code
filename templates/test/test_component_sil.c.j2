@@ -57,6 +57,9 @@ void setUp(void)
 {% if has_i2c %}
     i2c_mock_reset_all();
 {% endif %}
+{% if has_spi %}
+    spi_mock_reset_all();
+{% endif %}
     bus_init();
 }
 

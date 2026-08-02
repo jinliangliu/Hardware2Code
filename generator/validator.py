@@ -352,8 +352,10 @@ def validate_hardware(hw: dict) -> list[ValidationError]:
             if p.get('type') in ['I2C_Sensor_MPU6050', 'I2C_EEPROM'] and 'bus' not in p:
                 errors.append(f"[ERROR] I2C peripheral '{p.get('name', 'unknown')}' is missing 'bus' field (e.g., 'I2C1').")
 
-            if p.get('type') in ['SPI_Flash_W25Q32', 'SPI_Flash_Generic'] and 'bus' not in p:
+            if p.get('type') in ['SPI_Flash_W25Q32', 'SPI_Flash_Generic', 'SPI_Sensor_MPU6500'] and 'bus' not in p:
                 errors.append(f"[ERROR] SPI peripheral '{p.get('name', 'unknown')}' is missing 'bus' field (e.g., 'SPI1').")
+            if p.get('type') == 'SPI_Sensor_MPU6500' and 'cs_pin' not in p:
+                errors.append(f"[ERROR] SPI sensor '{p.get('name', 'unknown')}' is missing 'cs_pin' field (e.g., 'PC4').")
 
             if p.get('type') in ['Protocol_MQTT']:
                 extra = p.get('extra', {})

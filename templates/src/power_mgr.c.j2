@@ -108,8 +108,12 @@ power_mode_t power_mgr_get_default(void)
 power_mode_t power_mgr_allowed_depth(void)
 {
 {% if has_components %}
+{% if has_rtc %}
     extern uint32_t rtc_uptime_sec;
     uint32_t now = rtc_uptime_sec;
+{% else %}
+    uint32_t now = 0;   /* no RTC: no per-second cache advance */
+{% endif %}
 
     /* Cache: recalculate at most once per second */
     if (now == g_power_mgr.last_update) {

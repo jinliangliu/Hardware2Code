@@ -66,6 +66,7 @@ void adc_mock_set_reading(const char *name, uint32_t millivolts);
 /* Clear all mock state */
 void adc_mock_reset_all(void);
 
+{% if has_i2c %}
 /* ---- I2C mock (in-memory i2c_api) ---- */
 
 /* Attach a slave device (7-bit addr) to a bus; init is an optional
@@ -83,6 +84,18 @@ uint32_t i2c_mock_write_count(void);
 
 /* Clear all bus/device state; preloads a default MPU6050 on "i2c1". */
 void i2c_mock_reset_all(void);
+{% endif %}
+
+{% if has_spi %}
+/* ---- SPI mock (in-memory spi_api) ---- */
+
+/* Transfer counters (verify the component actually touches the bus). */
+uint32_t spi_mock_read_count(void);
+uint32_t spi_mock_write_count(void);
+
+/* Clear all bus/device state; preloads a default MPU6500 on "spi1". */
+void spi_mock_reset_all(void);
+{% endif %}
 
 #ifdef __cplusplus
 }

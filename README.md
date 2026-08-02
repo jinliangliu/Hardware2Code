@@ -193,7 +193,8 @@ flowchart TB
 | **硬件解析** | EasyEDA Pro `.enet` / KiCad XML / S-Expr 网表，CSV BOM，80+ 外设芯片启发式匹配 |
 | **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485(DE)、红外、EEPROM、温度传感器、Modbus、MQTT — 34 个驱动模板（共 123 个 `.j2` 模板） |
 | **I2C 总线** | 一总线多设备：`i2c_api` 按物理总线打开句柄、每次调用携带 7 位设备地址；MPU6050(0x68) 与 EEPROM(0x50) 可同挂 I2C1；总线繁忙防护（PE 循环复位），无设备不挂死 |
-| **IMU 姿态** | MPU6050 组件（WHO_AM_I 校验 + 量程配置 + 50 Hz 采样）+ 互补滤波姿态解算（roll/pitch 加速度计约束、yaw 陀螺仪积分），发布到 pub/sub |
+| **SPI 总线** | 一总线多设备：`spi_api` 按物理总线打开句柄、每次调用携带 CS 引脚（gpio_api 软件控制）；MPU6500 @ CS=PC4；寄存器读写协议（地址+R/W 位） |
+| **IMU 姿态** | MPU6050/MPU6500 组件（WHO_AM_I 校验 + 量程配置 + 50 Hz 采样）+ 互补滤波姿态解算（roll/pitch 加速度计约束、yaw 陀螺仪积分），发布到 pub/sub；驱动模板按 interface 参数化 I2C/SPI 传输 |
 | **组件框架** | 统一生命周期组件管理器（init/step/terminate），发布/订阅事件总线，运行时参数注册表，CLI 动态调参 |
 | **业务 DSL** | 层级状态机（复合子状态 / 并行区域 / 历史状态）、defer/timeline 时间控制、when 条件动作、ref 引用复用 |
 | **任务系统** | FreeRTOS 任务定义 + 优先级/栈配置，事件队列驱动任务，可视化拖拽绑定中断源与外设 |
@@ -248,7 +249,7 @@ cmake --build build --target flash-daplink   # DAP-Link（CMSIS-DAP）/ OpenOCD
 | `examples/base` | 最小系统：六层 YAML + 组件框架 + RTC（1 Hz 心跳 + 10 路定时器）+ 低功耗 RUN/SLEEP/STOP0/STOP1（RTC/UART 唤醒）+ 遥测快照 + CLI + 开机 logo | 9 套件（含 SIL） |
 | `examples/modbus_demo` | Modbus RTU 主/从组件：USB-TTL 直连（USART1，默认）/ RS485（DE），FC03/06/16 + CRC16 + 异常码，ISR 环形缓冲 RX，`modbus_tool.py` 主/从对测脚本 | ✓（含 test_modbus） |
 | `examples/spi_flash_demo` | SPI NOR Flash W25Q32：读 ID / 读数据 / 页写 / 扇区擦除 / 整片擦除 | 7 套件（含 test_spi_flash 4/4） |
-| `examples/mpu6050_demo` | I2C 一总线多设备（MPU6050@0x68 + EEPROM@0x50）+ imu 组件 + 姿态互补滤波；CLI `i2c scan/rd/wr`、`mpu`；无传感器时优雅降级不挂死 | 14 套件（含 test_i2c_api/test_mpu6050/test_attitude） |
+| `examples/mpu6050_demo` | SPI1 IMU（MPU6500 兼容，CS=PC4）+ imu 组件 + 姿态互补滤波；CLI `mpu`；驱动模板 I2C/SPI 双传输；无传感器时优雅降级不挂死 | 12 套件（含 test_spi_api/test_mpu6050/test_attitude） |
 
 每个示例均为六层 YAML 完整配置，可独立生成、编译并通过全部单元测试。各示例的接线、生成与对测方法见 `examples/*/README.md`。
 
@@ -283,7 +284,8 @@ BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三�
 | GPIO + EXTI | `gpio.c` | ✓ | `test_gpio.c` | base |
 | USART | `drv_uart.c`, `drv_log.c` | ✓ | `test_uart.c` | base / modbus_demo |
 | I2C 总线抽象 | `i2c_api.c`（POSIX 风格，一总线多设备） | ✓ | `test_i2c_api.c` | mpu6050_demo |
-| I2C MPU6050 | `drv_mpu6050.c`（基于 i2c_api） | ✓ | `test_mpu6050.c` | mpu6050_demo |
+| SPI 总线抽象 | `spi_api.c`（POSIX 风格，CS 软件控制） | ✓ | `test_spi_api.c` | mpu6050_demo / spi_flash_demo |
+| IMU I2C/SPI | `drv_mpu6050.c`（按 interface 参数化 i2c_api/spi_api） | ✓ | `test_mpu6050.c` | mpu6050_demo |
 | I2C EEPROM | `drv_eeprom.c` | ✓ | `test_eeprom.c` | — |
 | SPI W25Q32 | `drv_spi_flash.c` | ✓ | `test_spi_flash.c` | spi_flash_demo |
 | ADC | `drv_adc.c` | — | `test_adc.c` | — |
