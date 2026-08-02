@@ -249,7 +249,7 @@ cmake --build build --target flash-daplink   # DAP-Link（CMSIS-DAP）/ OpenOCD
 | `examples/base` | 最小系统：六层 YAML + 组件框架 + RTC（1 Hz 心跳 + 10 路定时器）+ 低功耗 RUN/SLEEP/STOP0/STOP1（RTC/UART 唤醒）+ 遥测快照 + CLI + 开机 logo | 9 套件（含 SIL） |
 | `examples/modbus_demo` | Modbus RTU 主/从组件：USB-TTL 直连（USART1，默认）/ RS485（DE），FC03/06/16 + CRC16 + 异常码，ISR 环形缓冲 RX，`modbus_tool.py` 主/从对测脚本 | ✓（含 test_modbus） |
 | `examples/spi_flash_demo` | SPI NOR Flash W25Q32：读 ID / 读数据 / 页写 / 扇区擦除 / 整片擦除 | 7 套件（含 test_spi_flash 4/4） |
-| `examples/mpu6050_demo` | SPI1 IMU（MPU6500 兼容，CS=PC4）+ imu 组件 + 姿态互补滤波；CLI `mpu`；驱动模板 I2C/SPI 双传输；无传感器时优雅降级不挂死 | 12 套件（含 test_spi_api/test_mpu6050/test_attitude） |
+| `examples/mpu6050_demo` | I2C1 IMU（MPU6050 @ 0x68，默认；SPI 变体 MPU6500 一键切换）+ imu 组件 + 姿态互补滤波；CLI `i2c scan`、`mpu`；驱动模板 I2C/SPI 双传输；无传感器时优雅降级不挂死 | 12 套件（含 test_i2c_api/test_mpu6050/test_attitude） |
 
 每个示例均为六层 YAML 完整配置，可独立生成、编译并通过全部单元测试。各示例的接线、生成与对测方法见 `examples/*/README.md`。
 
