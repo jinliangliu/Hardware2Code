@@ -12,6 +12,7 @@ from generator.mcu_database import MCUDatabase
 from generator.validators.pin_conflict_validator import (
     PinConflictError,
     InvalidPinError,
+    PeripheralPinRefError,
     UnsupportedFunctionError,
     validate_pin_conflicts,
     _parse_function,
@@ -32,7 +33,23 @@ def _make_mock_hw(pins):
         pin.function = p[1]
         pin.label = p[2] if len(p) > 2 else None
         hw.pins.append(pin)
+    hw.peripherals = []
     return hw
+
+
+def _make_mock_peri(name, ptype, **fields):
+    """Create a mock peripheral with top-level fields + extra dict."""
+    peri = MagicMock()
+    peri.name = name
+    peri.type = ptype
+    peri.extra = dict(fields.pop("extra", {}))
+    peri.uart = None
+    for f in ("cs_pin", "chip_select_pin", "tx_pin", "rx_pin",
+              "de_pin", "rs485_de_pin"):
+        setattr(peri, f, None)
+    for k, v in fields.items():
+        setattr(peri, k, v)
+    return peri
 
 
 SAMPLE_JSON = {
@@ -155,14 +172,15 @@ def test_conflict_different_functions(sample_db):
 # ---------------------------------------------------------------------------
 
 
-def test_gpio_no_conflict(sample_db):
-    """GPIO_Output + AF function on same pin -> no conflict."""
+def test_gpio_af_conflict(sample_db):
+    """GPIO_Output + AF function on same pin -> conflict (one function per pin)."""
     hw = _make_mock_hw([
         ("PA2", "USART2_TX"),
         ("PA2", "GPIO_Output"),
     ])
     errors = validate_pin_conflicts(hw, sample_db)
-    assert errors == []
+    assert len(errors) == 1
+    assert isinstance(errors[0], PinConflictError)
 
 
 def test_multiple_gpio_same_pin(sample_db):
@@ -210,13 +228,98 @@ def test_unsupported_function(sample_db):
 
 
 def test_gpio_upgrade_to_af(sample_db):
-    """GPIO first, then AF on same pin -> no conflict (GPIO is superseded)."""
+    """GPIO first, then AF on same pin -> conflict (one function per pin)."""
     hw = _make_mock_hw([
         ("PA2", "GPIO_Output"),
         ("PA2", "USART2_TX"),
     ])
     errors = validate_pin_conflicts(hw, sample_db)
+    assert len(errors) == 1
+    assert isinstance(errors[0], PinConflictError)
+
+
+# ---------------------------------------------------------------------------
+# Test: peripheral pin references (cs_pin / de_pin / ...)
+# ---------------------------------------------------------------------------
+
+
+def test_peripheral_ref_undeclared_pin(sample_db):
+    """Peripheral cs_pin not declared in pins -> error (missing GPIO config)."""
+    hw = _make_mock_hw([("PA2", "USART2_TX")])
+    hw.peripherals = [_make_mock_peri("flash", "SPI_Flash_W25Q32", cs_pin="PB6")]
+    errors = validate_pin_conflicts(hw, sample_db)
+    assert len(errors) == 1
+    assert isinstance(errors[0], PeripheralPinRefError)
+    assert "PB6" in str(errors[0])
+
+
+def test_peripheral_ref_shared_pin(sample_db):
+    """Two peripherals referencing the same CS pin -> conflict."""
+    hw = _make_mock_hw([("PA2", "USART2_TX"), ("PB6", "GPIO_Output")])
+    hw.peripherals = [
+        _make_mock_peri("flash", "SPI_Flash_W25Q32", cs_pin="PB6"),
+        _make_mock_peri("imu", "SPI_Sensor_MPU6500", cs_pin="PB6"),
+    ]
+    errors = validate_pin_conflicts(hw, sample_db)
+    assert len(errors) == 1
+    assert isinstance(errors[0], PinConflictError)
+    assert "PB6" in str(errors[0])
+
+
+def test_peripheral_ref_af_pin(sample_db):
+    """Peripheral CS referencing a pin already assigned an AF function -> conflict."""
+    hw = _make_mock_hw([("PA2", "USART2_TX")])
+    hw.peripherals = [_make_mock_peri("flash", "SPI_Flash_W25Q32", cs_pin="PA2")]
+    errors = validate_pin_conflicts(hw, sample_db)
+    assert len(errors) == 1
+    assert isinstance(errors[0], PinConflictError)
+
+
+def test_peripheral_ref_ok(sample_db):
+    """Valid CS reference (GPIO pin declared in pins) -> no error."""
+    hw = _make_mock_hw([("PA2", "USART2_TX"), ("PB6", "GPIO_Output")])
+    hw.peripherals = [_make_mock_peri("flash", "SPI_Flash_W25Q32", cs_pin="PB6")]
+    errors = validate_pin_conflicts(hw, sample_db)
     assert errors == []
+
+
+def test_peripheral_ref_via_extra(sample_db):
+    """cs_pin inside extra dict is also validated."""
+    hw = _make_mock_hw([("PA2", "USART2_TX")])
+    hw.peripherals = [_make_mock_peri(
+        "flash", "SPI_Flash_W25Q32",
+        extra={"chip_select_pin": "PB6"},
+    )]
+    errors = validate_pin_conflicts(hw, sample_db)
+    assert len(errors) == 1
+    assert isinstance(errors[0], PeripheralPinRefError)
+
+
+def test_peripheral_ref_rs485_de_shared_ok(sample_db):
+    """UART rs485_de_pin + its paired RS485 de_pin on one pin -> allowed."""
+    hw = _make_mock_hw([("PA1", "GPIO_Output")])
+    hw.peripherals = [
+        _make_mock_peri("usart1", "UART_Serial",
+                        extra={"rs485_de_pin": "PA1"}),
+        _make_mock_peri("rs485", "RS485",
+                        extra={"uart": "usart1", "de_pin": "PA1"}),
+    ]
+    errors = validate_pin_conflicts(hw, sample_db)
+    assert errors == []
+
+
+def test_peripheral_ref_rs485_de_unpaired_conflict(sample_db):
+    """UART + RS485 share DE but RS485 is not linked to that UART -> conflict."""
+    hw = _make_mock_hw([("PA1", "GPIO_Output")])
+    hw.peripherals = [
+        _make_mock_peri("usart1", "UART_Serial",
+                        extra={"rs485_de_pin": "PA1"}),
+        _make_mock_peri("rs485", "RS485",
+                        extra={"uart": "usart2", "de_pin": "PA1"}),
+    ]
+    errors = validate_pin_conflicts(hw, sample_db)
+    assert len(errors) == 1
+    assert isinstance(errors[0], PinConflictError)
 
 
 # ---------------------------------------------------------------------------

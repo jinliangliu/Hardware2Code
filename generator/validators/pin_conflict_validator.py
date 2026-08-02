@@ -99,6 +99,24 @@ class UnsupportedFunctionError:
         return detail
 
 
+class PeripheralPinRefError:
+    """Error raised when a peripheral references a pin that is not declared
+    in the hardware YAML `pins` list (no GPIO/AF configuration would be
+    generated for it)."""
+
+    def __init__(self, peripheral: str, field: str, pin: str):
+        self.peripheral = peripheral
+        self.field = field
+        self.pin = pin
+
+    def __str__(self) -> str:
+        return (
+            f"Peripheral '{self.peripheral}' references pin '{self.pin}' "
+            f"({self.field}) which is not declared in the pins list — "
+            f"no GPIO configuration would be generated for it."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -111,6 +129,17 @@ _GPIO_FUNCTIONS = {
     "GPIO_Output", "GPIO_Input", "GPIO_Analog", "GPIO_EXTI",
     "GPIO_OD", "GPIO_AF_PP", "GPIO_AF_OD",
 }
+
+# Peripheral fields that reference physical pins (validated against the
+# pins list and across peripherals).
+_PERIPHERAL_PIN_FIELDS = (
+    "cs_pin",
+    "chip_select_pin",
+    "tx_pin",
+    "rx_pin",
+    "de_pin",
+    "rs485_de_pin",
+)
 
 
 def _parse_function(func: str) -> Optional[Tuple[str, str]]:
@@ -167,6 +196,98 @@ def _find_alternative_pins(
     return sorted(free, key=lambda p: (p[1], int(p[2:])))
 
 
+def _collect_peripheral_pin_refs(hw_config: Any) -> List[Tuple[str, str, str, str, str]]:
+    """Collect (pin, peripheral_name, field, type, uart_ref) references.
+
+    Looks at both top-level peripheral fields and the `extra` dict
+    (cs_pin / de_pin / rs485_de_pin / tx_pin / rx_pin / chip_select_pin).
+    """
+    refs: List[Tuple[str, str, str, str, str]] = []
+    periphs = getattr(hw_config, "peripherals", None)
+    if not isinstance(periphs, (list, tuple)):
+        return refs
+
+    for peri in periphs:
+        name = str(getattr(peri, "name", "?") or "?")
+        ptype = str(getattr(peri, "type", "") or "")
+        uart_ref = str(getattr(peri, "uart", None) or "") or str(
+            (getattr(peri, "extra", None) or {}).get("uart", "")
+        )
+        for field in _PERIPHERAL_PIN_FIELDS:
+            value = getattr(peri, field, None)
+            if value:
+                refs.append((str(value).upper(), name, field, ptype, uart_ref))
+        extra = getattr(peri, "extra", None)
+        if isinstance(extra, dict):
+            for field in _PERIPHERAL_PIN_FIELDS:
+                value = extra.get(field)
+                if value:
+                    refs.append((str(value).upper(), name, field, ptype, uart_ref))
+    return refs
+
+
+def _pin_shared_legally(owners: List[Tuple[str, str, str, str]]) -> bool:
+    """Whether multiple peripheral pin references on one pin are allowed.
+
+    The single allowed case is the RS485 half-duplex pattern: one
+    UART_Serial (extra.rs485_de_pin) plus its paired RS485 peripheral
+    (de_pin, uart=<that UART>) sharing the same DE pin.
+    """
+    if len(owners) != 2:
+        return False
+    uarts = [o for o in owners if o[1] == "UART_Serial"]
+    rs485s = [o for o in owners if o[1] == "RS485"]
+    if len(uarts) != 1 or len(rs485s) != 1:
+        return False
+    uart_name, rs485_uart_ref = uarts[0][0], rs485s[0][2]
+    return rs485_uart_ref.upper() == uart_name.upper()
+
+
+def _validate_peripheral_pin_refs(hw_config: Any, errors: List[Any]) -> None:
+    """Cross-check peripheral pin references (cs_pin, de_pin, ...).
+
+    Checks:
+      1. Referenced pins must be declared in the pins list, otherwise no
+         GPIO configuration is generated (silent missing config).
+      2. A physical pin may be referenced by at most ONE peripheral
+         (two devices sharing one CS/DE pin would fight on the bus).
+      3. A referenced pin must not be assigned an AF function in pins
+         (CS/DE are GPIO outputs; AF would own the pin).
+    """
+    refs = _collect_peripheral_pin_refs(hw_config)
+    if not refs:
+        return
+
+    declared = {p.id.upper() for p in hw_config.pins}
+    pin_function = {p.id.upper(): p.function for p in hw_config.pins}
+
+    # 1) every referenced pin must be declared
+    for pin, periph, field, _pt, _ur in refs:
+        if pin not in declared:
+            errors.append(PeripheralPinRefError(periph, field, pin))
+
+    # 2) no pin may be referenced by more than one peripheral
+    by_pin: Dict[str, List[Tuple[str, str, str, str]]] = {}
+    for pin, periph, field, ptype, uart_ref in refs:
+        by_pin.setdefault(pin, []).append((periph, ptype, uart_ref, field))
+    for pin, owners in by_pin.items():
+        if len(owners) > 1 and not _pin_shared_legally(owners):
+            a, b = owners[0], owners[1]
+            errors.append(PinConflictError(
+                pin,
+                f"{a[0]}.{a[3]}",
+                f"{b[0]}.{b[3]}",
+            ))
+
+    # 3) referenced pins must be GPIO (CS/DE), not an AF function
+    for pin, periph, field, _pt, _ur in refs:
+        fn = pin_function.get(pin)
+        if fn and _parse_function(fn) is not None:
+            errors.append(PinConflictError(
+                pin, fn, f"{periph}.{field}",
+            ))
+
+
 # ---------------------------------------------------------------------------
 # Main validator
 # ---------------------------------------------------------------------------
@@ -213,8 +334,17 @@ def validate_pin_conflicts(
         # ---------- Parse function ----------
         parsed = _parse_function(function)
         if parsed is None:
-            # GPIO function - track but don't flag as conflict
-            if pin_id not in used_pins:
+            # GPIO function - conflicts with an existing AF assignment
+            if pin_id in used_pins and not used_pins[pin_id].get("is_gpio"):
+                existing = used_pins[pin_id]
+                errors.append(PinConflictError(
+                    pin_id,
+                    existing["function"],
+                    function,
+                    existing.get("label"),
+                    label,
+                ))
+            elif pin_id not in used_pins:
                 used_pins[pin_id] = {"function": function, "label": label, "is_gpio": True}
             continue
 
@@ -231,11 +361,15 @@ def validate_pin_conflicts(
         if pin_id in used_pins:
             existing = used_pins[pin_id]
             if existing.get("is_gpio"):
-                # AF function vs GPIO on same pin = no conflict
-                # (GPIO can coexist with AF via mux)
-                used_pins[pin_id] = {
-                    "function": function, "label": label, "is_gpio": False,
-                }
+                # A physical pin can only serve one function: GPIO and an
+                # AF function cannot share it.
+                errors.append(PinConflictError(
+                    pin_id,
+                    existing["function"],
+                    function,
+                    existing.get("label"),
+                    label,
+                ))
             elif existing["function"] != function:
                 # Two different AF functions on same pin = conflict
                 # Query MCU database for alternative free pins
@@ -258,6 +392,9 @@ def validate_pin_conflicts(
             used_pins[pin_id] = {
                 "function": function, "label": label, "is_gpio": False,
             }
+
+    # Peripheral pin references (cs_pin / de_pin / ...)
+    _validate_peripheral_pin_refs(hw_config, errors)
 
     if errors:
         logger.warning("Pin conflict validation found %d error(s)", len(errors))

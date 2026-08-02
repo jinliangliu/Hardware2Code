@@ -191,6 +191,7 @@ flowchart TB
 | 类别 | 能力 |
 |------|------|
 | **硬件解析** | EasyEDA Pro `.enet` / KiCad XML / S-Expr 网表，CSV BOM，80+ 外设芯片启发式匹配 |
+| **引脚防冲突** | 三层校验：Pydantic 重复引脚拦截、MCU 数据库交叉校验（引脚存在性/AF 支持性/同引脚冲突，含替代引脚建议）、外设字段引脚引用校验（cs_pin/de_pin 必须声明且不被多外设共享，UART↔RS485 DE 伴侣除外）；自动分配排除已用与 SWD 引脚 |
 | **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485(DE)、红外、EEPROM、温度传感器、Modbus、MQTT — 34 个驱动模板（共 123 个 `.j2` 模板） |
 | **Timer PWM** | 一定时器多路输出（TIM2 CH1/CH2/...），每路占空比独立可调（0..100%），频率可改（100 Hz..100 kHz）且占空比保持；CLI `pwm list/set/freq` |
 | **I2C 总线** | 一总线多设备：`i2c_api` 按物理总线打开句柄、每次调用携带 7 位设备地址；MPU6050(0x68) 与 EEPROM(0x50) 可同挂 I2C1；总线繁忙防护（PE 循环复位），无设备不挂死 |
