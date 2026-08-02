@@ -1,24 +1,98 @@
+/* test_pwm.c.j2 - multi-channel PWM driver unit tests */
 #include "unity.h"
 #include "mock_hal.h"
 #include <string.h>
 
-{# pwm driver file is named after the peripheral instance #}
 {% set pwm_peri = peripherals | selectattr('type', 'in', ['Internal_PWM']) | first %}
+{% set pwm_extra = pwm_peri.get('extra', {}) %}
+{% set chans = (pwm_extra.get('channels') if pwm_extra.get('channels') else (pwm_peri.get('model', {}).channels if pwm_peri.get('model', {}).channels else [{'channel': pwm_extra.get('channel', 1), 'default_duty': pwm_extra.get('default_duty', 50)}])) %}
 #include "../src/drivers/drv_{{ pwm_peri.name }}.c"
 
-static bool pwm_init_called = false;
-void HAL_TIM_PWM_Init(TIM_HandleTypeDef *htim) { (void)htim; pwm_init_called = true; }
-
-void setUp(void) { pwm_init_called = false; }
-void tearDown(void) {}
-
-void test_PWM_Init_calls_HAL_TIM_PWM_Init(void) {
-    PWM_Init();
-    TEST_ASSERT_TRUE(pwm_init_called);
+void setUp(void)
+{
+    mock_tim_reset();
 }
 
-int main(void) {
+void tearDown(void) {}
+
+void test_init_configures_and_starts_every_channel(void)
+{
+    uint32_t i;
+    TEST_ASSERT_EQUAL_INT(0, {{ pwm_peri.name }}_init());
+    TEST_ASSERT_TRUE(mock_HAL_TIM_PWM_Init_called());
+    TEST_ASSERT_EQUAL_UINT32(PWM_CHANNEL_COUNT, mock_tim_config_count());
+    for (i = 0; i < PWM_CHANNEL_COUNT; i++) {
+        TEST_ASSERT_TRUE(mock_tim_channel_started(g_pwm_channels[i].channel));
+    }
+}
+
+void test_init_programs_default_duties(void)
+{
+    {{ pwm_peri.name }}_init();
+{% for c in chans %}
+    /* CH{{ c.channel }} default {{ c.get('default_duty', 50) }}% @ 1 kHz -> pulse {{ ((c.get('default_duty', 50)) * 10) | int }} */
+    TEST_ASSERT_EQUAL_UINT32({{ ((c.get('default_duty', 50)) * 10) | int }},
+                             mock_tim_get_compare({{ c.channel }}));
+{% endfor %}
+}
+
+void test_set_duty_updates_one_channel_only(void)
+{
+    uint32_t before;
+    {{ pwm_peri.name }}_init();
+
+    before = mock_tim_get_compare(2);   /* CH2 default (must stay untouched) */
+    TEST_ASSERT_EQUAL_INT(0, {{ pwm_peri.name }}_set_duty(1, 25));
+    TEST_ASSERT_EQUAL_UINT32(250, mock_tim_get_compare(1));   /* (999+1)*25/100 */
+    TEST_ASSERT_EQUAL_UINT32(before, mock_tim_get_compare(2)); /* CH2 untouched */
+}
+
+void test_set_duty_rejects_out_of_range(void)
+{
+    {{ pwm_peri.name }}_init();
+    TEST_ASSERT_EQUAL_INT(-1, {{ pwm_peri.name }}_set_duty(1, 101));
+    TEST_ASSERT_EQUAL_INT(-1, {{ pwm_peri.name }}_set_duty(0, 50));
+    TEST_ASSERT_EQUAL_INT(-1, {{ pwm_peri.name }}_set_duty(9, 50));
+}
+
+void test_set_freq_preserves_duty_percent(void)
+{
+    {{ pwm_peri.name }}_init();
+    /* restore known duties (earlier cases may have changed them) */
+    {{ pwm_peri.name }}_set_duty(1, 50);
+    {{ pwm_peri.name }}_set_duty(2, 25);
+    TEST_ASSERT_EQUAL_INT(0, {{ pwm_peri.name }}_set_freq(500));
+    TEST_ASSERT_EQUAL_UINT32(1999, mock_tim_get_arr());       /* 1e6/500-1 */
+{% for c in chans %}
+    TEST_ASSERT_EQUAL_UINT32({{ ((c.get('default_duty', 50)) * 20) | int }},
+                             mock_tim_get_compare({{ c.channel }}));  /* (1999+1)*pct/100 */
+{% endfor %}
+}
+
+void test_set_freq_rejects_bad_range(void)
+{
+    {{ pwm_peri.name }}_init();
+    TEST_ASSERT_EQUAL_INT(-1, {{ pwm_peri.name }}_set_freq(50));
+    TEST_ASSERT_EQUAL_INT(-1, {{ pwm_peri.name }}_set_freq(200000));
+}
+
+void test_get_duty_roundtrip(void)
+{
+    {{ pwm_peri.name }}_init();
+    {{ pwm_peri.name }}_set_duty(1, 33);
+    TEST_ASSERT_EQUAL_UINT32(33, {{ pwm_peri.name }}_get_duty(1));
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, {{ pwm_peri.name }}_get_duty(7));
+}
+
+int main(void)
+{
     UNITY_BEGIN();
-    RUN_TEST(test_PWM_Init_calls_HAL_TIM_PWM_Init);
+    RUN_TEST(test_init_configures_and_starts_every_channel);
+    RUN_TEST(test_init_programs_default_duties);
+    RUN_TEST(test_set_duty_updates_one_channel_only);
+    RUN_TEST(test_set_duty_rejects_out_of_range);
+    RUN_TEST(test_set_freq_preserves_duty_percent);
+    RUN_TEST(test_set_freq_rejects_bad_range);
+    RUN_TEST(test_get_duty_roundtrip);
     return UNITY_END();
 }

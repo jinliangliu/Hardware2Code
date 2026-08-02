@@ -370,6 +370,9 @@ int main(void)
 {% elif p.type == 'Internal_TempSensor' %}
     temp_sensor_init();
     log_info("temp_sensor_init() OK");
+{% elif p.type == 'Internal_PWM' %}
+    {{ p.name }}_init();
+    log_info("{{ p.name }}_init() OK");
 {% elif p.type == 'UART_Serial' %}
 {% if not (has_log and p.instance == 'USART2') %}
     MX_{{ p.instance }}_UART_Init();

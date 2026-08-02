@@ -11,9 +11,13 @@
 #include "unity.h"
 #include "posix_mock.h"
 #include "mock_hal.h"
+{% if has_topics %}
 #include "component_bus.h"
+{% endif %}
 #include "component_registry.h"
+{% if has_params %}
 #include "param_registry.h"
+{% endif %}
 
 /* ---- Mock STM32-specific symbols needed by component_registry ---- */
 uint32_t rtc_uptime_sec = 0;
@@ -36,12 +40,18 @@ static int xTaskCreate_stub(void (*task)(void*), const char *name,
     xTaskCreate_stub(task, name, stack, params, prio, handle)
 
 /* ---- Forward prototypes for test helpers ---- */
+{% if has_topics %}
 static void bus_handler_stub(topic_id_t topic, uint32_t value, void *ctx);
+{% endif %}
 
 /* ---- Include source files directly (SIL pattern) ---- */
+{% if has_topics %}
 #include "component_bus.c"
+{% endif %}
 #include "component_registry.c"
+{% if has_params %}
 #include "param_registry.c"
+{% endif %}
 
 /* ---- Include component sources ---- */
 {% for c in components %}
@@ -60,7 +70,9 @@ void setUp(void)
 {% if has_spi %}
     spi_mock_reset_all();
 {% endif %}
+{% if has_topics %}
     bus_init();
+{% endif %}
 }
 
 void tearDown(void) {}

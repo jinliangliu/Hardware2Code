@@ -317,14 +317,69 @@ typedef struct {
 /* ======================================================================
  * TIM stubs
  * ====================================================================== */
- typedef void TIM_HandleTypeDef;
+typedef struct {
+    volatile uint32_t CR1;
+    volatile uint32_t CR2;
+    volatile uint32_t SMCR;
+    volatile uint32_t DIER;
+    volatile uint32_t SR;
+    volatile uint32_t EGR;
+    volatile uint32_t CCMR1;
+    volatile uint32_t CCMR2;
+    volatile uint32_t CCER;
+    volatile uint32_t CNT;
+    volatile uint32_t PSC;
+    volatile uint32_t ARR;
+    volatile uint32_t RCR;
+    volatile uint32_t CCR[4];
+} TIM_TypeDef;
+
+typedef struct {
+    TIM_TypeDef *Instance;
+    struct {
+        uint32_t Prescaler;
+        uint32_t Period;
+        uint32_t CounterMode;
+        uint32_t ClockDivision;
+        uint32_t AutoReloadPreload;
+    } Init;
+} TIM_HandleTypeDef;
 
 /* PWM additional types */
 typedef struct {
     uint32_t OCMode;
     uint32_t Pulse;
     uint32_t OCPolarity;
+    uint32_t OCFastMode;
+    uint32_t OCIdleState;
 } TIM_OC_InitTypeDef;
+
+/* Shared mock timer instance (all test TUs see the same registers) */
+extern TIM_TypeDef mock_tim2_dev;
+#define TIM2    (&mock_tim2_dev)
+#define TIM3    (&mock_tim2_dev)
+
+/* Timer constants used by drv_pwm */
+#define TIM_CHANNEL_1                   0x0000U
+#define TIM_CHANNEL_2                   0x0004U
+#define TIM_CHANNEL_3                   0x0008U
+#define TIM_CHANNEL_4                   0x000CU
+#define TIM_OCMODE_PWM1                 0x0060U
+#define TIM_OCPOLARITY_HIGH             0x0000U
+#define TIM_OCPOLARITY_LOW              0x0002U
+#define TIM_OCFAST_DISABLE              0x0000U
+#define TIM_OCIDLESTATE_RESET           0x0000U
+#define TIM_COUNTERMODE_UP              0x0000U
+#define TIM_CLOCKDIVISION_DIV1          0x0000U
+#define TIM_AUTORELOAD_PRELOAD_DISABLE  0x0000U
+
+#define __HAL_TIM_SET_COMPARE(__HANDLE__, __CHANNEL__, __COMPARE__) \
+    ((__HANDLE__)->Instance->CCR[((uint32_t)(__CHANNEL__) >> 2U)] = (uint32_t)(__COMPARE__))
+#define __HAL_TIM_SET_AUTORELOAD(__HANDLE__, __AUTO__) \
+    ((__HANDLE__)->Instance->ARR = (uint32_t)(__AUTO__))
+
+#define __HAL_RCC_TIM2_CLK_ENABLE()     ((void)0)
+#define __HAL_RCC_TIM3_CLK_ENABLE()     ((void)0)
 
 /* ======================================================================
  * IWDG stubs
@@ -484,10 +539,18 @@ HAL_StatusTypeDef HAL_SPI_Transmit(SPI_HandleTypeDef *hspi, uint8_t *pTxData, ui
 HAL_StatusTypeDef HAL_SPI_Receive(SPI_HandleTypeDef *hspi, uint8_t *pRxData, uint16_t Size, uint32_t Timeout);
 HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint8_t *pRxData, uint16_t Size, uint32_t Timeout);
 
-void HAL_TIM_PWM_Init(TIM_HandleTypeDef *htim);
-void HAL_TIM_PWM_ConfigChannel(TIM_HandleTypeDef *htim, TIM_OC_InitTypeDef *sConfig, uint32_t Channel);
-void HAL_TIM_PWM_Start(TIM_HandleTypeDef *htim, uint32_t Channel);
+HAL_StatusTypeDef HAL_TIM_PWM_Init(TIM_HandleTypeDef *htim);
+HAL_StatusTypeDef HAL_TIM_PWM_ConfigChannel(TIM_HandleTypeDef *htim, TIM_OC_InitTypeDef *sConfig, uint32_t Channel);
+HAL_StatusTypeDef HAL_TIM_PWM_Start(TIM_HandleTypeDef *htim, uint32_t Channel);
+HAL_StatusTypeDef HAL_TIM_PWM_Stop(TIM_HandleTypeDef *htim, uint32_t Channel);
 bool mock_HAL_TIM_PWM_Init_called(void);
+
+/* PWM mock helpers (channel 1..4) */
+void    mock_tim_reset(void);
+uint32_t mock_tim_get_compare(uint8_t channel);
+uint32_t mock_tim_get_arr(void);
+uint8_t  mock_tim_channel_started(uint8_t channel);
+uint32_t mock_tim_config_count(void);
 
 /* ========== ADC mock ========== */
 typedef struct {

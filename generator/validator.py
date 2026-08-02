@@ -328,6 +328,7 @@ def validate_hardware(hw: dict) -> list[ValidationError]:
             valid_functions = ['GPIO_Output', 'GPIO_Input', 'I2C_SCL', 'I2C_SDA', 'SPI_SCK', 'SPI_MISO', 'SPI_MOSI', 'SPI_NSS', 'UART_TX', 'UART_RX', 'USART_TX', 'USART_RX', 'LPUART_TX', 'LPUART_RX', 'RS485_DE', 'ADC_IN', 'IR_OUT', 'IR_IN', 'CELL_PWR', 'CELL_RST']
             valid_function_patterns = [
                 r'^I2C\d+_SCL$', r'^I2C\d+_SDA$',
+                r'^TIM\d+_CH[1-4]$',
                 r'^SPI\d+_SCK$', r'^SPI\d+_MISO$', r'^SPI\d+_MOSI$', r'^SPI\d+_NSS$',
                 r'^USART\d+_TX$', r'^USART\d+_RX$', r'^UART\d+_TX$', r'^UART\d+_RX$',
                 r'^ADC_IN\d+$',

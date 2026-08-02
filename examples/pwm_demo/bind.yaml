@@ -1,0 +1,12 @@
+# ============================================================
+# hw2c pwm_demo — binding layer
+# ============================================================
+
+version: 1
+hardware: hardware.yaml
+task: task.yaml
+
+interrupt:
+  - pin: PC13
+    component: btn
+    event: EXTI13

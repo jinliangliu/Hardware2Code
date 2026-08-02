@@ -72,6 +72,11 @@
 #include "drv_{{ p.name }}.h"
 {% endfor %}
 {% endif %}
+{% if has_pwm %}
+{% for p in peripherals if p.type == 'Internal_PWM' %}
+#include "drv_{{ p.name }}.h"
+{% endfor %}
+{% endif %}
 {% if has_i2c %}
 #include "i2c_api.h"
 {% endif %}
@@ -398,6 +403,50 @@ static void cmd_rtc(int argc, char *argv[], cli_output_fn out)
 }
 {% endif %}
 
+{% if has_pwm %}
+/* ---- PWM: per-channel duty + frequency ---- */
+{% set pwm_peri = peripherals | selectattr('type', 'eq', 'Internal_PWM') | first %}
+static void cmd_pwm(int argc, char *argv[], cli_output_fn out)
+{
+    if (argc < 2) {
+        out("Usage: pwm list | pwm set <ch> <0-100> | pwm freq <hz>\r\n");
+        return;
+    }
+    if (strcmp(argv[1], "list") == 0) {
+        uint32_t ch;
+        for (ch = 1; ch <= PWM_CHANNEL_COUNT; ch++) {
+            uint32_t duty = {{ pwm_peri.name }}_get_duty((uint8_t)ch);
+            out("CH%lu: %lu%%\r\n", (unsigned long)ch, (unsigned long)duty);
+        }
+    } else if (strcmp(argv[1], "set") == 0 && argc >= 4) {
+        unsigned ch, pct;
+        if (sscanf(argv[2], "%u", &ch) != 1 ||
+            sscanf(argv[3], "%u", &pct) != 1) {
+            out("Usage: pwm set <ch> <0-100>\r\n");
+            return;
+        }
+        if ({{ pwm_peri.name }}_set_duty((uint8_t)ch, pct) == 0) {
+            out("CH%u duty -> %u%%\r\n", ch, pct);
+        } else {
+            out("pwm set failed (channel or range)\r\n");
+        }
+    } else if (strcmp(argv[1], "freq") == 0 && argc >= 3) {
+        unsigned hz;
+        if (sscanf(argv[2], "%u", &hz) != 1) {
+            out("Usage: pwm freq <hz>\r\n");
+            return;
+        }
+        if ({{ pwm_peri.name }}_set_freq(hz) == 0) {
+            out("PWM frequency -> %u Hz (duty preserved)\r\n", hz);
+        } else {
+            out("pwm freq failed (100..100000 Hz)\r\n");
+        }
+    } else {
+        out("Usage: pwm list | pwm set <ch> <0-100> | pwm freq <hz>\r\n");
+    }
+}
+{% endif %}
+
 {% if has_i2c %}
 /* ---- I2C bus tool: scan / read / write (multi-device aware) ---- */
 {% set i2c_first = (peripherals | selectattr('model.interface', 'eq', 'I2C') | map(attribute='bus') | list)[0] %}
@@ -711,6 +760,9 @@ CLI_HW2C_WRAPPER(rtc)
 {% if has_telemetry %}
 CLI_HW2C_WRAPPER(telemetry)
 {% endif %}
+{% if has_pwm %}
+CLI_HW2C_WRAPPER(pwm)
+{% endif %}
 {% if has_power_mgr %}
 CLI_HW2C_WRAPPER(power)
 {% endif %}
@@ -755,6 +807,9 @@ static const hw2c_cli_cmd_t _hw2c_commands[] = {
 {% endif %}
 {% if has_telemetry %}
     {"telemetry","Telemetry snapshot log on/off", _hw2c_telemetry},
+{% endif %}
+{% if has_pwm %}
+    {"pwm",      "PWM duty/freq control",        _hw2c_pwm},
 {% endif %}
 {% if has_power_mgr %}
     {"power",    "Power modes (sleep/stop)",     _hw2c_power},
@@ -810,6 +865,9 @@ void cli_register_builtin_commands(void)
 {% endif %}
 {% if has_telemetry %}
     cli_register_command("telemetry","Telemetry snapshot log on/off", cmd_telemetry);
+{% endif %}
+{% if has_pwm %}
+    cli_register_command("pwm",     "PWM duty/freq control",         cmd_pwm);
 {% endif %}
 {% if has_power_mgr %}
     cli_register_command("power",   "Power modes (sleep/stop)",     cmd_power);

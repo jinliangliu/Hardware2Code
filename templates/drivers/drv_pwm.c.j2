@@ -1,23 +1,189 @@
+{#
+    drv_pwm.c.j2 - Multi-channel Timer PWM driver
+
+    One timer (TIM2/3/...) drives N channels; each channel has its own
+    runtime duty in percent.  The timer counts at 1 MHz (PSC = clk/1e6-1),
+    so ARR = 1e6/freq - 1 and pulse = (ARR+1)*percent/100.
+
+    Context: peripheral (name, extra.channels/timer/default_freq), model.
+#}
+{% set pwm_extra = peripheral.get('extra', {}) %}
+{% set timer = pwm_extra.get('timer', model.timer) %}
+{% set chans = (pwm_extra.get('channels') if pwm_extra.get('channels') else (model.channels if model.channels else [{'channel': pwm_extra.get('channel', model.get('channel', 1)), 'default_duty': pwm_extra.get('default_duty', model.get('default_duty', 50))}])) %}
+{% set default_freq = pwm_extra.get('default_freq', model.get('default_freq', 1000)) %}
+{% set timer_clk = mcu.clock_freq_hz | default(16000000) %}
+
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#endif
 #include "drv_{{ peripheral.name }}.h"
 
-static TIM_HandleTypeDef htim;
-static uint32_t pwm_channel;
+/* Timer clock tick: 1 MHz counter (16 MHz / 16). */
+#define PWM_TIMER_CLK_HZ     {{ timer_clk }}U
+#define PWM_TICK_HZ          1000000U
+#define PWM_PRESCALER        (PWM_TIMER_CLK_HZ / PWM_TICK_HZ - 1U)
+#define PWM_MIN_FREQ_HZ      100U
+#define PWM_MAX_FREQ_HZ      100000U
 
-void PWM_Init(void) {
-    __HAL_RCC_TIM2_CLK_ENABLE();
-    htim.Instance = TIM2;
-    htim.Init.Prescaler = {{ pwm_tim_prescaler }};
-    htim.Init.Period = {{ pwm_tim_period }};
-    htim.Init.CounterMode = TIM_COUNTERMODE_UP;
-    HAL_TIM_PWM_Init(&htim);
+/* ---- per-channel state ---- */
+typedef struct {
+    uint8_t  channel;      /* 1..4 (TIM_CHANNEL_n) */
+    uint32_t percent;      /* 0..100 */
+    uint32_t pulse;        /* last programmed CCR value */
+    uint8_t  running;
+} pwm_channel_t;
 
-    TIM_OC_InitTypeDef sConfigOC = {0};
-    sConfigOC.OCMode = TIM_OCMODE_PWM1;
-    sConfigOC.Pulse = 500;       // 50% duty
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-    HAL_TIM_PWM_ConfigChannel(&htim, &sConfigOC, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim, TIM_CHANNEL_1);
+static TIM_HandleTypeDef htim_{{ peripheral.name }};
+static pwm_channel_t g_pwm_channels[PWM_CHANNEL_COUNT] = {
+{% for c in chans %}
+    { .channel = {{ c.channel }}, .percent = {{ c.get('default_duty', 50) }}, .pulse = 0, .running = 0 },
+{% endfor %}
+};
+
+/* ---- helpers ---- */
+static uint32_t pwm_channel_mask(uint8_t channel)
+{
+    switch (channel) {
+        case 1:  return TIM_CHANNEL_1;
+        case 2:  return TIM_CHANNEL_2;
+        case 3:  return TIM_CHANNEL_3;
+        case 4:  return TIM_CHANNEL_4;
+        default: return 0;
+    }
 }
-void PWM_SetDuty(uint32_t duty) {
-    __HAL_TIM_SET_COMPARE(&htim, TIM_CHANNEL_1, duty);
+
+static pwm_channel_t *pwm_find(uint8_t channel)
+{
+    uint32_t i;
+    for (i = 0; i < PWM_CHANNEL_COUNT; i++) {
+        if (g_pwm_channels[i].channel == channel) {
+            return &g_pwm_channels[i];
+        }
+    }
+    return NULL;
+}
+
+static uint32_t pwm_pulse_from_percent(uint32_t percent)
+{
+    return (uint32_t)(((uint64_t)(htim_{{ peripheral.name }}.Init.Period + 1U) * percent) / 100U);
+}
+
+static void pwm_reprogram(pwm_channel_t *c)
+{
+    c->pulse = pwm_pulse_from_percent(c->percent);
+    __HAL_TIM_SET_COMPARE(&htim_{{ peripheral.name }},
+                          pwm_channel_mask(c->channel), c->pulse);
+}
+
+/* ---- init: timer base + all channels with default duties ---- */
+int {{ peripheral.name }}_init(void)
+{
+    TIM_OC_InitTypeDef sConfigOC = {0};
+    uint32_t i;
+
+    __HAL_RCC_{{ timer }}_CLK_ENABLE();
+
+    htim_{{ peripheral.name }}.Instance = {{ timer }};
+    htim_{{ peripheral.name }}.Init.Prescaler = PWM_PRESCALER;
+    htim_{{ peripheral.name }}.Init.Period = PWM_TICK_HZ / PWM_DEFAULT_FREQ_HZ - 1U;
+    htim_{{ peripheral.name }}.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim_{{ peripheral.name }}.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim_{{ peripheral.name }}.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    if (HAL_TIM_PWM_Init(&htim_{{ peripheral.name }}) != HAL_OK) {
+        return -1;
+    }
+
+    sConfigOC.OCMode       = TIM_OCMODE_PWM1;
+    sConfigOC.Pulse        = 0;
+    sConfigOC.OCPolarity   = TIM_OCPOLARITY_HIGH;
+    sConfigOC.OCFastMode   = TIM_OCFAST_DISABLE;
+    sConfigOC.OCIdleState  = TIM_OCIDLESTATE_RESET;
+
+    for (i = 0; i < PWM_CHANNEL_COUNT; i++) {
+        pwm_channel_t *c = &g_pwm_channels[i];
+        if (c->percent > 100U) {
+            c->percent = 100U;
+        }
+        sConfigOC.Pulse = pwm_pulse_from_percent(c->percent);
+        if (HAL_TIM_PWM_ConfigChannel(&htim_{{ peripheral.name }},
+                                      &sConfigOC,
+                                      pwm_channel_mask(c->channel)) != HAL_OK) {
+            return -2;
+        }
+        if (HAL_TIM_PWM_Start(&htim_{{ peripheral.name }},
+                              pwm_channel_mask(c->channel)) != HAL_OK) {
+            return -3;
+        }
+        c->pulse   = sConfigOC.Pulse;
+        c->running = 1;
+    }
+    return 0;
+}
+
+/* ---- per-channel duty (percent) ---- */
+int {{ peripheral.name }}_set_duty(uint8_t channel, uint32_t percent)
+{
+    pwm_channel_t *c = pwm_find(channel);
+    if (c == NULL || percent > 100U) {
+        return -1;
+    }
+    c->percent = percent;
+    pwm_reprogram(c);
+    return 0;
+}
+
+uint32_t {{ peripheral.name }}_get_duty(uint8_t channel)
+{
+    pwm_channel_t *c = pwm_find(channel);
+    return (c != NULL) ? c->percent : UINT32_MAX;
+}
+
+/* ---- frequency change (duty preserved) ---- */
+int {{ peripheral.name }}_set_freq(uint32_t freq_hz)
+{
+    uint32_t i;
+
+    if (freq_hz < PWM_MIN_FREQ_HZ || freq_hz > PWM_MAX_FREQ_HZ) {
+        return -1;
+    }
+    htim_{{ peripheral.name }}.Init.Period = PWM_TICK_HZ / freq_hz - 1U;
+    __HAL_TIM_SET_AUTORELOAD(&htim_{{ peripheral.name }},
+                             htim_{{ peripheral.name }}.Init.Period);
+    for (i = 0; i < PWM_CHANNEL_COUNT; i++) {
+        pwm_reprogram(&g_pwm_channels[i]);
+    }
+    return 0;
+}
+
+/* ---- per-channel start/stop ---- */
+int {{ peripheral.name }}_start(uint8_t channel)
+{
+    pwm_channel_t *c = pwm_find(channel);
+    uint32_t mask;
+    if (c == NULL) {
+        return -1;
+    }
+    mask = pwm_channel_mask(c->channel);
+    if (HAL_TIM_PWM_Start(&htim_{{ peripheral.name }}, mask) != HAL_OK) {
+        return -2;
+    }
+    c->running = 1;
+    return 0;
+}
+
+int {{ peripheral.name }}_stop(uint8_t channel)
+{
+    pwm_channel_t *c = pwm_find(channel);
+    uint32_t mask;
+    if (c == NULL) {
+        return -1;
+    }
+    mask = pwm_channel_mask(c->channel);
+    if (HAL_TIM_PWM_Stop(&htim_{{ peripheral.name }}, mask) != HAL_OK) {
+        return -2;
+    }
+    c->running = 0;
+    return 0;
 }

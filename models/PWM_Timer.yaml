@@ -4,6 +4,9 @@ interface: "internal"
 driver_template: "drivers/drv_pwm.c.j2"
 header_template: "drivers/drv_pwm.h.j2"
 timer: "TIM2"
-channel: 1
+# Multi-channel PWM: each entry is one output with an independent duty.
+# Backwards compatible: a plain "channel: N" still yields one channel.
+channels:
+  - channel: 1
+    default_duty: 50
 default_freq: 1000
-default_duty: 50

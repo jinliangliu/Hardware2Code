@@ -1,0 +1,79 @@
+# ============================================================
+# hw2c pwm_demo - multi-channel Timer PWM example
+#
+#   MCU        STM32G0B1RET6 @ 16 MHz (HSI)
+#   TIM2       CH1=PA0 (50% duty), CH2=PA1 (25% duty) @ 1 kHz
+#   Shell      USART2 (PA2/PA3) - CLI + log @ 115200
+#   LED        PC0, BUTTON PC13
+# ============================================================
+
+mcu:
+  part: STM32G0B1RET6
+  clock_source: HSI
+  clock_freq_hz: 16000000
+  core_clock_mhz: 16
+  hse_freq: 8000000
+
+pins:
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: both
+
+  # TIM2 PWM outputs — two independent channels on one timer
+  - id: PA0
+    function: TIM2_CH1
+    label: "PWM_CH1"
+    af: 1
+  - id: PA1
+    function: TIM2_CH2
+    label: "PWM_CH2"
+    af: 1
+
+  - id: PA2
+    function: USART2_TX
+    af: 1
+  - id: PA3
+    function: USART2_RX
+    af: 1
+
+peripherals:
+  - name: usart2
+    type: UART_Serial
+    instance: USART2
+    interface: uart
+    extra:
+      baudrate: 115200
+
+  - name: shell
+    type: Internal_CLI
+    uart: usart2
+    extra:
+      prompt: "hw2c> "
+
+  # Multi-channel PWM: one timer, per-channel duty (percent)
+  - name: pwm
+    type: Internal_PWM
+    timer: TIM2
+    extra:
+      default_freq: 1000
+      channels:
+        - channel: 1
+          default_duty: 50
+        - channel: 2
+          default_duty: 25
+
+log:
+  enable: true
+  ring_buf_size: 1024
+
+sleep:
+  mode: RUN

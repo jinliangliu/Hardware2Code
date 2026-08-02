@@ -192,6 +192,7 @@ flowchart TB
 |------|------|
 | **硬件解析** | EasyEDA Pro `.enet` / KiCad XML / S-Expr 网表，CSV BOM，80+ 外设芯片启发式匹配 |
 | **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485(DE)、红外、EEPROM、温度传感器、Modbus、MQTT — 34 个驱动模板（共 123 个 `.j2` 模板） |
+| **Timer PWM** | 一定时器多路输出（TIM2 CH1/CH2/...），每路占空比独立可调（0..100%），频率可改（100 Hz..100 kHz）且占空比保持；CLI `pwm list/set/freq` |
 | **I2C 总线** | 一总线多设备：`i2c_api` 按物理总线打开句柄、每次调用携带 7 位设备地址；MPU6050(0x68) 与 EEPROM(0x50) 可同挂 I2C1；总线繁忙防护（PE 循环复位），无设备不挂死 |
 | **SPI 总线** | 一总线多设备：`spi_api` 按物理总线打开句柄、每次调用携带 CS 引脚（gpio_api 软件控制）；MPU6500 @ CS=PC4；寄存器读写协议（地址+R/W 位） |
 | **IMU 姿态** | MPU6050/MPU6500 组件（WHO_AM_I 校验 + 量程配置 + 50 Hz 采样）+ 互补滤波姿态解算（roll/pitch 加速度计约束、yaw 陀螺仪积分），发布到 pub/sub；驱动模板按 interface 参数化 I2C/SPI 传输 |
@@ -250,6 +251,7 @@ cmake --build build --target flash-daplink   # DAP-Link（CMSIS-DAP）/ OpenOCD
 | `examples/modbus_demo` | Modbus RTU 主/从组件：USB-TTL 直连（USART1，默认）/ RS485（DE），FC03/06/16 + CRC16 + 异常码，ISR 环形缓冲 RX，`modbus_tool.py` 主/从对测脚本 | ✓（含 test_modbus） |
 | `examples/spi_flash_demo` | SPI NOR Flash W25Q32：读 ID / 读数据 / 页写 / 扇区擦除 / 整片擦除 | 7 套件（含 test_spi_flash 4/4） |
 | `examples/mpu6050_demo` | I2C1 IMU（MPU6050 @ 0x68，默认；SPI 变体 MPU6500 一键切换）+ imu 组件 + 姿态互补滤波；CLI `i2c scan`、`mpu`；驱动模板 I2C/SPI 双传输；无传感器时优雅降级不挂死 | 12 套件（含 test_i2c_api/test_mpu6050/test_attitude） |
+| `examples/pwm_demo` | TIM2 双通道 PWM（CH1=PA0/CH2=PA1），逐路占空比可调 + 频率可改；CLI `pwm list/set/freq` | 7 套件（含 test_pwm 多通道） |
 
 每个示例均为六层 YAML 完整配置，可独立生成、编译并通过全部单元测试。各示例的接线、生成与对测方法见 `examples/*/README.md`。
 
@@ -290,7 +292,7 @@ BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三�
 | SPI W25Q32 | `drv_spi_flash.c` | ✓ | `test_spi_flash.c` | spi_flash_demo |
 | ADC | `drv_adc.c` | — | `test_adc.c` | — |
 | Internal TempSensor | `drv_temp_sensor.c` | — | — | base（CH12 + VREFINT 补偿 + ADC 校准） |
-| PWM | `drv_pwm.c` | — | `test_pwm.c` | — |
+| PWM 多通道 | `drv_pwm.c`（一定时器多路，逐路占空比） | — | `test_pwm.c`（多通道/改频用例） | pwm_demo |
 | RTC | `drv_rtc.c` | — | `test_rtc.c`, `test_rtc_timers.c` | base |
 | IWDG | `drv_iwdg.c` | — | `test_iwdg.c` | — |
 | RS485 | `uart_api` 的 `rs485_de_pin` 特性（通用驱动映射收发切换，非独立驱动） | ✓ | `test_rs485.c` | modbus_demo |
@@ -441,6 +443,7 @@ hw2c
 - **Modbus 组件化**：主/从双角色（FC03/06/16 + CRC16 + 异常码），ISR 环形缓冲 RX，USB-TTL 直连 / RS485 双传输，RS485 DE 收敛为 `uart_api` 通用特性，`modbus_tool.py` 主/从对测
 - **I2C 与 IMU**：i2c_api 一总线多设备（MPU6050 + EEPROM 同挂 I2C1）、MPU6050 组件 + 互补滤波姿态管理、CLI `i2c scan/rd/wr` 与 `mpu`，无硬件优雅降级
 - **启动鲁棒性**：修复 FreeRTOS V11 ARMv6-M 端口在调度器启动前调用临界区导致 PRIMASK 卡死（HAL 超时无限空转）的问题；修复 I2C 外设时钟未使能与 HAL I2C 错误循环挂死
+- **Timer PWM 多通道**：`drv_pwm` 从单通道重构为多通道（channels 配置），每路占空比独立可调、频率可改且占空比保持；CLI `pwm list/set/freq`；TIM 引脚 AF 自动配置；`pwm_demo` 示例（TIM2 CH1/CH2）
 - **遥测与日志**：单块时间戳快照 + on/off 开关，开机 logo，日志零阻塞
 - **CLI**：12 个内置命令，STOP 模式可交互
 - **CI**：build_and_test（编译 + 主机单元测试 + SIL 组件测试 + Pages 部署），修复 mock_hal `size_t` 编译与 github-pages environment 缺失
