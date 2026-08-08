@@ -1,0 +1,50 @@
+# Component registry configuration
+
+components:
+  - name: shell
+    type: shell_cli
+    driver: usart2
+    period_ms: 50
+    sleep_compat: RUN
+    config:
+      prompt: "hw2c> "
+      history_size: 8
+    priority: 3
+    stack_size: 1024
+
+  - name: led
+    type: led
+    driver: gpio
+    period_ms: 50
+    sleep_compat: RUN
+    config:
+      default_pattern: off
+
+  - name: btn
+    type: btn
+    driver: gpio
+    period_ms: 10
+    sleep_compat: RUN
+    config:
+      long_press_ms: 3000
+      double_click_ms: 500
+      debounce_ms: 50
+
+  # FOC motor: TIM1 direct drive (init + calibrate + current loop ISR).
+  # Named "motor_ctl" so the component functions do not collide with the
+  # driver's motor_init()/motor_set_torque().
+  - name: motor_ctl
+    type: foc_motor
+    period_ms: 10
+    sleep_compat: RUN
+    config:
+      description: "TIM1 direct-drive FOC motor"
+
+  # Force-feedback damping knob: torque = -damping*omega - friction*sgn(omega)
+  - name: knob
+    type: knob
+    period_ms: 10
+    sleep_compat: RUN
+    config:
+      description: "Force-feedback damping knob on the FOC motor"
+      motor: motor_ctl

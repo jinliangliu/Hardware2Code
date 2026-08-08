@@ -1,0 +1,258 @@
+{#
+    drv_foc_motor.c.j2 - TIM1 direct-drive FOC motor driver
+
+    Current loop at {{ foc_loop_hz }} Hz on TIM1 update interrupt:
+      phase currents (ADC1) -> Clarke -> Park -> PI(id=0, iq=target)
+      -> inverse Park -> SVPWM -> TIM1 CCR1/2/3
+    Rotor angle: I2C magnetic encoder (AS5600-style, 12-bit, 0x36).
+
+    Context: peripheral (name, bus, extra), model, mcu.
+#}
+{% set foc_extra = peripheral.get('extra', {}) %}
+{% set pole_pairs = foc_extra.get('pole_pairs', 7) %}
+{% set vbus = foc_extra.get('vbus_v', 12.0) %}
+{% set kt = foc_extra.get('kt_nm_per_a', 0.02) %}
+{% set current_scale = foc_extra.get('current_scale_a_per_lsb', 0.001) %}
+{% set loop_hz = foc_extra.get('loop_hz', 10000) %}
+{% set pwm_arr = foc_extra.get('pwm_arr', 999) %}
+{% set iq_max = foc_extra.get('iq_max_a', 3.0) %}
+{% set enc_addr = foc_extra.get('encoder_addr', 0x36) %}
+{% set enc_bus = foc_extra.get('encoder_bus', 'i2c1') %}
+
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#endif
+#include "drv_{{ peripheral.name }}.h"
+#include "foc_math.h"
+#include "i2c_api.h"
+#include <math.h>
+#include <stddef.h>
+
+/* ---- tunables (from hardware.yaml extra) ---- */
+#define FOC_POLE_PAIRS        {{ pole_pairs }}
+#define FOC_VBUS_V            {{ vbus }}f
+#define FOC_KT_NM_PER_A       {{ kt }}f
+#define FOC_CURRENT_SCALE     {{ current_scale }}f
+#define FOC_LOOP_HZ           {{ loop_hz }}U
+#define FOC_PWM_ARR           {{ pwm_arr }}U
+#define FOC_IQ_MAX            {{ iq_max }}f
+#define FOC_ENC_ADDR          {{ '0x%02X' | format(enc_addr) }}
+#define FOC_DT_S              (1.0f / (float)FOC_LOOP_HZ)
+
+/* ADC 12-bit: raw -> voltage -> current via shunt + gain */
+#define FOC_ADC_MAX           4096.0f
+#define FOC_ADC_VREF          3.3f
+
+/* ---- private state ---- */
+static TIM_HandleTypeDef htim_{{ peripheral.name }};
+static ADC_HandleTypeDef hadc1;
+static i2c_handle_t      g_enc_bus;
+static float g_iq_target     = 0.0f;
+static float g_torque_nm     = 0.0f;
+static float g_theta_offset  = 0.0f;
+static float g_angle_rad     = 0.0f;
+static float g_prev_angle    = 0.0f;
+static float g_velocity_radps = 0.0f;
+static float g_iq_meas = 0.0f, g_id_meas = 0.0f;
+static float g_ia = 0.0f, g_ib = 0.0f, g_ic = 0.0f;
+static uint8_t g_initialized = 0;
+static uint8_t g_calibrated  = 0;
+static foc_pi_t g_pi_d;
+static foc_pi_t g_pi_q;
+
+/* ---- encoder: AS5600 12-bit angle over I2C ---- */
+static int foc_encoder_read_rad(float *out_rad)
+{
+    uint8_t buf[2];
+    uint16_t raw;
+
+    if (g_enc_bus == NULL) {
+        return -1;
+    }
+    /* ANGLE_HI (0x0C) / ANGLE_LO (0x0D) */
+    if (i2c_read_reg(g_enc_bus, FOC_ENC_ADDR, 0x0C, buf, 2, 0) != 0) {
+        return -2;
+    }
+    raw = (uint16_t)(((buf[0] & 0x0FU) << 8) | buf[1]);
+    *out_rad = (float)raw * FOC_2PI_F / 4096.0f;
+    return 0;
+}
+
+static float foc_adc_to_amp(void)
+{
+    return (float)HAL_ADC_GetValue(NULL) * FOC_ADC_VREF
+           / FOC_ADC_MAX * FOC_CURRENT_SCALE;
+}
+
+/* ---- init ---- */
+int {{ peripheral.name }}_init(void)
+{
+    uint32_t ch;
+    float angle;
+
+    g_enc_bus = i2c_open("{{ enc_bus }}", NULL);
+    if (g_enc_bus == NULL) {
+        return -1;
+    }
+    if (foc_encoder_read_rad(&angle) != 0) {
+        return -2;      /* encoder not responding */
+    }
+    g_angle_rad = angle;
+    g_prev_angle = angle;
+
+    __HAL_RCC_TIM1_CLK_ENABLE();
+    htim_{{ peripheral.name }}.Instance = TIM1;
+    htim_{{ peripheral.name }}.Init.Prescaler = 0;
+    htim_{{ peripheral.name }}.Init.Period = FOC_PWM_ARR;
+    htim_{{ peripheral.name }}.Init.CounterMode = TIM_COUNTERMODE_CENTERALIGNED1;
+    htim_{{ peripheral.name }}.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim_{{ peripheral.name }}.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+    if (HAL_TIM_PWM_Init(&htim_{{ peripheral.name }}) != HAL_OK) {
+        return -3;
+    }
+
+    hadc1.Instance = ADC1;
+    if (HAL_ADC_Init(&hadc1) != HAL_OK) {
+        return -3;
+    }
+
+    /* complementary 3-phase PWM, PWM mode 1, preload on */
+    TIM1->CR1   = TIM_CR1_CMS_1 | TIM_CR1_ARPE;
+    TIM1->CCMR1 = (0x0060U << 4)  | TIM_CCMR1_OC1PE |
+                  (0x0060U << 12) | TIM_CCMR1_OC2PE;
+    TIM1->CCMR2 = (0x0060U << 4)  | TIM_CCMR2_OC3PE;
+    TIM1->CCER  = TIM_CCER_CC1E  | TIM_CCER_CC1NE |
+                  TIM_CCER_CC2E  | TIM_CCER_CC2NE |
+                  TIM_CCER_CC3E  | TIM_CCER_CC3NE;
+    TIM1->BDTR  = TIM_BDTR_MOE | TIM_BDTR_AOE;
+    TIM1->EGR   = TIM_EGR_UG;
+    TIM1->CR1  |= TIM_CR1_CEN;
+
+    /* ADC channels (current sense) — 3 channels, polling conversion */
+    for (ch = 0; ch < 3; ch++) {
+        ADC_ChannelConfTypeDef sConfig = {0};
+        sConfig.Channel = (ch == 0) ? ADC_CHANNEL_0 :
+                          (ch == 1) ? ADC_CHANNEL_1 : ADC_CHANNEL_4;
+        sConfig.Rank = ADC_REGULAR_RANK_1;
+        sConfig.SamplingTime = ADC_SAMPLETIME_160CYCLES_5;
+        HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+    }
+    HAL_ADC_Start(&hadc1);
+
+    foc_pi_init(&g_pi_d, 0.2f, 10.0f, -FOC_VBUS_V * 0.5f, FOC_VBUS_V * 0.5f);
+    foc_pi_init(&g_pi_q, 0.2f, 10.0f, -FOC_VBUS_V * 0.5f, FOC_VBUS_V * 0.5f);
+
+    /* start all three channels (50% duty, motor disabled until torque) */
+    __HAL_TIM_SET_COMPARE(&htim_{{ peripheral.name }}, TIM_CHANNEL_1,
+                          (FOC_PWM_ARR + 1U) / 2U);
+    __HAL_TIM_SET_COMPARE(&htim_{{ peripheral.name }}, TIM_CHANNEL_2,
+                          (FOC_PWM_ARR + 1U) / 2U);
+    __HAL_TIM_SET_COMPARE(&htim_{{ peripheral.name }}, TIM_CHANNEL_3,
+                          (FOC_PWM_ARR + 1U) / 2U);
+
+    g_initialized = 1;
+    return 0;
+}
+
+int {{ peripheral.name }}_set_iq(float iq_a)
+{
+    if (!g_initialized) {
+        return -1;
+    }
+    if (iq_a >  FOC_IQ_MAX) iq_a =  FOC_IQ_MAX;
+    if (iq_a < -FOC_IQ_MAX) iq_a = -FOC_IQ_MAX;
+    g_iq_target = iq_a;
+    return 0;
+}
+
+int {{ peripheral.name }}_set_torque(float torque_nm)
+{
+    if (!g_initialized) {
+        return -1;
+    }
+    g_torque_nm = torque_nm;
+    return {{ peripheral.name }}_set_iq(torque_nm / FOC_KT_NM_PER_A);
+}
+
+int {{ peripheral.name }}_get_state({{ peripheral.name }}_state_t *out)
+{
+    if (out == NULL || !g_initialized) {
+        return -1;
+    }
+    out->iq_meas       = g_iq_meas;
+    out->id_meas       = g_id_meas;
+    out->ia = g_ia; out->ib = g_ib; out->ic = g_ic;
+    out->angle_rad     = g_angle_rad;
+    out->velocity_radps = g_velocity_radps;
+    out->torque_nm     = g_torque_nm;
+    return 0;
+}
+
+int {{ peripheral.name }}_calibrate(void)
+{
+    float angle;
+    if (!g_initialized) {
+        return -1;
+    }
+    if (foc_encoder_read_rad(&angle) != 0) {
+        return -2;
+    }
+    g_theta_offset = -angle * (float)FOC_POLE_PAIRS;
+    g_theta_offset = fmodf(g_theta_offset, FOC_2PI_F);
+    if (g_theta_offset < 0.0f) {
+        g_theta_offset += FOC_2PI_F;
+    }
+    g_calibrated = 1;
+    return 0;
+}
+
+/* ---- current loop (TIM1 update ISR body) ---- */
+void {{ peripheral.name }}_isr(void)
+{
+    float theta, a, b, vd, vq, va, vb, ta, tb, tc;
+    float ia, ib, ic, dangle;
+    uint32_t arr;
+
+    if (!g_initialized || !g_calibrated) {
+        return;
+    }
+
+    /* 1. sample phase currents (simplified: poll 3 channels) */
+    ia = foc_adc_to_amp();
+    ib = foc_adc_to_amp();
+    ic = -(ia + ib);
+    g_ia = ia; g_ib = ib; g_ic = ic;
+
+    /* 2. encoder angle + electrical angle */
+    if (foc_encoder_read_rad(&g_angle_rad) != 0) {
+        g_iq_target = 0.0f;      /* encoder lost -> drop torque */
+        return;
+    }
+    theta = foc_elec_angle(g_angle_rad, FOC_POLE_PAIRS, g_theta_offset);
+
+    /* 3. speed from encoder delta (with wrap) */
+    dangle = g_angle_rad - g_prev_angle;
+    if (dangle >  FOC_PI_F) dangle -= FOC_2PI_F;
+    if (dangle < -FOC_PI_F) dangle += FOC_2PI_F;
+    g_velocity_radps = dangle / FOC_DT_S;
+    g_prev_angle = g_angle_rad;
+
+    /* 4. current loop */
+    foc_clarke(ia, ib, ic, &a, &b);
+    foc_park(a, b, theta, &g_id_meas, &g_iq_meas);
+    vd = foc_pi_update(&g_pi_d, 0.0f - g_id_meas, FOC_DT_S);
+    vq = foc_pi_update(&g_pi_q, g_iq_target - g_iq_meas, FOC_DT_S);
+    foc_inv_park(vd, vq, theta, &va, &vb);
+    foc_svpwm(va, vb, FOC_VBUS_V, &ta, &tb, &tc);
+
+    /* 5. write compare registers */
+    arr = FOC_PWM_ARR + 1U;
+    __HAL_TIM_SET_COMPARE(&htim_{{ peripheral.name }}, TIM_CHANNEL_1,
+                          (uint32_t)(ta * (float)arr));
+    __HAL_TIM_SET_COMPARE(&htim_{{ peripheral.name }}, TIM_CHANNEL_2,
+                          (uint32_t)(tb * (float)arr));
+    __HAL_TIM_SET_COMPARE(&htim_{{ peripheral.name }}, TIM_CHANNEL_3,
+                          (uint32_t)(tc * (float)arr));
+}

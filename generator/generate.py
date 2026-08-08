@@ -299,6 +299,17 @@ def render_templates(env: Environment, context: dict, output_dir: str,
             rendered = template.render(context)
             _write_file(out_path, rendered, dry_run, show_diff)
 
+    # ---------- FOC math module (when a FOC motor peripheral exists) ----------
+    if context.get("has_foc"):
+        foc_templates = {
+            "app/foc_math.h.j2": os.path.join(output_dir, "src", "foc_math.h"),
+            "app/foc_math.c.j2": os.path.join(output_dir, "src", "foc_math.c"),
+        }
+        for tmpl_name, out_path in foc_templates.items():
+            template = env.get_template(tmpl_name)
+            rendered = template.render(context)
+            _write_file(out_path, rendered, dry_run, show_diff)
+
     # GPIO POSIX API always generated (all boards have GPIO)
     posix_gpio_templates = {
         "drivers/posix/gpio_api.h.j2": os.path.join(output_dir, "src", "drivers", "gpio_api.h"),
@@ -388,6 +399,12 @@ def render_templates(env: Environment, context: dict, output_dir: str,
                 comp_name_out = comp["name"] + "_component"
             elif comp_type == "fall_detect":
                 comp_template = env.get_template("app/fall_detect_component.c.j2")
+                comp_name_out = comp["name"] + "_component"
+            elif comp_type == "foc_motor":
+                comp_template = env.get_template("app/foc_motor_component.c.j2")
+                comp_name_out = comp["name"] + "_component"
+            elif comp_type == "knob":
+                comp_template = env.get_template("app/knob_component.c.j2")
                 comp_name_out = comp["name"] + "_component"
             else:
                 comp_template = env.get_template("app/component.c.j2")
@@ -527,6 +544,8 @@ def render_templates(env: Environment, context: dict, output_dir: str,
         test_templates["test/test_attitude.c.j2"] = os.path.join(test_dir, "test_attitude.c")
     if context.get("has_fall_detect"):
         test_templates["test/test_fall_detect.c.j2"] = os.path.join(test_dir, "test_fall_detect.c")
+    if context.get("has_foc"):
+        test_templates["test/test_foc_math.c.j2"] = os.path.join(test_dir, "test_foc_math.c")
     if context.get("has_ir"):
         test_templates["test/test_ir.c.j2"] = os.path.join(test_dir, "test_ir.c")
     if context.get("has_cellular"):
@@ -1014,6 +1033,10 @@ def generate_project(
         else:
             context["components"] = []
         context["has_components"] = bool(context.get("components"))
+        context["has_foc"] = any(
+            p.get("type") == "FOC_Motor"
+            for p in context.get("peripherals", [])
+        )
         context["has_fall_detect"] = any(
             c.get("type") == "fall_detect" for c in context.get("components", [])
         )

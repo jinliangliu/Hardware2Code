@@ -91,6 +91,13 @@
 {% if has_fall_detect %}
 {% set fd_comp = components | selectattr('type', 'eq', 'fall_detect') | first %}
 {% endif %}
+{% if has_foc %}
+{% set motor_comp = components | selectattr('type', 'eq', 'foc_motor') | first %}
+{% set knob_comp = components | selectattr('type', 'eq', 'knob') | first %}
+{% for p in peripherals if p.type == 'FOC_Motor' %}
+#include "drv_{{ p.name }}.h"
+{% endfor %}
+{% endif %}
 
 /* ==================================================================
  *  Static module state
@@ -422,6 +429,38 @@ static void cmd_fall(int argc, char *argv[], cli_output_fn out)
         (double){{ fd_comp.name }}_get_last_impact_g(),
         (unsigned long){{ fd_comp.name }}_get_read_failures());
 }
+{% endif %}
+
+{% if has_foc %}
+/* ---- FOC motor / knob status ---- */
+{% if motor_comp %}
+int {{ motor_comp.name }}_get_state({{ (peripherals | selectattr('type', 'eq', 'FOC_Motor') | first).name }}_state_t *out);
+{% endif %}
+{% if knob_comp %}
+float    {{ knob_comp.name }}_get_torque_nm(void);
+uint32_t {{ knob_comp.name }}_get_turns(void);
+{% endif %}
+static void cmd_motor(int argc, char *argv[], cli_output_fn out)
+{
+    {{ (peripherals | selectattr('type', 'eq', 'FOC_Motor') | first).name }}_state_t st;
+    (void)argc; (void)argv;
+    if ({{ motor_comp.name }}_get_state(&st) != 0) {
+        out("motor not ready\r\n");
+        return;
+    }
+    out("iq=%.3fA id=%.3fA torque=%.3fN*m angle=%.2frad speed=%.2frad/s\r\n",
+        (double)st.iq_meas, (double)st.id_meas, (double)st.torque_nm,
+        (double)st.angle_rad, (double)st.velocity_radps);
+}
+{% if knob_comp %}
+static void cmd_knob(int argc, char *argv[], cli_output_fn out)
+{
+    (void)argc; (void)argv;
+    out("knob: torque=%.3fN*m turns=%lu\r\n",
+        (double){{ knob_comp.name }}_get_torque_nm(),
+        (unsigned long){{ knob_comp.name }}_get_turns());
+}
+{% endif %}
 {% endif %}
 
 {% if has_pwm %}
@@ -796,6 +835,12 @@ CLI_HW2C_WRAPPER(mpu)
 {% if has_fall_detect %}
 CLI_HW2C_WRAPPER(fall)
 {% endif %}
+{% if has_foc %}
+CLI_HW2C_WRAPPER(motor)
+{% if knob_comp %}
+CLI_HW2C_WRAPPER(knob)
+{% endif %}
+{% endif %}
 {% if has_modbus %}
 CLI_HW2C_WRAPPER(modbus)
 {% endif %}
@@ -846,6 +891,12 @@ static const hw2c_cli_cmd_t _hw2c_commands[] = {
 {% endif %}
 {% if has_fall_detect %}
     {"fall",     "Fall detection status",         _hw2c_fall},
+{% endif %}
+{% if has_foc %}
+    {"motor",    "FOC motor status",               _hw2c_motor},
+{% if knob_comp %}
+    {"knob",     "Force-feedback knob status",     _hw2c_knob},
+{% endif %}
 {% endif %}
 {% if has_modbus %}
     {"modbus",   "Modbus read/write registers",  _hw2c_modbus},
@@ -907,6 +958,12 @@ void cli_register_builtin_commands(void)
 {% endif %}
 {% if has_fall_detect %}
     cli_register_command("fall",    "Fall detection status",        cmd_fall);
+{% endif %}
+{% if has_foc %}
+    cli_register_command("motor",   "FOC motor status",             cmd_motor);
+{% if knob_comp %}
+    cli_register_command("knob",    "Force-feedback knob status",   cmd_knob);
+{% endif %}
 {% endif %}
 {% if has_modbus %}
     cli_register_command("modbus",  "Modbus read/write registers",  cmd_modbus);

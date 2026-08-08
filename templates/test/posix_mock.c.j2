@@ -482,6 +482,8 @@ void i2c_mock_reset_all(void)
     /* Preload a default MPU6050 so component init() succeeds */
     i2c_mock_add_device("i2c1", 0x68, NULL, 0);
     i2c_mock_set_reg("i2c1", 0x68, 0x75, 0x68);
+    /* Preload an AS5600 magnetic encoder so FOC motor init() succeeds */
+    i2c_mock_add_device("i2c1", 0x36, NULL, 0);
 }
 {% endif %}
 

@@ -332,6 +332,7 @@ typedef struct {
     volatile uint32_t ARR;
     volatile uint32_t RCR;
     volatile uint32_t CCR[4];
+    volatile uint32_t BDTR;
 } TIM_TypeDef;
 
 typedef struct {
@@ -356,6 +357,7 @@ typedef struct {
 
 /* Shared mock timer instance (all test TUs see the same registers) */
 extern TIM_TypeDef mock_tim2_dev;
+#define TIM1    (&mock_tim2_dev)
 #define TIM2    (&mock_tim2_dev)
 #define TIM3    (&mock_tim2_dev)
 
@@ -372,6 +374,27 @@ extern TIM_TypeDef mock_tim2_dev;
 #define TIM_COUNTERMODE_UP              0x0000U
 #define TIM_CLOCKDIVISION_DIV1          0x0000U
 #define TIM_AUTORELOAD_PRELOAD_DISABLE  0x0000U
+#define TIM_AUTORELOAD_PRELOAD_ENABLE   0x0040U
+#define TIM_COUNTERMODE_CENTERALIGNED1  0x0040U
+
+/* TIM1 (advanced timer) control bits used by drv_foc_motor */
+#define TIM_CR1_CEN      0x0001U
+#define TIM_CR1_CMS_1    0x0040U
+#define TIM_CR1_ARPE     0x0080U
+#define TIM_CCMR1_OC1PE  0x0002U
+#define TIM_CCMR1_OC2PE  0x0200U
+#define TIM_CCMR2_OC3PE  0x0002U
+#define TIM_CCER_CC1E    0x0001U
+#define TIM_CCER_CC1NE   0x0004U
+#define TIM_CCER_CC2E    0x0010U
+#define TIM_CCER_CC2NE   0x0040U
+#define TIM_CCER_CC3E    0x0100U
+#define TIM_CCER_CC3NE   0x0400U
+#define TIM_BDTR_MOE     0x8000U
+#define TIM_BDTR_AOE     0x0200U
+#define TIM_EGR_UG       0x0001U
+
+#define __HAL_RCC_TIM1_CLK_ENABLE()     ((void)0)
 
 #define __HAL_TIM_SET_COMPARE(__HANDLE__, __CHANNEL__, __COMPARE__) \
     ((__HANDLE__)->Instance->CCR[((uint32_t)(__CHANNEL__) >> 2U)] = (uint32_t)(__COMPARE__))
@@ -570,7 +593,11 @@ typedef struct {
     uint32_t Overrun;
 } ADC_InitTypeDef;
 
-typedef void ADC_HandleTypeDef;
+typedef struct {
+    void *Instance;
+} ADC_HandleTypeDef;
+
+#define ADC1 ((void *)0)
 
 #define ADC_CLOCK_SYNC_PCLK_DIV2  0
 #define ADC_RESOLUTION_12B        0
@@ -580,8 +607,6 @@ typedef void ADC_HandleTypeDef;
 #define ADC_SOFTWARE_START        0
 #define ADC_EXTERNALTRIGCONVEDGE_NONE 0
 #define ADC_OVR_DATA_PRESERVED    0
-#define ADC_CHANNEL_0             0
-
 typedef struct {
     uint32_t Channel;
     uint32_t Rank;
@@ -589,13 +614,19 @@ typedef struct {
 } ADC_ChannelConfTypeDef;
 
 #define ADC_REGULAR_RANK_1        0
+#define ADC_SAMPLETIME_160CYCLES_5 0
 #define ADC_SAMPLETIME_39CYCLES_5 0
 
-void HAL_ADC_Init(ADC_HandleTypeDef *hadc);
-void HAL_ADC_ConfigChannel(ADC_HandleTypeDef *hadc, ADC_ChannelConfTypeDef *sConfig);
-void HAL_ADC_Start(ADC_HandleTypeDef *hadc);
+#define ADC_CHANNEL_0             0
+#define ADC_CHANNEL_1             1
+#define ADC_CHANNEL_4             4
+
+HAL_StatusTypeDef HAL_ADC_Init(ADC_HandleTypeDef *hadc);
+HAL_StatusTypeDef HAL_ADC_ConfigChannel(ADC_HandleTypeDef *hadc, ADC_ChannelConfTypeDef *sConfig);
+HAL_StatusTypeDef HAL_ADC_Start(ADC_HandleTypeDef *hadc);
 void HAL_ADC_PollForConversion(ADC_HandleTypeDef *hadc, uint32_t Timeout);
 uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef *hadc);
+void mock_adc_set_raw(uint32_t raw);
 bool mock_HAL_ADC_Init_called(void);
 
 /* ========== UART mock ========== */

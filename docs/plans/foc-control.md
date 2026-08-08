@@ -29,11 +29,18 @@
 | UART | USART1..6 + LPUART1 | 1~2 电机直连（可用） |
 | DMA | DMA1/2 + DMAMUX | 电流采样/总线 |
 
-### 结论：G0B1 直驱 4 路 FOC 资源不足
+### 结论：双路线（单电机直驱 + 多电机模块化）
 
 标准"MCU 直驱"每路 FOC 需要 3 对互补 PWM + 3 路电流采样 + 编码器/霍尔
-接口，4 路共需 4 个高级定时器——G0B1RE 只有 1 个。**执行层采用
-"每电机一个集成 FOC 驱动模块"**：
+接口，4 路共需 4 个高级定时器——G0B1RE 只有 1 个。因此：
+
+**路线 A（单电机，首选 Knob）**：用 **TIM1 直驱 FOC**——TIM1 恰好提供
+1 组三相互补 PWM（CH1/CH1N + CH2/CH2N + CH3/CH3N），ADC1 三路电流采样
+（TIM1_TRGO 同步触发），磁编码器（I2C/SPI）提供电角度。MCU 完整跑
+电流环（Clarke → Park → PI → 逆 Park → SVPWM）。适合 Knob / 单关节舵机 /
+单轴云台 / 莱洛三角 / 无感风扇（无感换相）等单电机应用。
+
+**路线 B（多电机）**：执行层采用"每电机一个集成 FOC 驱动模块"：
 
 ```text
 STM32G0B1RE（运动控制大脑）
@@ -49,6 +56,10 @@ STM32G0B1RE（运动控制大脑）
 FOC 模块（如 TMC4671、峰岹 FU68xx、DRV 系列 + 自带 MCU 的驱动器、
 SimpleFOC 配套板等）负责电流环/换相，MCU 负责运动控制与应用逻辑。
 该分层与 hw2c"软硬件分离"一致：**未来换 MCU 或改直驱，只换驱动层后端**。
+
+两条路线共用 `motor_api` / `foc_motor` 组件抽象：路线 A 的驱动后端
+（drv_foc_motor，TIM1+ADC）与路线 B 的驱动后端（FDCAN/UART 模块协议）
+只实现同一组接口。**阶段 1 从路线 A 的 Knob 起步**。
 
 ## 3. 软件架构（分层）
 
@@ -174,7 +185,9 @@ params:
 
 ### 阶段 1：motor_api + 单电机（1 电机）
 
-- 实现 `motor_api`（FDCAN 后端优先）与 `foc_motor` 组件
+- 实现 `foc_math`（Clarke/Park/SVPWM/PI，纯 C 可测）与
+  `drv_foc_motor`（TIM1 三相互补 PWM + ADC1 同步电流采样 + 磁编码器电角度）
+- 实现 `motor_api` 风格接口与 `foc_motor` 组件（力矩模式优先）
 - 应用：Knob（力矩反馈阻尼旋钮，最容易验证力觉）→ 无感风扇（速度环）→
   单轴云台（IMU 协同，复用现有姿态）
 - 验证：位置/速度/力矩三模式切换，CLI `motor` 命令

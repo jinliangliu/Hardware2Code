@@ -1,0 +1,116 @@
+/**
+ * @file  foc_math.c
+ * @brief FOC math primitives implementation
+ */
+
+#include "foc_math.h"
+#include <math.h>
+
+void foc_clarke(float ia, float ib, float ic,
+                float *ialpha, float *ibeta)
+{
+    /* amplitude-invariant: ialpha = ia, ibeta = (ia + 2*ib) / sqrt(3) */
+    *ialpha = ia;
+    *ibeta  = (ia + 2.0f * ib) / 1.7320508f;
+    (void)ic;
+}
+
+void foc_park(float ialpha, float ibeta, float theta_elec,
+              float *id, float *iq)
+{
+    float c = cosf(theta_elec);
+    float s = sinf(theta_elec);
+    *id =  ialpha * c + ibeta * s;
+    *iq = -ialpha * s + ibeta * c;
+}
+
+void foc_inv_park(float vd, float vq, float theta_elec,
+                  float *valpha, float *vbeta)
+{
+    float c = cosf(theta_elec);
+    float s = sinf(theta_elec);
+    *valpha =  vd * c - vq * s;
+    *vbeta  =  vd * s + vq * c;
+}
+
+void foc_svpwm(float valpha, float vbeta, float vbus,
+               float *ta, float *tb, float *tc)
+{
+    /* three-phase phase voltages (star) */
+    float va = valpha;
+    float vb = -0.5f * valpha + 0.8660254f * vbeta;
+    float vc = -0.5f * valpha - 0.8660254f * vbeta;
+    float vmax = va, vmin = va;
+    float voffset, half;
+
+    if (vb > vmax) vmax = vb;
+    if (vc > vmax) vmax = vc;
+    if (vb < vmin) vmin = vb;
+    if (vc < vmin) vmin = vc;
+
+    /* centered min-max SVPWM: shift the neutral point so the largest and
+     * smallest phase voltages are symmetric around half bus. */
+    voffset = -(vmax + vmin) * 0.5f;
+    half = vbus * 0.5f;
+
+    *ta = (va + voffset + half) / vbus;
+    *tb = (vb + voffset + half) / vbus;
+    *tc = (vc + voffset + half) / vbus;
+
+    *ta = foc_clampf(*ta, 0.0f, 1.0f);
+    *tb = foc_clampf(*tb, 0.0f, 1.0f);
+    *tc = foc_clampf(*tc, 0.0f, 1.0f);
+}
+
+void foc_pi_init(foc_pi_t *p, float kp, float ki,
+                 float out_min, float out_max)
+{
+    p->kp = kp;
+    p->ki = ki;
+    p->out_min = out_min;
+    p->out_max = out_max;
+    p->integral = 0.0f;
+}
+
+float foc_pi_update(foc_pi_t *p, float err, float dt)
+{
+    float out, pterm, iterm;
+
+    if (dt <= 0.0f) {
+        dt = 1e-3f;
+    }
+    pterm = p->kp * err;
+    iterm = p->integral + p->ki * err * dt;
+    out = pterm + iterm;
+
+    /* clamp output; freeze integral when saturated pushing further */
+    if (out > p->out_max) {
+        out = p->out_max;
+        if (err * p->ki > 0.0f) {
+            iterm = p->integral;   /* anti-windup */
+        }
+    } else if (out < p->out_min) {
+        out = p->out_min;
+        if (err * p->ki < 0.0f) {
+            iterm = p->integral;
+        }
+    }
+    p->integral = iterm;
+    return out;
+}
+
+float foc_elec_angle(float mech_rad, uint8_t pole_pairs, float offset_rad)
+{
+    float e = fmodf(mech_rad * (float)pole_pairs + offset_rad, FOC_2PI_F);
+    if (e < 0.0f) {
+        e += FOC_2PI_F;
+    }
+    return e;
+}
+
+float foc_clampf(float v, float lo, float hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}

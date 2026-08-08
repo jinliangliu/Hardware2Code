@@ -1,0 +1,3 @@
+topics:
+  - name: knob_angle
+    description: "Knob mechanical angle, scaled int32, unit=0.001 rad"

@@ -194,6 +194,7 @@ flowchart TB
 | **引脚防冲突** | 三层校验：Pydantic 重复引脚拦截、MCU 数据库交叉校验（引脚存在性/AF 支持性/同引脚冲突，含替代引脚建议）、外设字段引脚引用校验（cs_pin/de_pin 必须声明且不被多外设共享，UART↔RS485 DE 伴侣除外）；自动分配排除已用与 SWD 引脚 |
 | **驱动生成** | GPIO、EXTI、I2C、SPI、ADC、PWM、RTC、UART、IWDG、RS485(DE)、红外、EEPROM、温度传感器、Modbus、MQTT — 34 个驱动模板（共 123 个 `.j2` 模板） |
 | **Timer PWM** | 一定时器多路输出（TIM2 CH1/CH2/...），每路占空比独立可调（0..100%），频率可改（100 Hz..100 kHz）且占空比保持；CLI `pwm list/set/freq` |
+| **FOC 电机控制** | TIM1 直驱 FOC（三相互补 PWM + ADC 电流采样 + I2C 磁编码器）：Clarke/Park/SVPWM/PI 纯 C 可测；力矩/速度/位置模式；力觉旋钮 Knob（阻尼+摩擦反馈） |
 | **I2C 总线** | 一总线多设备：`i2c_api` 按物理总线打开句柄、每次调用携带 7 位设备地址；MPU6050(0x68) 与 EEPROM(0x50) 可同挂 I2C1；总线繁忙防护（PE 循环复位），无设备不挂死 |
 | **SPI 总线** | 一总线多设备：`spi_api` 按物理总线打开句柄、每次调用携带 CS 引脚（gpio_api 软件控制）；MPU6500 @ CS=PC4；寄存器读写协议（地址+R/W 位） |
 | **IMU 姿态** | MPU6050/MPU6500 组件（WHO_AM_I 校验 + 量程配置 + 50 Hz 采样）+ 互补滤波姿态解算（roll/pitch 加速度计约束、yaw 陀螺仪积分），发布到 pub/sub；驱动模板按 interface 参数化 I2C/SPI 传输 |
@@ -254,6 +255,7 @@ cmake --build build --target flash-daplink   # DAP-Link（CMSIS-DAP）/ OpenOCD
 | `examples/spi_flash_demo` | SPI NOR Flash W25Q32：读 ID / 读数据 / 页写 / 扇区擦除 / 整片擦除 | 7 套件（含 test_spi_flash 4/4） |
 | `examples/mpu6050_demo` | I2C1 IMU（MPU6050 @ 0x68，默认；SPI 变体 MPU6500 一键切换）+ imu 组件 + 姿态互补滤波 + **fall_detect 摔倒监测组件**（`fall` CLI）；驱动模板 I2C/SPI 双传输；无传感器时优雅降级不挂死 | 13 套件（含 test_i2c_api/test_mpu6050/test_attitude/test_fall_detect） |
 | `examples/pwm_demo` | TIM2 双通道 PWM（CH1=PA0/CH2=PA1），逐路占空比可调 + 频率可改；CLI `pwm list/set/freq` | 7 套件（含 test_pwm 多通道） |
+| `examples/knob_demo` | TIM1 直驱 FOC 力矩反馈阻尼旋钮：三相互补 PWM + 电流环 + AS5600 编码器 + Knob 阻尼/摩擦力觉；CLI `motor`/`knob` | 9 套件（含 test_foc_math） |
 
 每个示例均为六层 YAML 完整配置，可独立生成、编译并通过全部单元测试。各示例的接线、生成与对测方法见 `examples/*/README.md`。
 
@@ -322,6 +324,10 @@ BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三�
 | 姿态解算 | `attitude.c.j2` | `test_attitude.c` | 互补滤波：加速度计静态参考 + 陀螺仪积分，1g 信任窗口抑制线性加速度干扰 |
 | 摔倒监测组件 | `fall_detect_component.c.j2` | `test_fall_detect.c` | 直接消费 imu 组件数据（同周期采样，无总线流量），三阶段检测（自由落体/撞击/静止），事件进状态机，阈值运行时可调 |
 | 摔倒检测算法 | `fall_detect.c.j2` | `test_fall_detect.c` | 纯 C 状态机：\|a\| 窗口统计 + 撞击峰值 + 静止确认，含恢复保护 |
+| FOC 电机组件 | `foc_motor_component.c.j2` | SIL 覆盖 | 封装 drv_foc_motor：init + 编码器校准，力矩/电流命令 |
+| 力觉旋钮组件 | `knob_component.c.j2` | SIL 覆盖 | 力矩 = -阻尼×角速度 - 摩擦×方向，转角超阈值发 KNOB_TURNED 事件 |
+| FOC 数学 | `foc_math.c.j2` | `test_foc_math.c` | Clarke/Park/逆 Park/中心化 SVPWM/PI（抗饱和）/电角度映射，纯 C 可测 |
+| FOC 驱动 | `drv_foc_motor.c.j2` | SIL 覆盖 | TIM1 互补 PWM + ADC1 同步电流采样 + I2C 磁编码器，电流环 ISR（10 kHz） |
 | Component Bus | `component_bus.c.j2` | — | 发布/订阅事件总线，组件间解耦通信 |
 | Param Registry | `param_registry.c.j2` | — | 运行时参数注册表，CLI get/set 动态调参 |
 
@@ -449,6 +455,7 @@ hw2c
 - **启动鲁棒性**：修复 FreeRTOS V11 ARMv6-M 端口在调度器启动前调用临界区导致 PRIMASK 卡死（HAL 超时无限空转）的问题；修复 I2C 外设时钟未使能与 HAL I2C 错误循环挂死
 - **Timer PWM 多通道**：`drv_pwm` 从单通道重构为多通道（channels 配置），每路占空比独立可调、频率可改且占空比保持；CLI `pwm list/set/freq`；TIM 引脚 AF 自动配置；`pwm_demo` 示例（TIM2 CH1/CH2）
 - **摔倒监测**：`fall_detect` 组件 + 三阶段检测算法（自由落体→撞击→静止），直接消费 imu 组件数据，`FALL_DETECTED` 事件进状态机报警；阈值（fall_* 参数）CLI 运行时调参；为手势/步态检测提供同构的"检测组件 + 事件"衔接模式
+- **FOC 力矩反馈旋钮**：TIM1 直驱 FOC（`foc_math` 纯 C 电流环 + `drv_foc_motor` + `foc_motor`/`knob` 组件），Knob 实现阻尼/摩擦力觉；规划了单/双/四电机应用矩阵与多电机 FDCAN 模块化路线（docs/plans/foc-control.md）
 - **遥测与日志**：单块时间戳快照 + on/off 开关，开机 logo，日志零阻塞
 - **CLI**：12 个内置命令，STOP 模式可交互
 - **CI**：build_and_test（编译 + 主机单元测试 + SIL 组件测试 + Pages 部署），修复 mock_hal `size_t` 编译与 github-pages environment 缺失

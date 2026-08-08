@@ -1,0 +1,65 @@
+/**
+ * @file  foc_math.h
+ * @brief Field-Oriented Control math primitives (pure C, host-testable)
+ *
+ * Clarke/Park transforms, centered (min-max) SVPWM, PI controller and
+ * electrical-angle mapping.  No HAL/RTOS dependency — runs on host for
+ * unit tests and on target (soft-float on Cortex-M0+; the whole current
+ * loop is a few dozen float ops, cheap at 10-20 kHz).
+ */
+
+#ifndef __FOC_MATH_H
+#define __FOC_MATH_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define FOC_PI_F       (3.14159265358979f)
+#define FOC_2PI_F      (6.28318530717959f)
+
+/* ---- Clarke: 3-phase currents -> alpha/beta (amplitude-invariant 2/3) ---- */
+void foc_clarke(float ia, float ib, float ic,
+                float *ialpha, float *ibeta);
+
+/* ---- Park: alpha/beta + electrical angle -> d/q ---- */
+void foc_park(float ialpha, float ibeta, float theta_elec,
+              float *id, float *iq);
+
+/* ---- inverse Park: d/q + electrical angle -> alpha/beta ---- */
+void foc_inv_park(float vd, float vq, float theta_elec,
+                  float *valpha, float *vbeta);
+
+/* ---- SVPWM (centered min-max, equivalent to 7-segment SVPWM) ----
+ * Inputs: alpha/beta voltage (V), bus voltage (V).
+ * Outputs: duty cycles ta/tb/tc in [0,1]. */
+void foc_svpwm(float valpha, float vbeta, float vbus,
+               float *ta, float *tb, float *tc);
+
+/* ---- PI controller (with output clamping + anti-windup freeze) ---- */
+typedef struct {
+    float kp;
+    float ki;
+    float out_min;
+    float out_max;
+    float integral;
+} foc_pi_t;
+
+void  foc_pi_init(foc_pi_t *p, float kp, float ki,
+                  float out_min, float out_max);
+float foc_pi_update(foc_pi_t *p, float err, float dt);
+
+/* ---- electrical angle from mechanical angle (rad) ----
+ * theta_elec = (mech * pole_pairs + offset) mod 2*pi, always in [0, 2pi). */
+float foc_elec_angle(float mech_rad, uint8_t pole_pairs, float offset_rad);
+
+/* Clamps a value into [lo, hi]. */
+float foc_clampf(float v, float lo, float hi);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __FOC_MATH_H */

@@ -388,22 +388,30 @@ bool mock_HAL_TIM_PWM_Init_called(void) { return pwm_init_called; }
 
 /* ========== ADC mock ========== */
 static bool adc_init_called = false;
+static uint32_t g_adc_raw = 0;
 
-void HAL_ADC_Init(ADC_HandleTypeDef *hadc) {
+HAL_StatusTypeDef HAL_ADC_Init(ADC_HandleTypeDef *hadc) {
     (void)hadc;
     adc_init_called = true;
+    return HAL_OK;
 }
-void HAL_ADC_ConfigChannel(ADC_HandleTypeDef *hadc, ADC_ChannelConfTypeDef *sConfig) {
+HAL_StatusTypeDef HAL_ADC_ConfigChannel(ADC_HandleTypeDef *hadc, ADC_ChannelConfTypeDef *sConfig) {
     (void)hadc; (void)sConfig;
+    return HAL_OK;
 }
-void HAL_ADC_Start(ADC_HandleTypeDef *hadc) { (void)hadc; }
+HAL_StatusTypeDef HAL_ADC_Start(ADC_HandleTypeDef *hadc) {
+    (void)hadc;
+    return HAL_OK;
+}
 void HAL_ADC_PollForConversion(ADC_HandleTypeDef *hadc, uint32_t Timeout) {
     (void)hadc; (void)Timeout;
 }
 uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef *hadc) {
     (void)hadc;
-    return 0;
+    return g_adc_raw;
 }
+
+void mock_adc_set_raw(uint32_t raw) { g_adc_raw = raw; }
 bool mock_HAL_ADC_Init_called(void) { return adc_init_called; }
 
 /* ========== UART mock ========== */

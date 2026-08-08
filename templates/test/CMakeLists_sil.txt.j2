@@ -38,6 +38,10 @@ add_executable(test_component_sil
 {% if has_fall_detect %}
     ${CMAKE_SOURCE_DIR}/../../src/fall_detect.c
 {% endif %}
+{% if has_foc %}
+    ${CMAKE_SOURCE_DIR}/../../src/foc_math.c
+    ${CMAKE_SOURCE_DIR}/../../src/drivers/drv_{{ (peripherals | selectattr('type', 'eq', 'FOC_Motor') | first).name }}.c
+{% endif %}
 )
 
 target_link_libraries(test_component_sil posix_mock)

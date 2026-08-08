@@ -32,7 +32,8 @@ _PERIPHERAL_SIGNALS: Dict[str, List[str]] = {
 "SPI_Flash_Generic": ["SCK", "MISO", "MOSI", "NSS"],
 "SPI_Sensor_MPU6500": ["SCK", "MISO", "MOSI", "NSS"],
 "Internal_PWM":      ["CH1"],
-    "Internal_ADC":      ["IN0"],
+"FOC_Motor":         [],   # TIM1/ADC/encoder pins are declared manually
+"Internal_ADC":      ["IN0"],
     "Cellular_4G":       ["TX", "RX", "PWR", "RST"],
     "Internal_IR":       ["OUT", "IN"],
 }

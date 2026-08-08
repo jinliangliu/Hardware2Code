@@ -1,0 +1,133 @@
+{#
+    knob_component.c.j2 - force-feedback damping knob (single FOC motor)
+
+    Maps the knob's measured angular velocity to a resistive torque:
+      torque = -damping * omega - friction * sign(omega)
+    giving the classic damped-rotation "force knob" feel.  Every turn of
+    more than knob_turn_threshold_deg posts a KNOB_TURNED event so the
+    state machine / bus can react (mode switch, parameter jog, ...).
+
+    Runtime params: knob_damping, knob_friction, knob_turn_threshold_deg.
+#}
+{% set motor_comp = components | selectattr('type', 'eq', 'foc_motor') | first %}
+{% set motor_peri = peripherals | selectattr('type', 'eq', 'FOC_Motor') | first %}
+{% set has_knob_topic = topics | selectattr('name', 'eq', 'knob_angle') | list | length > 0 %}
+
+#include "component_registry.h"
+#include "event_mgr.h"
+#include "param_registry.h"
+#include "drv_{{ motor_peri.name }}.h"
+#include "foc_math.h"
+#include <math.h>
+#include <stddef.h>
+{% if has_knob_topic %}
+#include "component_bus.h"
+{% endif %}
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#include "drv_log.h"
+#endif
+
+/* ---- Component-private context ---- */
+struct {{ comp_name }}_ctx {
+    uint8_t initialized;
+    float   damping;        /* N*m*s/rad */
+    float   friction;       /* N*m */
+    float   turn_threshold; /* rad */
+    float   last_angle;
+    uint32_t turns;
+    float   torque_nm;
+};
+
+static struct {{ comp_name }}_ctx g_knob_ctx;
+
+/* motor component API (components have no header; forward declare) */
+int {{ motor_comp.name }}_get_state({{ motor_peri.name }}_state_t *out);
+int {{ motor_comp.name }}_set_torque(float torque_nm);
+
+/* ---- param helpers ---- */
+static float knob_load_param(const char *name, float fallback)
+{
+    param_t *p = param_get(name);
+    float v = fallback;
+    if (p != NULL) {
+        (void)param_get_float(p, &v);
+    }
+    return v;
+}
+
+int {{ comp_name }}_init(component_t *c, void *cfg)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_knob_ctx;
+    (void)cfg;
+
+    ctx->damping        = knob_load_param("knob_damping", 0.05f);
+    ctx->friction       = knob_load_param("knob_friction", 0.02f);
+    ctx->turn_threshold = knob_load_param("knob_turn_threshold_deg", 5.0f)
+                          * FOC_PI_F / 180.0f;
+    ctx->last_angle     = 0.0f;
+    ctx->turns          = 0;
+    ctx->torque_nm      = 0.0f;
+    ctx->initialized    = 1;
+    c->ctx = ctx;
+    return 0;
+}
+
+void {{ comp_name }}_step(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_knob_ctx;
+    {{ motor_peri.name }}_state_t st;
+    float torque, sign, delta;
+    (void)c;
+
+    if (!ctx->initialized) {
+        return;
+    }
+    if ({{ motor_comp.name }}_get_state(&st) != 0) {
+        return;                        /* motor not ready */
+    }
+
+    /* resistive torque: damping + Coulomb friction against motion */
+    sign = (st.velocity_radps > 0.0f) ? 1.0f :
+           (st.velocity_radps < 0.0f) ? -1.0f : 0.0f;
+    torque = -ctx->damping * st.velocity_radps - ctx->friction * sign;
+    (void){{ motor_comp.name }}_set_torque(torque);
+    ctx->torque_nm = torque;
+
+    /* turn detection (wrap-aware angle delta) */
+    delta = st.angle_rad - ctx->last_angle;
+    if (delta >  FOC_PI_F) delta -= 2.0f * FOC_PI_F;
+    if (delta < -FOC_PI_F) delta += 2.0f * FOC_PI_F;
+    if (fabsf(delta) >= ctx->turn_threshold) {
+        ctx->turns++;
+        event_t evt = { .id = EVENT_KNOB_TURNED, .param = ctx->turns };
+        xQueueSend(event_queue, &evt, 0);
+{% if has_knob_topic %}
+        bus_publish(TOPIC_KNOB_ANGLE, (uint32_t)(st.angle_rad * 1000.0f));
+{% endif %}
+#ifndef TEST
+        log_info("knob turned (turns=%lu, torque=%.3f N*m)",
+                 (unsigned long)ctx->turns, (double)torque);
+#endif
+    }
+    ctx->last_angle = st.angle_rad;
+}
+
+float {{ comp_name }}_get_torque_nm(void)
+{
+    return g_knob_ctx.torque_nm;
+}
+
+uint32_t {{ comp_name }}_get_turns(void)
+{
+    return g_knob_ctx.turns;
+}
+
+void {{ comp_name }}_terminate(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_knob_ctx;
+    (void)c;
+    ctx->initialized = 0;
+}

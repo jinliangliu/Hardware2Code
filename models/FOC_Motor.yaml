@@ -1,0 +1,47 @@
+model: "FOC_Motor"
+type: "FOC_Motor"
+interface: "internal"
+driver_template: "drivers/drv_foc_motor.c.j2"
+header_template: "drivers/drv_foc_motor.h.j2"
+default_params:
+  pole_pairs: 7
+  vbus_v: 12.0
+  kt_nm_per_a: 0.02
+  iq_max_a: 3.0
+  loop_hz: 10000
+  pwm_arr: 999
+  encoder_addr: 0x36
+  encoder_bus: "i2c1"
+extra_schema:
+  pole_pairs:
+    type: int
+    required: false
+    default: 7
+  vbus_v:
+    type: float
+    required: false
+    default: 12.0
+  kt_nm_per_a:
+    type: float
+    required: false
+    default: 0.02
+  iq_max_a:
+    type: float
+    required: false
+    default: 3.0
+  loop_hz:
+    type: int
+    required: false
+    default: 10000
+  pwm_arr:
+    type: int
+    required: false
+    default: 999
+  encoder_addr:
+    type: int
+    required: false
+    default: 0x36
+  encoder_bus:
+    type: str
+    required: false
+    default: "i2c1"

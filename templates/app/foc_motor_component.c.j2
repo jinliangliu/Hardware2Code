@@ -1,0 +1,74 @@
+{#
+    foc_motor_component.c.j2 - FOC motor framework component
+
+    Wraps the TIM1 direct-drive FOC driver (drv_foc_motor) as a component.
+    Torque mode is the primary mode (used by knob/gimbal/balance apps);
+    speed/position loops can be layered on top in dedicated components.
+#}
+{% set motor_peri = peripherals | selectattr('type', 'eq', 'FOC_Motor') | first %}
+
+#include "component_registry.h"
+#include "drv_{{ motor_peri.name }}.h"
+#include <stddef.h>
+
+/* ---- Component-private context ---- */
+struct {{ comp_name }}_ctx {
+    uint8_t initialized;
+    {{ motor_peri.name }}_state_t state;
+};
+
+static struct {{ comp_name }}_ctx g_motor_ctx;
+
+int {{ comp_name }}_init(component_t *c, void *cfg)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_motor_ctx;
+    (void)cfg;
+
+    if ({{ motor_peri.name }}_init() != 0) {
+        return -1;
+    }
+    /* calibrate encoder zero with the rotor at a known alignment */
+    if ({{ motor_peri.name }}_calibrate() != 0) {
+        return -1;
+    }
+    ctx->initialized = 1;
+    c->ctx = ctx;
+    return 0;
+}
+
+void {{ comp_name }}_step(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_motor_ctx;
+    (void)c;
+    if (ctx->initialized) {
+        (void){{ motor_peri.name }}_get_state(&ctx->state);
+    }
+}
+
+int {{ comp_name }}_set_torque(float torque_nm)
+{
+    return g_motor_ctx.initialized
+           ? {{ motor_peri.name }}_set_torque(torque_nm) : -1;
+}
+
+int {{ comp_name }}_set_iq(float iq_a)
+{
+    return g_motor_ctx.initialized
+           ? {{ motor_peri.name }}_set_iq(iq_a) : -1;
+}
+
+int {{ comp_name }}_get_state({{ motor_peri.name }}_state_t *out)
+{
+    if (out == NULL || !g_motor_ctx.initialized) {
+        return -1;
+    }
+    *out = g_motor_ctx.state;
+    return 0;
+}
+
+void {{ comp_name }}_terminate(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_motor_ctx;
+    (void)c;
+    ctx->initialized = 0;
+}

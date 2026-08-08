@@ -1,0 +1,128 @@
+# ============================================================
+# hw2c knob_demo - TIM1 direct-drive FOC force-feedback knob
+#
+#   MCU        STM32G0B1RET6 @ 16 MHz (HSI)
+#   TIM1       3-phase complementary PWM:
+#                CH1/CH1N=PA8/PB13, CH2/CH2N=PA9/PB14, CH3/CH3N=PA10/PB15
+#   ADC1       current sense: PA0/PA1/PA4 (IN0/IN1/IN4)
+#   Encoder    I2C1 (PB6/PB7) - AS5600 magnetic @ 0x36
+#   Shell      USART2 (PA2/PA3) - CLI + log @ 115200
+# ============================================================
+
+mcu:
+  part: STM32G0B1RET6
+  clock_source: HSI
+  clock_freq_hz: 16000000
+  core_clock_mhz: 16
+  hse_freq: 8000000
+
+pins:
+  - id: PC0
+    function: GPIO_Output
+    label: "LED"
+    active_level: low
+
+  - id: PC13
+    function: GPIO_Input
+    label: "BUTTON"
+    pull: up
+    exti:
+      enable: true
+      trigger: both
+
+  # TIM1 3-phase complementary PWM (FOC drive stage)
+  - id: PA8
+    function: TIM1_CH1
+    label: "MOTOR_U"
+    af: 2
+  - id: PB13
+    function: TIM1_CH1N
+    label: "MOTOR_UN"
+    af: 2
+  - id: PA9
+    function: TIM1_CH2
+    label: "MOTOR_V"
+    af: 2
+  - id: PB14
+    function: TIM1_CH2N
+    label: "MOTOR_VN"
+    af: 2
+  - id: PA10
+    function: TIM1_CH3
+    label: "MOTOR_W"
+    af: 2
+  - id: PB15
+    function: TIM1_CH3N
+    label: "MOTOR_WN"
+    af: 2
+
+  # ADC1 current sensing (low-side shunt, 3 phases)
+  - id: PA0
+    function: ADC_IN0
+    label: "CUR_A"
+  - id: PA1
+    function: ADC_IN1
+    label: "CUR_B"
+  - id: PA4
+    function: ADC_IN4
+    label: "CUR_C"
+
+  # I2C1 magnetic encoder (AS5600 @ 0x36)
+  - id: PB6
+    function: I2C1_SCL
+    label: "ENC_SCL"
+    af: 1
+  - id: PB7
+    function: I2C1_SDA
+    label: "ENC_SDA"
+    af: 1
+
+  - id: PA2
+    function: USART2_TX
+    af: 1
+  - id: PA3
+    function: USART2_RX
+    af: 1
+
+peripherals:
+  - name: usart2
+    type: UART_Serial
+    instance: USART2
+    interface: uart
+    extra:
+      baudrate: 115200
+
+  - name: shell
+    type: Internal_CLI
+    uart: usart2
+    extra:
+      prompt: "hw2c> "
+
+  # TIM1 direct-drive FOC motor (single BLDC/PMSM)
+  - name: motor
+    type: FOC_Motor
+    extra:
+      pole_pairs: 7
+      vbus_v: 12.0
+      kt_nm_per_a: 0.02
+      iq_max_a: 3.0
+      loop_hz: 10000
+      pwm_arr: 999
+      encoder_addr: 0x36
+      encoder_bus: i2c1
+
+  # Second device on the encoder's I2C1 bus (activates i2c_api)
+  - name: eeprom
+    type: I2C_EEPROM
+    bus: I2C1
+    address: 0x50
+    extra:
+      page_size: 32
+      total_size: 32768
+
+log:
+  enable: true
+  ring_buf_size: 1024
+
+sleep:
+  mode: RUN

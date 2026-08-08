@@ -1,0 +1,26 @@
+# Runtime parameters for the force-feedback knob
+
+params:
+  - name: knob_damping
+    component: knob
+    type: float
+    default: 0.05
+    min: 0.0
+    max: 1.0
+    description: "Knob damping coefficient (N*m*s/rad)"
+
+  - name: knob_friction
+    component: knob
+    type: float
+    default: 0.02
+    min: 0.0
+    max: 1.0
+    description: "Knob Coulomb friction (N*m)"
+
+  - name: knob_turn_threshold_deg
+    component: knob
+    type: float
+    default: 5.0
+    min: 0.5
+    max: 90.0
+    description: "Angle change that counts as a knob turn (deg)"

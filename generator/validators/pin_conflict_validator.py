@@ -353,8 +353,21 @@ def validate_pin_conflicts(
         # ---------- Check 2: function supported on this pin? ----------
         af = mcu_db.resolve_pin_function(pin_id, periph, signal)
         if af is None:
-            available_af = mcu_db.get_pin_af_functions(pin_id)
-            errors.append(UnsupportedFunctionError(pin_id, function, label, available_af))
+            # Analog signals (ADC, ...) have no AF number: support is
+            # "peripheral + signal exists on this pin" (peripheral may be
+            # matched by prefix, e.g. ADC_IN0 -> ADC1/IN0).
+            matched = any(
+                e.get("signal") == signal and
+                str(e.get("peripheral", "")).startswith(periph)
+                for e in mcu_db.get_pin_signals(pin_id)
+            )
+            if not matched:
+                available_af = mcu_db.get_pin_af_functions(pin_id)
+                errors.append(UnsupportedFunctionError(pin_id, function, label, available_af))
+                continue
+            # Analog pins behave like GPIO w.r.t. AF conflict tracking.
+            if pin_id not in used_pins:
+                used_pins[pin_id] = {"function": function, "label": label, "is_gpio": True}
             continue
 
         # ---------- Check 3: duplicate/conflict ----------

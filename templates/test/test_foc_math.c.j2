@@ -1,0 +1,141 @@
+/* test_foc_math.c.j2 - FOC math primitives unit tests */
+#include "unity.h"
+#include <math.h>
+
+#include "../src/foc_math.c"
+
+void setUp(void) {}
+void tearDown(void) {}
+
+void test_clarke_balanced_currents(void)
+{
+    float a, b;
+    foc_clarke(1.0f, -0.5f, -0.5f, &a, &b);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 1.0f, a);       /* ia -> alpha */
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.0f, b);       /* balanced -> beta 0 */
+}
+
+void test_clarke_phase_b_only(void)
+{
+    float a, b;
+    foc_clarke(0.0f, 1.0f, -1.0f, &a, &b);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.0f, a);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 2.0f / 1.7320508f, b);
+}
+
+void test_park_rotating_frame(void)
+{
+    /* stationary alpha=1, beta=0 at theta=0 -> id=1, iq=0 */
+    float d, q;
+    foc_park(1.0f, 0.0f, 0.0f, &d, &q);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 1.0f, d);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.0f, q);
+
+    /* at theta=90deg the same vector becomes iq=-1 */
+    foc_park(1.0f, 0.0f, FOC_PI_F * 0.5f, &d, &q);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.0f, d);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, -1.0f, q);
+}
+
+void test_inv_park_roundtrip(void)
+{
+    float theta = 1.2f;
+    float va, vb;
+    float d, q;
+    foc_inv_park(2.0f, 1.0f, theta, &va, &vb);
+    foc_park(va, vb, theta, &d, &q);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, 2.0f, d);
+    TEST_ASSERT_FLOAT_WITHIN(1e-3f, 1.0f, q);
+}
+
+void test_svpwm_centered_and_bounded(void)
+{
+    float ta, tb, tc;
+    /* zero voltage -> all 50% */
+    foc_svpwm(0.0f, 0.0f, 12.0f, &ta, &tb, &tc);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.5f, ta);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.5f, tb);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.5f, tc);
+
+    /* positive alpha voltage -> phase A duty above 50%, others below */
+    foc_svpwm(4.0f, 0.0f, 12.0f, &ta, &tb, &tc);
+    TEST_ASSERT_TRUE(ta > 0.5f);
+    TEST_ASSERT_TRUE(tb < 0.5f);
+    TEST_ASSERT_TRUE(tc < 0.5f);
+
+    /* linear region: phase A leads, C lags (ta > tb > tc) */
+    foc_svpwm(3.0f, 2.0f, 12.0f, &ta, &tb, &tc);
+    TEST_ASSERT_TRUE(ta >= 0.0f && ta <= 1.0f);
+    TEST_ASSERT_TRUE(tb >= 0.0f && tb <= 1.0f);
+    TEST_ASSERT_TRUE(tc >= 0.0f && tc <= 1.0f);
+    TEST_ASSERT_TRUE(ta > tb);
+    TEST_ASSERT_TRUE(tb > tc);
+
+    /* saturated input stays bounded */
+    foc_svpwm(8.0f, 6.0f, 12.0f, &ta, &tb, &tc);
+    TEST_ASSERT_TRUE(ta >= 0.0f && ta <= 1.0f);
+    TEST_ASSERT_TRUE(tb >= 0.0f && tb <= 1.0f);
+    TEST_ASSERT_TRUE(tc >= 0.0f && tc <= 1.0f);
+}
+
+void test_pi_step_response(void)
+{
+    foc_pi_t pi;
+    float out;
+    int i;
+    foc_pi_init(&pi, 1.0f, 10.0f, -12.0f, 12.0f);
+
+    /* constant error 0.5 -> output ramps up (P + accumulating I) */
+    out = 0.0f;
+    for (i = 0; i < 100; i++) {
+        out = foc_pi_update(&pi, 0.5f, 0.001f);
+    }
+    TEST_ASSERT_TRUE(out > 0.5f);           /* integral accumulated */
+    TEST_ASSERT_TRUE(out <= 12.0f);         /* clamped */
+}
+
+void test_pi_output_clamped(void)
+{
+    foc_pi_t pi;
+    float out;
+    foc_pi_init(&pi, 100.0f, 1.0f, -5.0f, 5.0f);
+    out = foc_pi_update(&pi, 1.0f, 0.001f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 5.0f, out);
+}
+
+void test_elec_angle_mapping(void)
+{
+    /* 7 pole pairs: (2pi/7 * 1.5) mech -> 3*pi, wrapped into [0,2pi) = pi */
+    float e = foc_elec_angle(2.0f * FOC_PI_F / 7.0f * 1.5f, 7, 0.0f);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, FOC_PI_F, e);
+
+    /* offset shifts the mapping */
+    e = foc_elec_angle(0.0f, 7, FOC_PI_F);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, FOC_PI_F, e);
+
+    /* always wrapped into [0, 2pi) */
+    e = foc_elec_angle(2.0f * FOC_2PI_F, 7, 0.0f);
+    TEST_ASSERT_TRUE(e >= 0.0f && e < FOC_2PI_F);
+}
+
+void test_clampf(void)
+{
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 5.0f, foc_clampf(9.0f, -5.0f, 5.0f));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, -5.0f, foc_clampf(-9.0f, -5.0f, 5.0f));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 2.0f, foc_clampf(2.0f, -5.0f, 5.0f));
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_clarke_balanced_currents);
+    RUN_TEST(test_clarke_phase_b_only);
+    RUN_TEST(test_park_rotating_frame);
+    RUN_TEST(test_inv_park_roundtrip);
+    RUN_TEST(test_svpwm_centered_and_bounded);
+    RUN_TEST(test_pi_step_response);
+    RUN_TEST(test_pi_output_clamped);
+    RUN_TEST(test_elec_angle_mapping);
+    RUN_TEST(test_clampf);
+    return UNITY_END();
+}

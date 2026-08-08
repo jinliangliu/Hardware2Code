@@ -69,6 +69,9 @@ add_library(hal OBJECT
 {% for src in hal_sources %}
     ${HAL_DIR}/Src/{{ src }}
 {% endfor %}
+{% if has_foc and not has_adc %}
+    ${HAL_DIR}/Src/stm32g0xx_hal_adc.c
+{% endif %}
 {% if has_log %}
 {% if not has_uart %}
     ${HAL_DIR}/Src/stm32g0xx_hal_uart.c
@@ -145,6 +148,9 @@ set(APP_SOURCES
 {% endif %}
 {% if has_fall_detect %}
     src/fall_detect.c
+{% endif %}
+{% if has_foc %}
+    src/foc_math.c
 {% endif %}
 {% if has_components %}
     src/component_registry.c
