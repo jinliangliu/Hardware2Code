@@ -1,0 +1,125 @@
+/**
+ * @file  fall_detect.c
+ * @brief Fall detection algorithm implementation
+ */
+
+#include "fall_detect.h"
+#include <math.h>
+
+#define FALL_DEFAULT_FREE_FALL_G   0.4f
+#define FALL_DEFAULT_FREE_FALL_MS  200U
+#define FALL_DEFAULT_IMPACT_G      2.5f
+#define FALL_DEFAULT_STILL_MS      2000U
+#define FALL_DEFAULT_STILL_LO_G    0.8f
+#define FALL_DEFAULT_STILL_HI_G    1.2f
+
+/* Guards against a stuck detector: free fall without impact, or impact
+ * without stillness, returns to STABLE after this long. */
+#define FALL_RECOVER_MS             3000U
+
+void fall_detect_init(fall_detect_t *f)
+{
+    if (f == NULL) {
+        return;
+    }
+    f->free_fall_g      = FALL_DEFAULT_FREE_FALL_G;
+    f->free_fall_ms     = FALL_DEFAULT_FREE_FALL_MS;
+    f->impact_g         = FALL_DEFAULT_IMPACT_G;
+    f->still_ms         = FALL_DEFAULT_STILL_MS;
+    f->still_lo_g       = FALL_DEFAULT_STILL_LO_G;
+    f->still_hi_g       = FALL_DEFAULT_STILL_HI_G;
+    f->state            = FALL_STATE_STABLE;
+    f->state_since_ms   = 0;
+    f->max_impact_g     = 0.0f;
+    f->fall_count       = 0;
+    f->last_impact_g    = 0.0f;
+}
+
+float fall_detect_magnitude(float ax, float ay, float az)
+{
+    return sqrtf(ax * ax + ay * ay + az * az);
+}
+
+const char *fall_detect_state_name(fall_state_t s)
+{
+    switch (s) {
+        case FALL_STATE_STABLE:    return "STABLE";
+        case FALL_STATE_FREE_FALL: return "FREE_FALL";
+        case FALL_STATE_IMPACT:    return "IMPACT";
+        case FALL_STATE_STILL:     return "STILL";
+        default:                   return "?";
+    }
+}
+
+static int fall_in_still_window(const fall_detect_t *f, float mag)
+{
+    return (mag >= f->still_lo_g) && (mag <= f->still_hi_g);
+}
+
+uint8_t fall_detect_update(fall_detect_t *f, uint32_t now_ms,
+                           float ax, float ay, float az)
+{
+    float mag;
+    uint32_t elapsed;
+
+    if (f == NULL) {
+        return 0;
+    }
+    if (f->state_since_ms == 0) {
+        f->state_since_ms = now_ms;
+    }
+    mag = fall_detect_magnitude(ax, ay, az);
+    elapsed = (now_ms >= f->state_since_ms)
+              ? (now_ms - f->state_since_ms) : 0U;
+
+    switch (f->state) {
+    case FALL_STATE_STABLE:
+        if (mag < f->free_fall_g) {
+            f->state = FALL_STATE_FREE_FALL;
+            f->state_since_ms = now_ms;
+            f->max_impact_g = mag;
+        }
+        break;
+
+    case FALL_STATE_FREE_FALL:
+        if (mag > f->max_impact_g) {
+            f->max_impact_g = mag;
+        }
+        if (mag > f->impact_g) {
+            /* impact: record peak and move to stillness verification */
+            f->last_impact_g = f->max_impact_g;
+            f->state = FALL_STATE_IMPACT;
+            f->state_since_ms = now_ms;
+        } else if (elapsed > FALL_RECOVER_MS) {
+            f->state = FALL_STATE_STABLE;      /* no impact — not a fall */
+        }
+        break;
+
+    case FALL_STATE_IMPACT:
+        if (mag > f->max_impact_g) {
+            f->max_impact_g = mag;
+            f->last_impact_g = mag;
+        }
+        if (fall_in_still_window(f, mag)) {
+            f->state = FALL_STATE_STILL;
+            f->state_since_ms = now_ms;
+        } else if (elapsed > FALL_RECOVER_MS) {
+            f->state = FALL_STATE_STABLE;      /* never settled */
+        }
+        break;
+
+    case FALL_STATE_STILL:
+        if (fall_in_still_window(f, mag)) {
+            if (elapsed >= f->still_ms) {
+                f->fall_count++;
+                f->state = FALL_STATE_STABLE;
+                return 1;
+            }
+        } else {
+            /* moved again before stillness timeout — false alarm */
+            f->state = FALL_STATE_STABLE;
+        }
+        break;
+    }
+    return 0;
+}

@@ -143,6 +143,9 @@ set(APP_SOURCES
 {% if has_mpu6050 %}
     src/attitude.c
 {% endif %}
+{% if has_fall_detect %}
+    src/fall_detect.c
+{% endif %}
 {% if has_components %}
     src/component_registry.c
 {% for comp in components %}

@@ -197,6 +197,7 @@ flowchart TB
 | **I2C 总线** | 一总线多设备：`i2c_api` 按物理总线打开句柄、每次调用携带 7 位设备地址；MPU6050(0x68) 与 EEPROM(0x50) 可同挂 I2C1；总线繁忙防护（PE 循环复位），无设备不挂死 |
 | **SPI 总线** | 一总线多设备：`spi_api` 按物理总线打开句柄、每次调用携带 CS 引脚（gpio_api 软件控制）；MPU6500 @ CS=PC4；寄存器读写协议（地址+R/W 位） |
 | **IMU 姿态** | MPU6050/MPU6500 组件（WHO_AM_I 校验 + 量程配置 + 50 Hz 采样）+ 互补滤波姿态解算（roll/pitch 加速度计约束、yaw 陀螺仪积分），发布到 pub/sub；驱动模板按 interface 参数化 I2C/SPI 传输 |
+| **IMU 应用检测** | 摔倒监测组件（自由落体→撞击→静止三阶段，阈值可调）直接消费 imu 组件数据，事件进状态机；算法纯 C 可 host 测试，为手势/步态检测预留同构模式 |
 | **组件框架** | 统一生命周期组件管理器（init/step/terminate），发布/订阅事件总线，运行时参数注册表，CLI 动态调参 |
 | **业务 DSL** | 层级状态机（复合子状态 / 并行区域 / 历史状态）、defer/timeline 时间控制、when 条件动作、ref 引用复用 |
 | **任务系统** | FreeRTOS 任务定义 + 优先级/栈配置，事件队列驱动任务，可视化拖拽绑定中断源与外设 |
@@ -251,7 +252,7 @@ cmake --build build --target flash-daplink   # DAP-Link（CMSIS-DAP）/ OpenOCD
 | `examples/base` | 最小系统：六层 YAML + 组件框架 + RTC（1 Hz 心跳 + 10 路定时器）+ 低功耗 RUN/SLEEP/STOP0/STOP1（RTC/UART 唤醒）+ 遥测快照 + CLI + 开机 logo | 9 套件（含 SIL） |
 | `examples/modbus_demo` | Modbus RTU 主/从组件：USB-TTL 直连（USART1，默认）/ RS485（DE），FC03/06/16 + CRC16 + 异常码，ISR 环形缓冲 RX，`modbus_tool.py` 主/从对测脚本 | ✓（含 test_modbus） |
 | `examples/spi_flash_demo` | SPI NOR Flash W25Q32：读 ID / 读数据 / 页写 / 扇区擦除 / 整片擦除 | 7 套件（含 test_spi_flash 4/4） |
-| `examples/mpu6050_demo` | I2C1 IMU（MPU6050 @ 0x68，默认；SPI 变体 MPU6500 一键切换）+ imu 组件 + 姿态互补滤波；CLI `i2c scan`、`mpu`；驱动模板 I2C/SPI 双传输；无传感器时优雅降级不挂死 | 12 套件（含 test_i2c_api/test_mpu6050/test_attitude） |
+| `examples/mpu6050_demo` | I2C1 IMU（MPU6050 @ 0x68，默认；SPI 变体 MPU6500 一键切换）+ imu 组件 + 姿态互补滤波 + **fall_detect 摔倒监测组件**（`fall` CLI）；驱动模板 I2C/SPI 双传输；无传感器时优雅降级不挂死 | 13 套件（含 test_i2c_api/test_mpu6050/test_attitude/test_fall_detect） |
 | `examples/pwm_demo` | TIM2 双通道 PWM（CH1=PA0/CH2=PA1），逐路占空比可调 + 频率可改；CLI `pwm list/set/freq` | 7 套件（含 test_pwm 多通道） |
 
 每个示例均为六层 YAML 完整配置，可独立生成、编译并通过全部单元测试。各示例的接线、生成与对测方法见 `examples/*/README.md`。
@@ -319,6 +320,8 @@ BOM 格式要求：**CSV**，需包含 `Designator`、`Value`、`Footprint` 三�
 | Modbus 主/从 | `modbus_component.c.j2` | `test_modbus.c` | 角色可配（master/slave），数据映射到寄存器表，USB-TTL/RS485 双传输 |
 | IMU 姿态组件 | `mpu6050_component.c.j2` | SIL 覆盖 | WHO_AM_I 校验、量程配置、50 Hz 采样，姿态发布到 att_roll/att_pitch/att_yaw |
 | 姿态解算 | `attitude.c.j2` | `test_attitude.c` | 互补滤波：加速度计静态参考 + 陀螺仪积分，1g 信任窗口抑制线性加速度干扰 |
+| 摔倒监测组件 | `fall_detect_component.c.j2` | `test_fall_detect.c` | 直接消费 imu 组件数据（同周期采样，无总线流量），三阶段检测（自由落体/撞击/静止），事件进状态机，阈值运行时可调 |
+| 摔倒检测算法 | `fall_detect.c.j2` | `test_fall_detect.c` | 纯 C 状态机：\|a\| 窗口统计 + 撞击峰值 + 静止确认，含恢复保护 |
 | Component Bus | `component_bus.c.j2` | — | 发布/订阅事件总线，组件间解耦通信 |
 | Param Registry | `param_registry.c.j2` | — | 运行时参数注册表，CLI get/set 动态调参 |
 
@@ -445,6 +448,7 @@ hw2c
 - **I2C 与 IMU**：i2c_api 一总线多设备（MPU6050 + EEPROM 同挂 I2C1）、MPU6050 组件 + 互补滤波姿态管理、CLI `i2c scan/rd/wr` 与 `mpu`，无硬件优雅降级
 - **启动鲁棒性**：修复 FreeRTOS V11 ARMv6-M 端口在调度器启动前调用临界区导致 PRIMASK 卡死（HAL 超时无限空转）的问题；修复 I2C 外设时钟未使能与 HAL I2C 错误循环挂死
 - **Timer PWM 多通道**：`drv_pwm` 从单通道重构为多通道（channels 配置），每路占空比独立可调、频率可改且占空比保持；CLI `pwm list/set/freq`；TIM 引脚 AF 自动配置；`pwm_demo` 示例（TIM2 CH1/CH2）
+- **摔倒监测**：`fall_detect` 组件 + 三阶段检测算法（自由落体→撞击→静止），直接消费 imu 组件数据，`FALL_DETECTED` 事件进状态机报警；阈值（fall_* 参数）CLI 运行时调参；为手势/步态检测提供同构的"检测组件 + 事件"衔接模式
 - **遥测与日志**：单块时间戳快照 + on/off 开关，开机 logo，日志零阻塞
 - **CLI**：12 个内置命令，STOP 模式可交互
 - **CI**：build_and_test（编译 + 主机单元测试 + SIL 组件测试 + Pages 部署），修复 mock_hal `size_t` 编译与 github-pages environment 缺失

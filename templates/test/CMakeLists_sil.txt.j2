@@ -35,6 +35,9 @@ add_executable(test_component_sil
     ${CMAKE_SOURCE_DIR}/../../src/attitude.c
     ${CMAKE_SOURCE_DIR}/../../src/drivers/drv_mpu6050.c
 {% endif %}
+{% if has_fall_detect %}
+    ${CMAKE_SOURCE_DIR}/../../src/fall_detect.c
+{% endif %}
 )
 
 target_link_libraries(test_component_sil posix_mock)

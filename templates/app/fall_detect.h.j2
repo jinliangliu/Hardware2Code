@@ -1,0 +1,66 @@
+/**
+ * @file  fall_detect.h
+ * @brief Fall detection algorithm (free fall -> impact -> stillness)
+ *
+ * Detects a fall from raw accelerometer data (units: g) using the
+ * classic three-phase signature:
+ *   1. FREE FALL   |a| drops below free_fall_g for free_fall_ms
+ *   2. IMPACT      |a| spikes above impact_g
+ *   3. STILLNESS   |a| returns inside [still_lo_g, still_hi_g] and
+ *                  stays there for still_ms
+ *
+ * Pure C + libm, no RTOS/HAL dependency — runs on host for unit tests
+ * and on target (soft-float on Cortex-M0+; 50 Hz is trivially cheap).
+ */
+
+#ifndef __FALL_DETECT_H
+#define __FALL_DETECT_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef enum {
+    FALL_STATE_STABLE = 0,
+    FALL_STATE_FREE_FALL,
+    FALL_STATE_IMPACT,
+    FALL_STATE_STILL,
+} fall_state_t;
+
+typedef struct {
+    /* runtime-tunable thresholds */
+    float    free_fall_g;      /* |a| below this (g)            */
+    uint32_t free_fall_ms;     /* min duration in free fall     */
+    float    impact_g;         /* |a| above this (g) = impact   */
+    uint32_t still_ms;         /* stillness required after hit  */
+    float    still_lo_g;       /* stillness window lower bound  */
+    float    still_hi_g;       /* stillness window upper bound  */
+
+    /* internal state */
+    fall_state_t state;
+    uint32_t     state_since_ms;
+    float        max_impact_g;      /* peak |a| during the fall */
+    uint32_t     fall_count;
+    float        last_impact_g;     /* last detected impact peak */
+} fall_detect_t;
+
+/* Initializes with defaults (0.4g / 200ms / 2.5g / 2000ms / 0.8..1.2g). */
+void fall_detect_init(fall_detect_t *f);
+
+/* Feeds one sample.  now_ms must be monotonic (e.g. HAL_GetTick).
+ * Returns 1 exactly once when a fall is confirmed, else 0. */
+uint8_t fall_detect_update(fall_detect_t *f, uint32_t now_ms,
+                           float ax, float ay, float az);
+
+/* |a| = sqrt(ax^2+ay^2+az^2) — exposed for logging/CLI. */
+float fall_detect_magnitude(float ax, float ay, float az);
+
+const char *fall_detect_state_name(fall_state_t s);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __FALL_DETECT_H */

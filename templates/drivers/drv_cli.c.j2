@@ -88,6 +88,9 @@
 #include "drv_{{ p.name }}.h"
 {% endfor %}
 {% endif %}
+{% if has_fall_detect %}
+{% set fd_comp = components | selectattr('type', 'eq', 'fall_detect') | first %}
+{% endif %}
 
 /* ==================================================================
  *  Static module state
@@ -400,6 +403,24 @@ static void cmd_rtc(int argc, char *argv[], cli_output_fn out)
     } else {
         out("Unknown rtc subcommand: %s\r\n", argv[1]);
     }
+}
+{% endif %}
+
+{% if has_fall_detect %}
+/* ---- Fall detection status ---- */
+const char *{{ fd_comp.name }}_get_state_name(void);
+uint32_t    {{ fd_comp.name }}_get_events(void);
+float       {{ fd_comp.name }}_get_last_impact_g(void);
+uint32_t    {{ fd_comp.name }}_get_read_failures(void);
+static void cmd_fall(int argc, char *argv[], cli_output_fn out)
+{
+    (void)argc;
+    (void)argv;
+    out("Fall detector: state=%s events=%lu last_impact=%.1fg failures=%lu\r\n",
+        {{ fd_comp.name }}_get_state_name(),
+        (unsigned long){{ fd_comp.name }}_get_events(),
+        (double){{ fd_comp.name }}_get_last_impact_g(),
+        (unsigned long){{ fd_comp.name }}_get_read_failures());
 }
 {% endif %}
 
@@ -772,6 +793,9 @@ CLI_HW2C_WRAPPER(i2c)
 {% if has_mpu6050 %}
 CLI_HW2C_WRAPPER(mpu)
 {% endif %}
+{% if has_fall_detect %}
+CLI_HW2C_WRAPPER(fall)
+{% endif %}
 {% if has_modbus %}
 CLI_HW2C_WRAPPER(modbus)
 {% endif %}
@@ -819,6 +843,9 @@ static const hw2c_cli_cmd_t _hw2c_commands[] = {
 {% endif %}
 {% if has_mpu6050 %}
     {"mpu",      "MPU6050 IMU + attitude",       _hw2c_mpu},
+{% endif %}
+{% if has_fall_detect %}
+    {"fall",     "Fall detection status",         _hw2c_fall},
 {% endif %}
 {% if has_modbus %}
     {"modbus",   "Modbus read/write registers",  _hw2c_modbus},
@@ -877,6 +904,9 @@ void cli_register_builtin_commands(void)
 {% endif %}
 {% if has_mpu6050 %}
     cli_register_command("mpu",     "MPU6050 IMU + attitude",       cmd_mpu);
+{% endif %}
+{% if has_fall_detect %}
+    cli_register_command("fall",    "Fall detection status",        cmd_fall);
 {% endif %}
 {% if has_modbus %}
     cli_register_command("modbus",  "Modbus read/write registers",  cmd_modbus);

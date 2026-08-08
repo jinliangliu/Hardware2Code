@@ -49,3 +49,14 @@ components:
       accel_fs: 2          # +/- 2 g
       gyro_fs: 250         # +/- 250 dps
       alpha: 0.98          # complementary filter gyro weight
+
+  # Fall detection — consumes IMU samples directly from the imu component
+  # (same-period sampling, no bus traffic); posts FALL_DETECTED to the
+  # event queue / state machine.
+  - name: fall
+    type: fall_detect
+    period_ms: 20          # 50 Hz, aligned with the IMU sample rate
+    sleep_compat: RUN
+    config:
+      description: "Fall detection (free fall -> impact -> stillness)"
+      imu: imu

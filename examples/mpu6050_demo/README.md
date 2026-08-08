@@ -10,6 +10,8 @@
   SPI（MPU6500）传输——模型 `interface` 切换传输宏，寄存器表/量程/缩放共用
 - **imu 组件 + 姿态**：WHO_AM_I 校验、50 Hz 采样、互补滤波
   （roll/pitch 加速度计约束，yaw 陀螺仪积分），发布 att_roll/pitch/yaw
+- **fall_detect 摔倒监测**：直接消费 imu 组件数据（同周期采样），
+  自由落体→撞击→静止三阶段检测，`FALL_DETECTED` 事件触发状态机报警
 - **CLI**：`mpu` 显示实时 IMU 数据 + 融合姿态；无传感器时优雅报错不挂死
 
 ## 硬件
@@ -63,6 +65,16 @@ attitude  roll=   0.2 pitch=  -0.4 yaw=  12.3 deg
 accel(g)  x=-0.01 y=+0.01 z=+1.00
 gyro(dps) x=+0.10 y=-0.05 z=+0.20
 temp      46.53 C
+
+hw2c> fall                    # 摔倒检测状态
+Fall detector: state=STABLE events=0 last_impact=0.0g failures=0
+```
+
+摔倒参数可运行时调参（`param set fall_impact_g 3.0` 等）：
+
+```text
+hw2c> param get fall_impact_g
+fall_impact_g = 2.500000
 ```
 
 ## 设计要点
@@ -103,9 +115,26 @@ yaw         = 纯陀螺仪积分（无磁力计，随时间漂移）
 组件每 20 ms 发布 `att_roll / att_pitch / att_yaw`（0.01°）与
 `imu_temp`（0.1°C）到 component_bus。
 
+### 摔倒监测（fall_detect）
+
+```
+imu 组件(50 Hz 采样) ──同周期直接取数──► fall_detect 组件
+                                          │ 三阶段状态机
+                                          │   STABLE → FREE_FALL(‖a‖<0.4g, ≥200ms)
+                                          │         → IMPACT(‖a‖>2.5g)
+                                          │         → STILL(0.8..1.2g, ≥2s)
+                                          ▼
+                              FALL_DETECTED → 状态机报警(LED fault + 日志)
+```
+
+阈值来自 `params.yaml`（fall_free_fall_g / fall_free_fall_ms /
+fall_impact_g / fall_still_ms），CLI 可运行时调整。
+
 ## 已知限制
 
 - 实际未接硬件：`i2c scan` / `mpu` 为不带板调试工具；接板后应先扫描确认
   0x68 在总线上，再看姿态输出
+- 摔倒阈值需上板标定（身体/佩戴位置不同差异大）；算法为规则式，
+  后续可叠加机器学习模型（特征仍来自 imu 组件）
 - yaw 无绝对参考（无磁力计），长时间会漂移；roll/pitch 有加速度计约束
 - Cortex-M0+ 无 FPU：姿态用软件浮点，50 Hz 更新完全够用

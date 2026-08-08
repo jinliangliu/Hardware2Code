@@ -1,0 +1,158 @@
+{#
+    fall_detect_component.c.j2 - Fall detection component
+
+    Consumes IMU samples directly from the mpu6050/mpu6500 component
+    (data-supply option 1: same-period sampling, no bus traffic) and
+    posts a FALL_DETECTED event to the event queue / state machine.
+
+    Component config:
+        imu: <component name>   # default: first mpu6050 component
+    Thresholds are runtime params: fall_free_fall_g / fall_free_fall_ms /
+    fall_impact_g / fall_still_ms (see params.yaml).
+#}
+{% set imu_comp = components | selectattr('type', 'eq', 'mpu6050') | first %}
+{% set mpu_peri = peripherals | selectattr('type', 'in', ['I2C_Sensor_MPU6050', 'SPI_Sensor_MPU6500']) | first %}
+{% set imu_ref = comp_config.get('imu', imu_comp.name if imu_comp else 'imu') %}
+{% set has_fall_topic = topics | selectattr('name', 'eq', 'fall_detected') | list | length > 0 %}
+
+#include "component_registry.h"
+#include "event_mgr.h"
+#include "param_registry.h"
+#include "fall_detect.h"
+{% if imu_comp and mpu_peri %}
+#include "drv_{{ mpu_peri.name }}.h"
+{% endif %}
+{% if has_fall_topic %}
+#include "component_bus.h"
+{% endif %}
+#ifdef TEST
+#include "mock_hal.h"
+#else
+#include "stm32g0xx_hal.h"
+#include "drv_log.h"
+#endif
+#include <stddef.h>
+
+/* ---- Component-private context ---- */
+struct {{ comp_name }}_ctx {
+    uint8_t       initialized;
+    fall_detect_t det;
+    uint32_t      events;
+    uint32_t      read_failures;
+};
+
+static struct {{ comp_name }}_ctx g_fall_ctx;
+
+{% if imu_comp and mpu_peri %}
+/* imu component getter (components have no header; forward declare) */
+int {{ imu_comp.name }}_get_imu({{ mpu_peri.name }}_data_t *out);
+{% endif %}
+
+/* ---- param helpers: read a runtime param, keep default on failure ---- */
+static void fall_load_param_float(struct {{ comp_name }}_ctx *ctx,
+                                  const char *name, float *dst)
+{
+    param_t *p = param_get(name);
+    if (p != NULL) {
+        (void)param_get_float(p, dst);
+    }
+    (void)ctx;
+}
+
+static void fall_load_param_uint32(struct {{ comp_name }}_ctx *ctx,
+                                   const char *name, uint32_t *dst)
+{
+    param_t *p = param_get(name);
+    if (p != NULL) {
+        (void)param_get_uint32(p, dst);
+    }
+    (void)ctx;
+}
+
+/* ---- init: reset detector, load tunable thresholds ---- */
+int {{ comp_name }}_init(component_t *c, void *cfg)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_fall_ctx;
+    (void)cfg;
+
+    fall_detect_init(&ctx->det);
+    fall_load_param_float(ctx, "fall_free_fall_g", &ctx->det.free_fall_g);
+    fall_load_param_uint32(ctx, "fall_free_fall_ms", &ctx->det.free_fall_ms);
+    fall_load_param_float(ctx, "fall_impact_g", &ctx->det.impact_g);
+    fall_load_param_uint32(ctx, "fall_still_ms", &ctx->det.still_ms);
+    ctx->events        = 0;
+    ctx->read_failures = 0;
+    ctx->initialized   = 1;
+    c->ctx = ctx;
+    return 0;
+}
+
+/* ---- step: sample IMU via the imu component, run detector, post event ---- */
+void {{ comp_name }}_step(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_fall_ctx;
+    uint32_t now;
+    (void)c;
+
+    if (!ctx->initialized) {
+        return;
+    }
+    now = HAL_GetTick();
+
+{% if imu_comp and mpu_peri %}
+    {
+        {{ mpu_peri.name }}_data_t imu;
+        if ({{ imu_ref }}_get_imu(&imu) != 0) {
+            ctx->read_failures++;          /* sensor absent / not ready */
+            return;
+        }
+        if (fall_detect_update(&ctx->det, now,
+                               imu.accel_g[0], imu.accel_g[1], imu.accel_g[2])) {
+            event_t evt = {
+                .id    = EVENT_FALL_DETECTED,
+                .param = (uint32_t)(ctx->det.last_impact_g * 100.0f),
+            };
+            ctx->events++;
+            xQueueSend(event_queue, &evt, 0);
+{% if has_fall_topic %}
+            bus_publish(TOPIC_FALL_DETECTED, evt.param);
+{% endif %}
+#ifndef TEST
+            log_info("FALL detected, impact %.1fg (count %lu)",
+                     (double)ctx->det.last_impact_g,
+                     (unsigned long)ctx->events);
+#endif
+        }
+    }
+{% else %}
+    (void)now;
+{% endif %}
+}
+
+/* ---- getters for CLI / telemetry ---- */
+const char *{{ comp_name }}_get_state_name(void)
+{
+    return fall_detect_state_name(g_fall_ctx.det.state);
+}
+
+uint32_t {{ comp_name }}_get_events(void)
+{
+    return g_fall_ctx.events;
+}
+
+float {{ comp_name }}_get_last_impact_g(void)
+{
+    return g_fall_ctx.det.last_impact_g;
+}
+
+uint32_t {{ comp_name }}_get_read_failures(void)
+{
+    return g_fall_ctx.read_failures;
+}
+
+void {{ comp_name }}_terminate(component_t *c)
+{
+    struct {{ comp_name }}_ctx *ctx = &g_fall_ctx;
+    (void)c;
+    ctx->initialized = 0;
+}

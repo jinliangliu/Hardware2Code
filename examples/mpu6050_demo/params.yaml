@@ -39,3 +39,35 @@ params:
     min: 900
     max: 999
     description: "Complementary filter gyro weight (scaled x1000, 0.98)"
+
+  - name: fall_free_fall_g
+    component: fall
+    type: float
+    default: 0.4
+    min: 0.1
+    max: 1.0
+    description: "Fall detector: free-fall threshold (|a| below, in g)"
+
+  - name: fall_free_fall_ms
+    component: fall
+    type: uint32
+    default: 200
+    min: 50
+    max: 1000
+    description: "Fall detector: min free-fall duration (ms)"
+
+  - name: fall_impact_g
+    component: fall
+    type: float
+    default: 2.5
+    min: 1.5
+    max: 4.0
+    description: "Fall detector: impact threshold (|a| above, in g)"
+
+  - name: fall_still_ms
+    component: fall
+    type: uint32
+    default: 2000
+    min: 500
+    max: 5000
+    description: "Fall detector: stillness required after impact (ms)"

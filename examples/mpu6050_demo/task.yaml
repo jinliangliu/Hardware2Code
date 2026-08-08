@@ -43,6 +43,12 @@ behavior:
           actions:
             - led_pattern fault
             - 'log "button: LONG_PRESS"'
+        # Fall detected by the fall_detect component -> alarm LED + log
+        - event: FALL_DETECTED
+          target: IDLE
+          actions:
+            - led_pattern fault
+            - 'log "FALL detected -> alarm"'
 
 # Periodic RTC alarm events (no tick spam)
 periodic_events:
